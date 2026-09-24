@@ -54,7 +54,8 @@ public class DashboardController {
       int seedRows,
       boolean migrationStartAllowed,
       Completion completion,
-      Rollback rollback) {}
+      Rollback rollback,
+      List<LogEvent> events) {}
 
   public record ActionResult(String message) {}
 
@@ -125,7 +126,8 @@ public class DashboardController {
             pending,
             state.successful() ? state.completedRows() : targetCounts.total(),
             state.durationMillis()),
-        rollback(state));
+        rollback(state),
+        store.logEvents());
   }
 
   private Rollback rollback(MigrationState state) {

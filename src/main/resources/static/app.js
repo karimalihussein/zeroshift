@@ -9,6 +9,9 @@ let lastStage;
 let logPaused = false;
 let backendLogs = [];
 let visibleLogs = [];
+// Events up to this backend log id are hidden by "Clear"; the backend keeps them.
+let clearedThrough = 0;
+let clearedAt = null;
 
 function render(data) {
   latest = data;
@@ -49,7 +52,7 @@ function render(data) {
   renderCompletion(data.completion);
   renderRollback(data.rollback, s);
   renderTraffic(data.traffic, s.stage);
-  receiveLogs(data.logs);
+  receiveLogs(data.events || []);
 
   const running = s.status === 'RUNNING';
   const allowed = {
@@ -256,10 +259,12 @@ function receiveLogs(logs) {
   renderLogs();
 }
 
-function parseLog(raw) {
-  const match = raw.match(/^\[(\d{2}:\d{2}:\d{2})]\s*(.*)$/);
-  const time = match?.[1] || '—';
-  const message = match?.[2] || raw;
+const clock = new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+function parseLog(event) {
+  const at = new Date(event.at);
+  const time = clock.format(at);
+  const message = event.message;
+  const raw = `${time} ${message}`;
   const operation = message.match(/^(READ|INSERT|UPDATE|DELETE|COPY)\b/)?.[1] || '';
   const level = /FAILED|error|crash|blocked|expired|conflict/i.test(message) ? 'ERROR'
     : /paused|requested|frozen|stopped|waiting/i.test(message) ? 'WARNING'
@@ -268,14 +273,30 @@ function parseLog(raw) {
     : /rollback|reverse sync|reverse catch|reverse change|reverse capture|conflict|PostgreSQL writes fenced|write fence lifted/i.test(message) ? 'ROLLBACK'
       : /CDC|Change Tracking|net changes|capture/i.test(message) ? 'CDC'
       : /cutover|validation|freeze|fenced|primary|sequence/i.test(message) ? 'CUTOVER' : 'MIGRATION';
-  return { raw, time, message, operation, level, category };
+  return { id: event.id, at, raw, time, message, operation, level, category };
+}
+
+// Elapsed time since the backend recorded the event, e.g. "just now", "12s ago", "3 min ago".
+function formatAge(at) {
+  const seconds = Math.max(0, Math.floor((Date.now() - at.getTime()) / 1000));
+  if (seconds < 1) return 'just now';
+  if (seconds < 60) return `${seconds}s ago`;
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes} min ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours} h ago`;
+  return `${Math.floor(hours / 24)} d ago`;
+}
+
+function refreshAges() {
+  document.querySelectorAll('#logs .log-age').forEach(age => { age.textContent = formatAge(new Date(Number(age.dataset.at))); });
 }
 
 function renderLogs() {
   const query = el('log-search').value.trim().toLowerCase();
   const level = el('log-level').value;
   const category = el('log-category').value;
-  const events = visibleLogs.map(parseLog).filter(event =>
+  const events = visibleLogs.filter(event => event.id > clearedThrough).map(parseLog).filter(event =>
     (level === 'ALL' || event.level === level) &&
     (category === 'ALL' || event.category === category) &&
     (!query || event.raw.toLowerCase().includes(query)));
@@ -284,24 +305,28 @@ function renderLogs() {
   if (!events.length) {
     const empty = document.createElement('p');
     empty.className = 'log-empty';
-    empty.textContent = visibleLogs.length ? 'No events match these filters.' : 'Waiting for backend events…';
+    empty.textContent = clearedAt && !visibleLogs.some(event => event.id > clearedThrough)
+      ? `Cleared at ${clock.format(clearedAt)}. New events will appear here.`
+      : visibleLogs.length ? 'No events match these filters.' : 'Waiting for backend events…';
     viewer.append(empty);
   } else {
     for (const event of events) {
       const row = document.createElement('div');
       row.className = 'log-row';
-      const time = document.createElement('time'); time.className = 'log-time'; time.textContent = event.time;
+      const time = document.createElement('time'); time.className = 'log-time'; time.dateTime = event.at.toISOString(); time.textContent = event.time;
+      const age = document.createElement('span'); age.className = 'log-age'; age.dataset.at = String(event.at.getTime()); age.textContent = formatAge(event.at);
       const badge = document.createElement('span'); badge.className = `log-level ${event.level.toLowerCase()}`; badge.textContent = event.level;
       const category = document.createElement('span'); category.className = 'log-category'; category.textContent = event.category;
       const message = document.createElement('span'); message.className = 'log-message';
       if (event.operation) { const operation = document.createElement('b'); operation.className = 'log-operation'; operation.textContent = event.operation; message.append(operation, document.createTextNode(event.message.slice(event.operation.length).trim())); }
       else message.textContent = event.message;
-      row.append(time, badge, category, message);
+      row.append(time, age, badge, category, message);
       viewer.append(row);
     }
     viewer.scrollTop = 0;
   }
-  el('log-count').textContent = `${number(events.length)} ${events.length === 1 ? 'event' : 'events'}${logPaused ? ' · stream paused' : ''}`;
+  el('log-count').textContent = `${number(events.length)} ${events.length === 1 ? 'event' : 'events'}${logPaused ? ' · stream paused' : ''}${clearedAt ? ` · cleared at ${clock.format(clearedAt)}` : ''}`;
+  el('log-clear').disabled = !visibleLogs.some(event => event.id > clearedThrough);
 }
 
 function showMessage(message, error = false) {
@@ -356,6 +381,14 @@ el('log-pause').addEventListener('click', () => {
   if (!logPaused) visibleLogs = backendLogs;
   renderLogs();
 });
+
+el('log-clear').addEventListener('click', () => {
+  clearedThrough = Math.max(clearedThrough, ...visibleLogs.map(event => event.id));
+  clearedAt = new Date();
+  renderLogs();
+});
+// Ages keep counting while the stream is paused.
+setInterval(refreshAges, 1000);
 
 async function poll() { await refresh(); setTimeout(poll, 1000); }
 poll();

@@ -21,6 +21,7 @@
   <symbol id="icon-bolt" viewBox="0 0 24 24"><path d="m13 2-8 12h7l-1 8 8-12h-7Z"/></symbol>
   <symbol id="icon-arrow" viewBox="0 0 24 24"><path d="M5 12h14M14 7l5 5-5 5"/></symbol>
   <symbol id="icon-terminal" viewBox="0 0 24 24"><path d="m4 7 5 5-5 5M11 18h9"/></symbol>
+  <symbol id="icon-clear" viewBox="0 0 24 24"><path d="M4 7h16M9.5 7V4.5h5V7M6.5 7l1 13h9l1-13"/></symbol>
 </svg>
 
 <main class="shell">
@@ -82,8 +83,8 @@
   </section>
 
   <section class="log-panel" aria-labelledby="log-title">
-    <div class="log-header"><div><p class="context">Durable backend events</p><h2 id="log-title"><svg><use href="#icon-terminal"/></svg>Live log</h2></div><div class="log-tools"><label class="log-search"><svg><use href="#icon-search"/></svg><input id="log-search" type="search" placeholder="Search events" aria-label="Search logs"></label><select id="log-level" aria-label="Filter logs by level"><option value="ALL">All levels</option><option value="SUCCESS">Success</option><option value="INFO">Info</option><option value="WARNING">Warning</option><option value="ERROR">Error</option></select><select id="log-category" aria-label="Filter logs by category"><option value="ALL">All systems</option><option value="MIGRATION">Migration</option><option value="CDC">CDC</option><option value="TRAFFIC">Traffic</option><option value="CUTOVER">Cutover</option><option value="ROLLBACK">Rollback</option></select><button id="log-pause" type="button"><svg><use href="#icon-pause"/></svg>Pause stream</button></div></div>
-    <div class="log-columns" aria-hidden="true"><span>Time</span><span>Level</span><span>System</span><span>Event</span></div>
+    <div class="log-header"><div><p class="context">Durable backend events</p><h2 id="log-title"><svg><use href="#icon-terminal"/></svg>Live log</h2></div><div class="log-tools"><label class="log-search"><svg><use href="#icon-search"/></svg><input id="log-search" type="search" placeholder="Search events" aria-label="Search logs"></label><select id="log-level" aria-label="Filter logs by level"><option value="ALL">All levels</option><option value="SUCCESS">Success</option><option value="INFO">Info</option><option value="WARNING">Warning</option><option value="ERROR">Error</option></select><select id="log-category" aria-label="Filter logs by category"><option value="ALL">All systems</option><option value="MIGRATION">Migration</option><option value="CDC">CDC</option><option value="TRAFFIC">Traffic</option><option value="CUTOVER">Cutover</option><option value="ROLLBACK">Rollback</option></select><button id="log-pause" type="button"><svg><use href="#icon-pause"/></svg>Pause stream</button><button id="log-clear" type="button" title="Hide the events shown so far. The backend keeps them."><svg><use href="#icon-clear"/></svg>Clear</button></div></div>
+    <div class="log-columns" aria-hidden="true"><span>Time</span><span>Age</span><span>Level</span><span>System</span><span>Event</span></div>
     <div id="logs" class="log-viewer" role="log" aria-live="polite" aria-label="Live migration logs"><p class="log-empty">Waiting for backend events…</p></div>
     <footer class="log-footer"><span id="log-count">0 events</span><span><i></i> Polling backend every second</span></footer>
   </section>

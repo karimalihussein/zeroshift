@@ -86,9 +86,16 @@ public class PostgresMigrationStore implements MigrationStore {
 
   @Override
   public List<String> logs() {
+    return logEvents().stream()
+        .map(e -> "[" + LOG_TIME.format(e.at()) + "] " + e.message())
+        .toList();
+  }
+
+  @Override
+  public List<LogEvent> logEvents() {
     return jdbc.query(
-        "SELECT at,message FROM migration_log ORDER BY id DESC LIMIT 60",
-        (r, n) -> "[" + LOG_TIME.format(r.getTimestamp(1).toInstant()) + "] " + r.getString(2));
+        "SELECT id,at,message FROM migration_log ORDER BY id DESC LIMIT 60",
+        (r, n) -> new LogEvent(r.getLong(1), r.getTimestamp(2).toInstant(), r.getString(3)));
   }
 
   @Override

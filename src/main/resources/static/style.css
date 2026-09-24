@@ -228,12 +228,13 @@ button.quiet { min-height: auto; padding: 5px 8px; border: 0; background: transp
 .log-tools select { width: 126px; font-size: 11px; }
 .log-tools button { font-size: 11px; }
 .log-tools button.is-paused { color: var(--amber); border-color: #e5bd88; background: var(--amber-soft); }
-.log-columns, .log-row { display: grid; grid-template-columns: 82px 84px 88px minmax(0, 1fr); gap: 12px; align-items: start; }
+.log-columns, .log-row { display: grid; grid-template-columns: 82px 78px 84px 88px minmax(0, 1fr); gap: 12px; align-items: start; }
 .log-columns { padding: 9px 24px; border-bottom: 1px solid var(--line); color: var(--quiet); font-size: 10px; font-weight: 650; }
 .log-viewer { min-height: 210px; max-height: 390px; overflow: auto; background: #f8fafc; font-family: var(--mono); font-size: 11px; line-height: 1.55; scrollbar-color: #c7d0dd transparent; }
 .log-row { padding: 10px 24px; border-bottom: 1px solid #e8edf3; color: #344057; }
 .log-row:hover { background: white; }
 .log-time { color: var(--quiet); font-variant-numeric: tabular-nums; }
+.log-age { color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .log-level, .log-category { width: fit-content; padding: 2px 6px; border-radius: 4px; font-family: "Aptos", "Segoe UI Variable", sans-serif; font-size: 9px; font-weight: 750; }
 .log-level.info { color: #426180; background: #eaf0f6; }
 .log-level.success { color: var(--green); background: var(--green-soft); }

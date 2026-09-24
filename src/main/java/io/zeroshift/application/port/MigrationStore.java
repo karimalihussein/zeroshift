@@ -12,6 +12,9 @@ public interface MigrationStore {
 
   List<String> logs();
 
+  /** The same newest-first lines as {@link #logs()}, with their id and exact time. */
+  List<LogEvent> logEvents();
+
   long count(Table table);
 
   long appliedVersion(Table table, long id);
