@@ -59,6 +59,13 @@ services:
       SEED_ROWS: ${SEED_ROWS:-10000}
       TICK_MS: ${TICK_MS:-250}
       TRAFFIC_MS: ${TRAFFIC_MS:-100}
+      EVENT_LAB_KAFKA: kafka:9092
+      EVENT_LAB_CONNECT: http://kafka-connect:8083
+      ORDER_SERVICE_URL: http://order-service:8080
+      PAYMENT_SERVICE_URL: http://payment-service:8080
+      INVENTORY_SERVICE_URL: http://inventory-service:8080
+      SHIPPING_SERVICE_URL: http://shipping-service:8080
+      ORDER_QUERY_SERVICE_URL: http://order-query-service:8080
     ports: ['127.0.0.1:${JAVA_APP_PORT:-8080}:8080']
     depends_on:
       sqlserver: {condition: service_healthy}

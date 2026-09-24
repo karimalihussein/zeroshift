@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ZeroShift — Event-driven lab</title>
+  <link rel="icon" th:href="@{/favicon.svg}">
+  <link rel="stylesheet" th:href="@{/style.css}">
+  <link rel="stylesheet" th:href="@{/events.css}">
+  <script defer th:src="@{/events.js}"></script>
+</head>
+<body th:attr="data-grafana=${grafanaUrl}">
+<main class="shell">
+  <header class="topbar">
+    <a class="brand" href="/" aria-label="ZeroShift home"><span class="brand-mark"><span></span><span></span><span></span></span><span><strong>ZeroShift</strong><small>Distributed systems control plane</small></span></a>
+    <nav class="lab-nav" aria-label="Labs"><a href="/">Migration</a><a href="/events" aria-current="page">Event-driven</a></nav>
+    <div class="topbar-status"><span id="connection" class="connection" role="status"><i></i> Connecting</span><span class="environment">Local lab</span></div>
+  </header>
+
+  <section class="pipeline-hero" aria-labelledby="pipeline-title">
+    <div class="hero-heading"><div><p class="context">Order → Payment → Inventory → Shipping</p><h1 id="pipeline-title">Follow a message</h1></div><p id="pipeline-note" class="hero-note">Every stage below is read from the running system: databases, Debezium, Kafka and the services themselves.</p></div>
+    <ol id="pipeline" class="pipeline" aria-label="Pipeline stages"></ol>
+  </section>
+
+  <section class="lab-grid">
+    <div class="panel order-form-panel">
+      <div class="section-heading"><div><p class="context">Command side</p><h2>Place an order</h2></div></div>
+      <form id="order-form" class="order-form">
+        <label>Customer<input id="customer" value="alice" maxlength="40" required></label>
+        <div id="order-lines" class="order-lines"></div>
+        <button type="submit" class="primary-action">Place order</button>
+      </form>
+      <p class="scenario-title">Scenarios: arm a real fault, then place the order</p>
+      <div id="scenarios" class="scenarios"></div>
+      <p id="message" class="panel-note" role="status" aria-live="polite"></p>
+    </div>
+    <div class="panel orders-panel">
+      <div class="section-heading"><div><p class="context">Sagas, newest first</p><h2>Orders</h2></div><span class="live-indicator"><i></i> Live</span></div>
+      <div class="table-wrap"><table class="data-table"><thead><tr><th>Order</th><th>Customer</th><th>Total</th><th>Saga</th><th>Write model</th><th>Read model</th></tr></thead><tbody id="orders"></tbody></table></div>
+    </div>
+  </section>
+
+  <section id="journey-panel" class="panel journey-panel" aria-labelledby="journey-title" hidden>
+    <div class="section-heading journey-heading"><div><p class="context">Message by message</p><h2 id="journey-title">Order journey</h2></div><div class="journey-tools"><button id="journey-fold" type="button">Rebuild from events</button><button id="journey-snapshot" type="button">Discard snapshot</button><button id="journey-close" type="button" class="quiet">Close</button></div></div>
+    <div id="journey-summary" class="journey-summary"></div>
+    <div class="table-wrap"><table class="data-table journey-table"><thead><tr><th>Message</th><th>DB transaction → outbox</th><th>Debezium → Kafka</th><th>Consumers</th><th>Saga</th><th></th></tr></thead><tbody id="journey-messages"></tbody></table></div>
+    <div id="journey-extra" class="journey-extra"></div>
+  </section>
+
+  <section class="panel" aria-labelledby="kafka-title">
+    <div class="section-heading"><div><p class="context">From the broker, via AdminClient</p><h2 id="kafka-title">Kafka</h2></div><p>Partitions with their earliest and latest offsets; consumer groups with members, committed offsets and lag.</p></div>
+    <div class="kafka-grid"><div><h3 class="sub">Topics</h3><div id="topics" class="topics"></div></div><div><h3 class="sub">Consumer groups</h3><div id="groups" class="groups"></div></div></div>
+  </section>
+
+  <section class="panel" aria-labelledby="services-title">
+    <div class="section-heading"><div><p class="context">Crash, pause and break things on purpose</p><h2 id="services-title">Services &amp; faults</h2></div><p>Faults are stored in each service's own database, so they survive the crashes they cause.</p></div>
+    <div id="services" class="services"></div>
+    <div class="infra-grid"><div><h3 class="sub">Debezium connectors</h3><div id="connectors" class="connectors"></div></div><div><h3 class="sub">Payment gateway &amp; circuit breaker</h3><div id="gateway" class="gateway"></div></div></div>
+  </section>
+
+  <section class="lab-grid">
+    <div class="panel"><div class="section-heading"><div><p class="context">Every delivery outcome, from every consumer</p><h2>Idempotency &amp; retries</h2></div></div><div id="decisions" class="feed"></div></div>
+    <div class="panel"><div class="section-heading"><div><p class="context">Parked messages</p><h2>Dead-letter topics</h2></div></div><div id="poison" class="poison"></div><div id="dead-letters" class="feed"></div></div>
+  </section>
+
+  <section class="lab-grid">
+    <div class="panel"><div class="section-heading"><div><p class="context">CQRS query side</p><h2>Read model</h2></div></div><div id="read-model"></div></div>
+    <div class="panel"><div class="section-heading"><div><p class="context">Durable, newest first</p><h2>Operator actions</h2></div></div><div id="actions" class="feed"></div><p id="tap" class="panel-note"></p><div class="retention"><button id="retention-demo" type="button">Produce 20 records to lab.retention-demo</button><span>1-minute retention: watch the earliest offset move.</span></div></div>
+  </section>
+
+  <footer class="page-footer"><span>ZeroShift event-driven lab</span><span id="footer-links">Real Kafka · Debezium CDC · durable state · no simulated progress</span></footer>
+</main>
+</body>
+</html>

@@ -13,6 +13,7 @@ import org.springframework.kafka.core.ConsumerFactory;
 import org.springframework.kafka.core.KafkaOperations;
 import org.springframework.kafka.listener.DeadLetterPublishingRecoverer;
 import org.springframework.kafka.listener.DefaultErrorHandler;
+import org.springframework.kafka.listener.ListenerExecutionFailedException;
 import org.springframework.kafka.support.ExponentialBackOffWithMaxRetries;
 import org.springframework.kafka.support.KafkaUtils;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -57,7 +58,14 @@ public class PlatformConfiguration {
     var handler =
         new DefaultErrorHandler(
             (record, error) -> {
-              deadLetters.accept(record, error);
+              // The dead letter's exception headers name the real cause, not Spring's listener
+              // wrapper.
+              deadLetters.accept(
+                  record,
+                  error instanceof ListenerExecutionFailedException
+                          && error.getCause() instanceof Exception cause
+                      ? cause
+                      : error);
               decisions.record(
                   consumer(record),
                   record,

@@ -1,6 +1,7 @@
 package io.zeroshift.platform;
 
 import io.zeroshift.contracts.Envelope;
+import io.zeroshift.contracts.MessageCodec;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.springframework.jdbc.core.JdbcTemplate;
 
@@ -19,6 +20,7 @@ public final class DecisionLog {
       Decision decision,
       int attempt,
       String detail) {
+    if (envelope == null) envelope = tryDecode(record);
     jdbc.update(
         "INSERT INTO consumer_decision(consumer,event_id,order_id,type,topic,kafka_partition,"
             + "kafka_offset,decision,attempt,detail,trace_id) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
@@ -33,6 +35,15 @@ public final class DecisionLog {
         attempt,
         detail == null ? "" : detail.substring(0, Math.min(detail.length(), 1000)),
         Traces.traceId());
+  }
+
+  /** Retries and dead letters are logged before (or without) a successful decode. */
+  private static Envelope tryDecode(ConsumerRecord<?, ?> record) {
+    try {
+      return record.value() instanceof String json ? MessageCodec.decode(json) : null;
+    } catch (RuntimeException unreadable) {
+      return null;
+    }
   }
 
   private static String keyOf(ConsumerRecord<?, ?> record) {

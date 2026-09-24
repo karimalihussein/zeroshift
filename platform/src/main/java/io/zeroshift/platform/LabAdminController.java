@@ -25,18 +25,29 @@ public class LabAdminController {
       boolean paused,
       List<String> assignedPartitions) {}
 
-  public record State(String service, List<Consumer> consumers, List<Map<String, Object>> faults) {}
+  /**
+   * The service's side of change data capture. {@code lagBytes} is WAL the connector has not yet
+   * confirmed: outbox inserts committed here but not yet on Kafka (plus unrelated WAL traffic).
+   */
+  public record Outbox(
+      String slot, boolean slotActive, Long lagBytes, long rows, Object lastInsertAt) {}
+
+  public record State(
+      String service, List<Consumer> consumers, List<Map<String, Object>> faults, Outbox outbox) {}
 
   private final String service;
   private final KafkaListenerEndpointRegistry registry;
   private final Faults faults;
   private final JdbcTemplate jdbc;
+  private final org.springframework.kafka.core.KafkaAdmin kafkaAdmin;
 
   public LabAdminController(
       @Value("${spring.application.name}") String service,
       KafkaListenerEndpointRegistry registry,
       Faults faults,
-      JdbcTemplate jdbc) {
+      JdbcTemplate jdbc,
+      org.springframework.kafka.core.KafkaAdmin kafkaAdmin) {
+    this.kafkaAdmin = kafkaAdmin;
     this.service = service;
     this.registry = registry;
     this.faults = faults;
@@ -66,7 +77,57 @@ public class LabAdminController {
                             .toList()))
             .sorted(Comparator.comparing(Consumer::id))
             .toList();
-    return new State(service, consumers, faults.armed());
+    return new State(service, consumers, faults.armed(), outbox());
+  }
+
+  private Outbox outbox() {
+    var slot =
+        jdbc.queryForList(
+            "SELECT slot_name,active,pg_wal_lsn_diff(pg_current_wal_lsn(),confirmed_flush_lsn)::bigint AS lag"
+                + " FROM pg_replication_slots WHERE slot_name=current_database() || '_outbox'");
+    var table = jdbc.queryForMap("SELECT COUNT(*) AS rows, MAX(created_at) AS last FROM outbox");
+    if (slot.isEmpty())
+      return new Outbox(
+          null, false, null, ((Number) table.get("rows")).longValue(), table.get("last"));
+    var row = slot.getFirst();
+    return new Outbox(
+        (String) row.get("slot_name"),
+        (Boolean) row.get("active"),
+        row.get("lag") == null ? null : ((Number) row.get("lag")).longValue(),
+        ((Number) table.get("rows")).longValue(),
+        table.get("last"));
+  }
+
+  /**
+   * Replays (or skips) by moving this consumer group's committed offset. A group's offsets can only
+   * change while it has no members, so the consumer leaves, the offset moves, the consumer rejoins
+   * and resumes from there. Records already processed come back as duplicates the inbox skips.
+   */
+  @PostMapping("/consumers/{id}/seek")
+  public State seek(
+      @PathVariable String id,
+      @RequestParam String topic,
+      @RequestParam int partition,
+      @RequestParam long offset)
+      throws Exception {
+    var container = registry.getListenerContainer(id);
+    if (container == null)
+      throw new ResponseStatusException(HttpStatus.NOT_FOUND, "No consumer " + id);
+    container.stop();
+    try (var admin =
+        org.apache.kafka.clients.admin.Admin.create(kafkaAdmin.getConfigurationProperties())) {
+      admin
+          .alterConsumerGroupOffsets(
+              container.getGroupId(),
+              Map.of(
+                  new TopicPartition(topic, partition),
+                  new org.apache.kafka.clients.consumer.OffsetAndMetadata(offset)))
+          .all()
+          .get();
+    } finally {
+      container.start();
+    }
+    return state();
   }
 
   @GetMapping("/decisions")

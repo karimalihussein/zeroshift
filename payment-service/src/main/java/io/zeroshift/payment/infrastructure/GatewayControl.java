@@ -40,6 +40,12 @@ public class GatewayControl {
         "recentCalls", calls.recent(null, 30));
   }
 
+  @GetMapping("/calls")
+  public java.util.List<Map<String, Object>> calls(
+      @RequestParam(required = false) java.util.UUID orderId) {
+    return calls.recent(orderId, 100);
+  }
+
   @PostMapping("/{mode}")
   public Map<String, Object> set(@PathVariable String mode) {
     admin("POST", "/__admin/mappings/reset", "");

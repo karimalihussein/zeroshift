@@ -50,6 +50,10 @@ svg { width: 1.15em; height: 1.15em; fill: none; stroke: currentColor; stroke-wi
 .connection i, .live-indicator i, .log-footer i { width: 7px; height: 7px; border-radius: 50%; background: var(--green); box-shadow: 0 0 0 3px rgba(22,131,91,.12); }
 .connection.disconnected i { background: var(--red); box-shadow: 0 0 0 3px rgba(195,64,77,.12); }
 .environment { background: transparent; }
+.lab-nav { display: flex; gap: 4px; padding: 4px; border: 1px solid var(--line); border-radius: 10px; background: rgba(255,255,255,.7); }
+.lab-nav a { padding: 7px 12px; border-radius: 7px; color: var(--muted); font-size: 12px; font-weight: 650; text-decoration: none; }
+.lab-nav a:hover { color: var(--ink); }
+.lab-nav a[aria-current="page"] { color: white; background: var(--ink); }
 
 .context { margin: 0 0 6px; color: var(--muted); font-size: 12px; font-weight: 600; letter-spacing: .02em; }
 h1, h2, h3, p { overflow-wrap: anywhere; }

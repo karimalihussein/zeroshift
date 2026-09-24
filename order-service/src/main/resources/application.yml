@@ -14,6 +14,11 @@ spring:
     bootstrap-servers: ${KAFKA_BOOTSTRAP:localhost:9094}
     consumer:
       auto-offset-reset: earliest
+      properties:
+        # A crashed consumer is noticed after 10 s instead of Kafka's default 45 s, so the group
+        # rebalances (and redelivers its uncommitted records) quickly enough to watch.
+        session.timeout.ms: 10000
+        heartbeat.interval.ms: 3000
     listener:
       # Commit each record's offset right after it is handled: the smallest redelivery window.
       ack-mode: record
