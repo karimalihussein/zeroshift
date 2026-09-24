@@ -8,6 +8,11 @@ spring:
     hikari:
       maximum-pool-size: 8
       connection-timeout: 10000
+  flyway:
+    # Control-plane schema only (db/migration). Databases created before Flyway get a version-0
+    # baseline so the idempotent V1+ scripts still run and record their history.
+    baseline-on-migrate: true
+    baseline-version: 0
   task:
     scheduling:
       pool:

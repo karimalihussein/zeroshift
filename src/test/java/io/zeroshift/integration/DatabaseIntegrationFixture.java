@@ -9,6 +9,7 @@ import io.zeroshift.domain.*;
 import io.zeroshift.infrastructure.*;
 import java.time.Duration;
 import java.util.concurrent.*;
+import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.*;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
@@ -53,6 +54,7 @@ abstract class DatabaseIntegrationFixture {
             SQL.getUsername(),
             SQL.getPassword());
     targetDataSource = pool(PG.getJdbcUrl(), PG.getUsername(), PG.getPassword());
+    Flyway.configure().dataSource(targetDataSource).load().migrate();
     new SchemaInitializer(targetDataSource, sourceDataSource);
     source = new SqlServerReader(sourceDataSource);
     store = new PostgresMigrationStore(targetDataSource);

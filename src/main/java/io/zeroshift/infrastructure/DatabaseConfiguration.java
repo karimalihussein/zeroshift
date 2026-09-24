@@ -4,6 +4,7 @@ import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
 import javax.sql.DataSource;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.boot.flyway.autoconfigure.FlywayMigrationInitializer;
 import org.springframework.boot.jdbc.autoconfigure.DataSourceProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -41,9 +42,12 @@ public class DatabaseConfiguration {
     return new HikariDataSource(config);
   }
 
+  /** Runs after Flyway: the control plane exists before the engine prepares business schemas. */
   @Bean
   SchemaInitializer schemaInitializer(
-      DataSource dataSource, @Qualifier("sourceDataSource") DataSource source) {
+      DataSource dataSource,
+      @Qualifier("sourceDataSource") DataSource source,
+      FlywayMigrationInitializer controlPlane) {
     return new SchemaInitializer(dataSource, source);
   }
 }
