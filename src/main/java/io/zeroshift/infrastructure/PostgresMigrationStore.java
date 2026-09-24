@@ -3,6 +3,8 @@ package io.zeroshift.infrastructure;
 import io.zeroshift.application.port.*;
 import io.zeroshift.domain.*;
 import java.sql.*;
+import java.time.*;
+import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.function.Function;
 import javax.sql.DataSource;
@@ -16,6 +18,9 @@ import org.springframework.transaction.support.TransactionTemplate;
 @Repository
 @DependsOn("schemaInitializer")
 public class PostgresMigrationStore implements MigrationStore {
+  private static final int MAX_RETAINED_LOGS = 1000;
+  private static final DateTimeFormatter LOG_TIME =
+      DateTimeFormatter.ofPattern("HH:mm:ss").withZone(ZoneId.systemDefault());
   private final JdbcTemplate jdbc;
   private final DataSource dataSource;
   private final TransactionTemplate transactions;
@@ -73,7 +78,7 @@ public class PostgresMigrationStore implements MigrationStore {
   public List<String> logs() {
     return jdbc.query(
         "SELECT at,message FROM migration_log ORDER BY id DESC LIMIT 60",
-        (r, n) -> r.getTimestamp(1).toInstant() + "  " + r.getString(2));
+        (r, n) -> "[" + LOG_TIME.format(r.getTimestamp(1).toInstant()) + "] " + r.getString(2));
   }
 
   @Override
@@ -315,41 +320,59 @@ public class PostgresMigrationStore implements MigrationStore {
     }
 
     @Override
-    public void writeTraffic(TrafficOperation operation) {
-      switch (operation) {
+    public TrafficOperationOutcome writeTraffic(TrafficOperation operation) {
+      return switch (operation) {
         case INSERT -> {
-          Long id =
+          long customerId =
               jdbc.queryForObject(
                   "INSERT INTO customers(name,email,active) VALUES('Live customer · عميل',NULL,TRUE) RETURNING id",
                   Long.class);
-          jdbc.update("INSERT INTO orders(customer_id,amount,status) VALUES(?,12.3456,'NEW')", id);
+          long orderId =
+              jdbc.queryForObject(
+                  "INSERT INTO orders(customer_id,amount,status) VALUES(?,12.3456,'NEW') RETURNING id",
+                  Long.class,
+                  customerId);
+          yield new TrafficOperationOutcome(
+              Table.CUSTOMERS, customerId, "order #" + orderId + " created");
         }
-        case UPDATE ->
-            randomRow("orders", "id,customer_id")
-                .ifPresent(
-                    order -> {
-                      jdbc.update(
-                          "UPDATE orders SET amount=amount+1.0001,status='UPDATED' WHERE id=?",
-                          order.get("id"));
-                      jdbc.update(
-                          "UPDATE customers SET active=NOT active WHERE id=?",
-                          order.get("customer_id"));
-                    });
-        case DELETE ->
-            randomRow("customers", "id")
-                .ifPresent(
-                    customer -> {
-                      jdbc.update("DELETE FROM orders WHERE customer_id=?", customer.get("id"));
-                      jdbc.update("DELETE FROM customers WHERE id=?", customer.get("id"));
-                    });
-        case READ ->
-            randomRow("orders", "id")
-                .ifPresent(
-                    order ->
-                        jdbc.queryForList(
-                            "SELECT o.id,o.amount,o.status,c.name,c.email FROM orders o JOIN customers c ON c.id=o.customer_id WHERE o.id=?",
-                            order.get("id")));
-      }
+        case UPDATE -> {
+          var order = randomRow("orders", "id,customer_id");
+          if (order.isEmpty())
+            yield new TrafficOperationOutcome(Table.ORDERS, null, "no rows available");
+          long orderId = id(order.get(), "id");
+          long customerId = id(order.get(), "customer_id");
+          jdbc.update(
+              "UPDATE orders SET amount=amount+1.0001,status='UPDATED' WHERE id=?", orderId);
+          jdbc.update("UPDATE customers SET active=NOT active WHERE id=?", customerId);
+          yield new TrafficOperationOutcome(
+              Table.ORDERS, orderId, "status=UPDATED · customer #" + customerId + " toggled");
+        }
+        case DELETE -> {
+          var customer = randomRow("customers", "id");
+          if (customer.isEmpty())
+            yield new TrafficOperationOutcome(Table.CUSTOMERS, null, "no rows available");
+          long customerId = id(customer.get(), "id");
+          int orders = jdbc.update("DELETE FROM orders WHERE customer_id=?", customerId);
+          jdbc.update("DELETE FROM customers WHERE id=?", customerId);
+          yield new TrafficOperationOutcome(
+              Table.CUSTOMERS, customerId, orders + " related orders deleted");
+        }
+        case READ -> {
+          var order = randomRow("orders", "id");
+          if (order.isEmpty())
+            yield new TrafficOperationOutcome(Table.ORDERS, null, "no rows available");
+          long orderId = id(order.get(), "id");
+          var row = jdbc.queryForMap("SELECT amount,status FROM orders WHERE id=?", orderId);
+          yield new TrafficOperationOutcome(
+              Table.ORDERS,
+              orderId,
+              "status=" + row.get("status") + " · amount=" + row.get("amount"));
+        }
+      };
+    }
+
+    private long id(Map<String, Object> row, String column) {
+      return ((Number) row.get(column)).longValue();
     }
 
     /** Seeks the first key at a uniformly random point of the id range; no full scan. */
@@ -368,9 +391,9 @@ public class PostgresMigrationStore implements MigrationStore {
     }
 
     @Override
-    public void recordTraffic(TrafficOperation operation, Primary target) {
-      String counter = operation.name().toLowerCase(Locale.ROOT) + "s";
-      String routed = target == Primary.SQL_SERVER ? "sql_server_ops" : "postgres_ops";
+    public void recordTraffic(TrafficOperationResult result) {
+      String counter = result.operation().name().toLowerCase(Locale.ROOT) + "s";
+      String routed = result.target() == Primary.SQL_SERVER ? "sql_server_ops" : "postgres_ops";
       // All right-hand values are pre-update; the rate is recomputed about once per second.
       jdbc.update(
           "UPDATE traffic_metrics SET "
@@ -389,14 +412,34 @@ public class PostgresMigrationStore implements MigrationStore {
               + " THEN inserts+updates+deletes+reads+1 ELSE window_ops END,"
               + "window_started=CASE WHEN now()-window_started>=interval '1 second'"
               + " THEN now() ELSE window_started END WHERE id=1");
+      logTraffic(result);
     }
 
     @Override
-    public int trafficError() {
-      return Objects.requireNonNull(
-          jdbc.queryForObject(
-              "UPDATE traffic_metrics SET errors=errors+1,consecutive_errors=consecutive_errors+1 WHERE id=1 RETURNING consecutive_errors",
-              Integer.class));
+    public int trafficError(TrafficOperationResult result) {
+      int failures =
+          Objects.requireNonNull(
+              jdbc.queryForObject(
+                  "UPDATE traffic_metrics SET errors=errors+1,consecutive_errors=consecutive_errors+1 WHERE id=1 RETURNING consecutive_errors",
+                  Integer.class));
+      logTraffic(result);
+      return failures;
+    }
+
+    private void logTraffic(TrafficOperationResult result) {
+      String database = result.target() == Primary.SQL_SERVER ? "SQL Server" : "PostgreSQL";
+      String record =
+          result.recordId() == null
+              ? result.table().sqlName() + " #—"
+              : result.table().sqlName() + " #" + result.recordId();
+      log(
+          result.operation()
+              + " → "
+              + database
+              + " → "
+              + record
+              + (result.details().isBlank() ? "" : " → " + result.details())
+              + (result.success() ? " ✓" : " ✗"));
     }
 
     @Override
@@ -419,7 +462,8 @@ public class PostgresMigrationStore implements MigrationStore {
     public void log(String message) {
       jdbc.update("INSERT INTO migration_log(message) VALUES(?)", message);
       jdbc.update(
-          "DELETE FROM migration_log WHERE id<(SELECT COALESCE(MAX(id),0)-1000 FROM migration_log)");
+          "DELETE FROM migration_log WHERE id<=(SELECT COALESCE(MAX(id),0)-? FROM migration_log)",
+          MAX_RETAINED_LOGS);
     }
   }
 }

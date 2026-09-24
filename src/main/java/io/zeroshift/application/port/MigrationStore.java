@@ -54,13 +54,13 @@ public interface MigrationStore {
 
     void traffic(boolean enabled);
 
-    void writeTraffic(TrafficOperation operation);
+    TrafficOperationOutcome writeTraffic(TrafficOperation operation);
 
-    /** Counts one committed operation against the database it was routed to. */
-    void recordTraffic(TrafficOperation operation, Primary target);
+    /** Counts and logs one committed operation against the database it was routed to. */
+    void recordTraffic(TrafficOperationResult result);
 
-    /** Counts one failed operation and returns the current run of consecutive failures. */
-    int trafficError();
+    /** Counts and logs one failed operation and returns the current consecutive failure run. */
+    int trafficError(TrafficOperationResult result);
 
     void reset();
 

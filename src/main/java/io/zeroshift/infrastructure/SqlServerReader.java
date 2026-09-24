@@ -114,45 +114,67 @@ public class SqlServerReader implements SourceDatabase {
   }
 
   @Override
-  public void writeTraffic(TrafficOperation operation) {
-    transactions.executeWithoutResult(
+  public TrafficOperationOutcome writeTraffic(TrafficOperation operation) {
+    return transactions.execute(
         s -> {
-          switch (operation) {
+          return switch (operation) {
             case INSERT -> {
-              Long id =
+              long customerId =
                   jdbc.queryForObject(
                       "SET NOCOUNT ON; DECLARE @ids TABLE(id BIGINT); INSERT dbo.customers(name,email,active) OUTPUT INSERTED.id INTO @ids VALUES(N'Live customer · عميل',NULL,1); SELECT id FROM @ids",
                       Long.class);
-              jdbc.update(
-                  "INSERT dbo.orders(customer_id,amount,status) VALUES(?,12.3456,'NEW')", id);
+              long orderId =
+                  jdbc.queryForObject(
+                      "SET NOCOUNT ON; DECLARE @ids TABLE(id BIGINT); INSERT dbo.orders(customer_id,amount,status) OUTPUT INSERTED.id INTO @ids VALUES(?,12.3456,'NEW'); SELECT id FROM @ids",
+                      Long.class,
+                      customerId);
+              yield new TrafficOperationOutcome(
+                  Table.CUSTOMERS, customerId, "order #" + orderId + " created");
             }
-            case UPDATE ->
-                randomRow("orders", "id,customer_id")
-                    .ifPresent(
-                        order -> {
-                          jdbc.update(
-                              "UPDATE dbo.orders SET amount=amount+1.0001,status='UPDATED' WHERE id=?",
-                              order.get("id"));
-                          jdbc.update(
-                              "UPDATE dbo.customers SET active=CASE active WHEN 1 THEN 0 ELSE 1 END WHERE id=?",
-                              order.get("customer_id"));
-                        });
-            case DELETE ->
-                randomRow("customers", "id")
-                    .ifPresent(
-                        customer -> {
-                          jdbc.update("DELETE dbo.orders WHERE customer_id=?", customer.get("id"));
-                          jdbc.update("DELETE dbo.customers WHERE id=?", customer.get("id"));
-                        });
-            case READ ->
-                randomRow("orders", "id")
-                    .ifPresent(
-                        order ->
-                            jdbc.queryForList(
-                                "SELECT o.id,o.amount,o.status,c.name,c.email FROM dbo.orders o JOIN dbo.customers c ON c.id=o.customer_id WHERE o.id=?",
-                                order.get("id")));
-          }
+            case UPDATE -> {
+              var order = randomRow("orders", "id,customer_id");
+              if (order.isEmpty())
+                yield new TrafficOperationOutcome(Table.ORDERS, null, "no rows available");
+              long orderId = id(order.get(), "id");
+              long customerId = id(order.get(), "customer_id");
+              jdbc.update(
+                  "UPDATE dbo.orders SET amount=amount+1.0001,status='UPDATED' WHERE id=?",
+                  orderId);
+              jdbc.update(
+                  "UPDATE dbo.customers SET active=CASE active WHEN 1 THEN 0 ELSE 1 END WHERE id=?",
+                  customerId);
+              yield new TrafficOperationOutcome(
+                  Table.ORDERS, orderId, "status=UPDATED · customer #" + customerId + " toggled");
+            }
+            case DELETE -> {
+              var customer = randomRow("customers", "id");
+              if (customer.isEmpty())
+                yield new TrafficOperationOutcome(Table.CUSTOMERS, null, "no rows available");
+              long customerId = id(customer.get(), "id");
+              int orders = jdbc.update("DELETE dbo.orders WHERE customer_id=?", customerId);
+              jdbc.update("DELETE dbo.customers WHERE id=?", customerId);
+              yield new TrafficOperationOutcome(
+                  Table.CUSTOMERS, customerId, orders + " related orders deleted");
+            }
+            case READ -> {
+              var order = randomRow("orders", "id");
+              if (order.isEmpty())
+                yield new TrafficOperationOutcome(Table.ORDERS, null, "no rows available");
+              long orderId = id(order.get(), "id");
+              var row =
+                  jdbc.queryForMap(
+                      "SELECT o.amount,o.status FROM dbo.orders o WHERE o.id=?", orderId);
+              yield new TrafficOperationOutcome(
+                  Table.ORDERS,
+                  orderId,
+                  "status=" + row.get("status") + " · amount=" + row.get("amount"));
+            }
+          };
         });
+  }
+
+  private static long id(Map<String, Object> row, String column) {
+    return ((Number) row.get(column)).longValue();
   }
 
   /** Seeks the first key at a uniformly random point of the id range; no full scan. */

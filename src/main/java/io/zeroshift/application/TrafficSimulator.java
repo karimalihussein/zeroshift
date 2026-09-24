@@ -35,26 +35,62 @@ public final class TrafficSimulator {
             var state = s.state();
             if (!state.traffic() || state.stage() == Stage.FREEZE) return null;
             var operation = TrafficOperation.forStep(s.trafficStep());
-            if (state.primary() == Primary.SQL_SERVER) source.writeTraffic(operation);
-            else s.writeTraffic(operation);
-            s.recordTraffic(operation, state.primary());
+            var target = state.primary();
+            if (target == Primary.SQL_SERVER) {
+              TrafficOperationOutcome outcome;
+              try {
+                outcome = source.writeTraffic(operation);
+              } catch (RuntimeException e) {
+                throw new TrafficFailure(operation, target, e);
+              }
+              // The source committed independently. Do not misreport a later log-store failure as
+              // an operation failure.
+              s.recordTraffic(TrafficOperationResult.success(operation, target, outcome));
+            } else {
+              try {
+                var outcome = s.writeTraffic(operation);
+                s.recordTraffic(TrafficOperationResult.success(operation, target, outcome));
+              } catch (RuntimeException e) {
+                // Both the PostgreSQL operation and its result are in this transaction and roll
+                // back together, so recording a failed operation is accurate.
+                throw new TrafficFailure(operation, target, e);
+              }
+            }
             return null;
           });
-    } catch (RuntimeException e) {
+    } catch (TrafficFailure failure) {
       store.transaction(
           s -> {
-            int failures = s.trafficError();
-            if (failures == 1)
-              s.log("Traffic operation failed; retrying: " + MigrationCoordinator.safeMessage(e));
+            var result =
+                TrafficOperationResult.failure(
+                    failure.operation,
+                    failure.target,
+                    MigrationCoordinator.safeMessage(failure.cause()));
+            int failures = s.trafficError(result);
             if (failures < MAX_CONSECUTIVE_ERRORS) return null;
             s.traffic(false);
             s.log(
                 "Traffic stopped after "
                     + MAX_CONSECUTIVE_ERRORS
                     + " consecutive database errors: "
-                    + MigrationCoordinator.safeMessage(e));
+                    + result.details());
             return null;
           });
+    }
+  }
+
+  private static final class TrafficFailure extends RuntimeException {
+    private final TrafficOperation operation;
+    private final Primary target;
+
+    private TrafficFailure(TrafficOperation operation, Primary target, RuntimeException cause) {
+      super(cause);
+      this.operation = operation;
+      this.target = target;
+    }
+
+    private RuntimeException cause() {
+      return (RuntimeException) getCause();
     }
   }
 }

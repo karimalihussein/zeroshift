@@ -18,7 +18,7 @@ public interface SourceDatabase {
 
   void reset();
 
-  void writeTraffic(TrafficOperation operation);
+  TrafficOperationOutcome writeTraffic(TrafficOperation operation);
 
   long count(Table table);
 

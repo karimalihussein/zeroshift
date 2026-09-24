@@ -33,6 +33,27 @@ class TrafficIT extends DatabaseIntegrationFixture {
                 "SELECT COUNT(*) FROM dbo.orders WHERE status='UPDATED'", Long.class))
         .isPositive();
     assertThat(store.count(Table.CUSTOMERS)).as("no migration: PostgreSQL untouched").isZero();
+    assertThat(store.logs())
+        .filteredOn(log -> log.contains(" → SQL Server → "))
+        .hasSize(10)
+        .anySatisfy(
+            log ->
+                assertThat(log)
+                    .contains("INSERT → SQL Server → customers #")
+                    .contains("order #")
+                    .endsWith("✓"))
+        .anySatisfy(
+            log ->
+                assertThat(log)
+                    .contains("UPDATE → SQL Server → orders #")
+                    .contains("status=UPDATED")
+                    .endsWith("✓"))
+        .anySatisfy(
+            log ->
+                assertThat(log)
+                    .contains("DELETE → SQL Server → customers #")
+                    .contains("related orders deleted")
+                    .endsWith("✓"));
   }
 
   @Test
@@ -93,6 +114,12 @@ class TrafficIT extends DatabaseIntegrationFixture {
     assertThat(source.count(Table.CUSTOMERS)).isEqualTo(sourceCustomers);
     assertThat(pg.queryForObject("SELECT MAX(id) FROM customers", Long.class))
         .isGreaterThan(sql.queryForObject("SELECT MAX(id) FROM dbo.customers", Long.class));
+    assertThat(store.logs())
+        .anySatisfy(
+            log ->
+                assertThat(log)
+                    .contains("→ PostgreSQL →")
+                    .matches("^\\[\\d{2}:\\d{2}:\\d{2}] .+ [✓✗]$"));
   }
 
   private long changeTrackingVersion() {

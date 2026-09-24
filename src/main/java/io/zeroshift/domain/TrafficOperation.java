@@ -15,4 +15,11 @@ public enum TrafficOperation {
   public static TrafficOperation forStep(long step) {
     return MIX.get(Math.floorMod(step, MIX.size()));
   }
+
+  public Table table() {
+    return switch (this) {
+      case INSERT, DELETE -> Table.CUSTOMERS;
+      case READ, UPDATE -> Table.ORDERS;
+    };
+  }
 }
