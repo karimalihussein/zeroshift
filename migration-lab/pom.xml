@@ -3,6 +3,8 @@
   <modelVersion>4.0.0</modelVersion>
   <parent><groupId>io.zeroshift</groupId><artifactId>zeroshift-parent</artifactId><version>1.0.0</version></parent>
   <artifactId>migration-lab</artifactId>
+  <!-- The migration lab's tests predate the event services and stay on JUnit 5; they use no Spring test support. -->
+  <properties><junit-jupiter.version>5.14.0</junit-jupiter.version></properties>
   <name>ZeroShift migration lab</name><description>A readable, real SQL Server to PostgreSQL migration lab and the control-plane dashboard</description>
   <dependencies>
     <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-webmvc</artifactId></dependency>

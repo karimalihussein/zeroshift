@@ -1,0 +1,29 @@
+spring:
+  application:
+    name: order-service
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:55434/orders}
+    username: ${DB_USER:zeroshift}
+    password: ${DB_PASSWORD:zeroshift_local}
+    hikari:
+      maximum-pool-size: 10
+  flyway:
+    # Shared outbox/inbox tables (platform, versions 0.x) first, then this service's own.
+    locations: classpath:db/platform,classpath:db/migration
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP:localhost:9094}
+    consumer:
+      auto-offset-reset: earliest
+    listener:
+      # Commit each record's offset right after it is handled: the smallest redelivery window.
+      ack-mode: record
+server:
+  port: ${PORT:18081}
+order:
+  step-timeout: ${SAGA_STEP_TIMEOUT:30s}
+  snapshot-every: 3
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
