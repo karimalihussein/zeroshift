@@ -1,0 +1,20 @@
+# Development profile (docker-compose.override.yml or `mvn spring-boot:run -Dspring-boot.run.profiles=dev`).
+# Paths are relative to the project root, so edited templates and assets are served straight from
+# src/ with no copy, cache or restart in between.
+spring:
+  thymeleaf:
+    cache: false
+    prefix: file:src/main/resources/templates/
+  web:
+    resources:
+      static-locations: file:src/main/resources/static/
+      cache:
+        period: 0
+      chain:
+        cache: false
+  devtools:
+    restart:
+      # Restart once per finished compile, not on the first of many rewritten .class files.
+      trigger-file: .reloadtrigger
+    livereload:
+      enabled: false

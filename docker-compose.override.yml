@@ -1,0 +1,25 @@
+# Development override. `docker compose up` merges this file automatically:
+# the app runs from mounted sources with DevTools instead of the packaged production jar.
+# Production-style run (unchanged Dockerfile, no mounts):
+#   docker compose -f docker-compose.yml up -d --build
+services:
+  app:
+    build: !reset null
+    # Same JDK/Maven image as the Dockerfile's build stage.
+    image: maven:3.9.11-eclipse-temurin-25
+    working_dir: /workspace
+    command: ["sh", "scripts/dev-server.sh"]
+    volumes:
+      - ./pom.xml:/workspace/pom.xml:ro
+      - ./src:/workspace/src:ro
+      - ./scripts/dev-server.sh:/workspace/scripts/dev-server.sh:ro
+      # Container-owned: dependency cache and compiled classes survive restarts and never
+      # collide with a host IDE's target/.
+      - maven-repository:/root/.m2
+      - dev-target:/workspace/target
+    healthcheck:
+      start_period: 5m # the first start downloads all dependencies
+
+volumes:
+  maven-repository:
+  dev-target:

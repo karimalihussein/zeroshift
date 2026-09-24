@@ -23,10 +23,10 @@ Requires Docker with about 6–8 GB of memory (SQL Server alone needs 2 GB).
 ```sh
 git clone https://github.com/karimalihussein/zeroshift.git
 cd zeroshift
-docker compose up --build
+docker compose up
 ```
 
-Open **http://localhost:8080**. On the first start, SQL Server takes a minute to become healthy. Its Linux image is amd64-only, so Compose runs it under emulation on Apple Silicon.
+Open **http://localhost:8080**. `docker compose up` runs the development stack with hot reload (see [Docker development](#docker-development)); the first start downloads Maven dependencies, and SQL Server takes a minute to become healthy. Its Linux image is amd64-only, so Compose runs it under emulation on Apple Silicon.
 
 ## Using the dashboard
 
@@ -77,6 +77,24 @@ All Java packages are under `src/main/java/io/zeroshift/`.
 
 ## Development
 
+### Docker development
+
+`docker compose up` merges `docker-compose.override.yml`, which runs the app with `mvn spring-boot:run` and the `dev` profile instead of the packaged jar. `src/` and `pom.xml` are mounted read-only; no image rebuild is needed:
+
+| You edit | What happens |
+|---|---|
+| Thymeleaf templates, JS, CSS | Served straight from `src/` with caching off: refresh the browser |
+| Java, `application*.yml`, `db/*.sql` | Recompiled within ~1s of saving; DevTools restarts the app once the compile succeeds. A failed compile is logged and the last good build keeps running |
+| `pom.xml` | Maven restarts with the new classpath |
+
+`docker compose logs -f app` shows the compile and restart output. The Maven cache and compiled classes live in named volumes, and the SQL Server and PostgreSQL data volumes are unchanged. To run the production image instead, bypass the override:
+
+```sh
+docker compose -f docker-compose.yml up -d --build
+```
+
+### Local tooling
+
 Requires Java 25+, Maven 3.9+ and Docker.
 
 ```sh
@@ -89,7 +107,7 @@ Integration tests fail rather than skip when Docker is missing. To run the app o
 
 ```sh
 docker compose up -d sqlserver postgres
-mvn spring-boot:run
+mvn spring-boot:run -Dspring-boot.run.profiles=dev   # the dev profile also works on the host
 ```
 
 End-to-end checks against a running Compose stack (**both reset the demo data**):
