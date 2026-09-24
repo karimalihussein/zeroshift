@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>ZeroShift — migration lab</title><link rel="stylesheet" th:href="@{/style.css}"><script defer th:src="@{/app.js}"></script><script defer th:src="@{/live.js}"></script></head>
+<body><main>
+<header><h1>ZeroShift<span>Database migration, made visible.</span></h1><p id="connection" role="status">Connecting…</p></header>
+<section class="flow" aria-label="Migration flow">
+  <div><h2>SQL Server</h2><p><strong id="source-count">—</strong> rows</p><small id="source-detail">Source database</small></div>
+  <span class="arrow" aria-hidden="true">→</span>
+  <div class="migration"><h2 id="stage">Migration</h2><p id="run-status">Ready to begin</p><progress id="progress" value="0" max="100" aria-label="Migration progress"></progress><small id="percent">0%</small></div>
+  <span class="arrow" aria-hidden="true">→</span>
+  <div><h2>PostgreSQL</h2><p><strong id="target-count">—</strong> rows</p><small id="target-detail">Target database</small></div>
+</section>
+<p class="primary">Current primary <strong id="primary">—</strong><span id="traffic">Traffic stopped</span></p>
+<section class="controls" aria-label="Demo controls">
+<label class="seed-rows">Rows <input id="seed-rows" type="number" min="1" max="10000000" step="1" inputmode="numeric" aria-label="Demo rows per table"></label><button data-action="seed">Generate Demo Data</button><button data-action="traffic-start" id="traffic-button">Start Traffic</button><button data-action="start" class="accent">Start Migration</button><button data-action="pause">Pause</button><button data-action="resume">Resume</button><button data-action="crash">Simulate Crash</button><button data-action="validate">Validate</button><button data-action="cutover" class="accent">Cutover</button><button data-action="reset" class="danger">Reset</button>
+</section>
+<p id="message" role="status" aria-live="polite">Generate demo data, start traffic, then start the migration.</p>
+<dl class="metrics">
+<div><dt>Current table</dt><dd id="table">—</dd></div><div><dt>Committed batches</dt><dd id="batch">0</dd></div><div><dt>Rows / sec</dt><dd id="rate">0</dd></div><div><dt>CDC pending / applied</dt><dd id="cdc">—</dd></div><div><dt>Last checkpoint</dt><dd id="checkpoint">—</dd></div><div><dt>Validation</dt><dd id="validation">Not checked</dd></div>
+</dl>
+<p class="explanation">Snapshot → catch-up → indexes & constraints → validation → write freeze → cutover.<br>CDC uses SQL Server Change Tracking: committed net changes, not every intermediate event. Progress is based on committed backend stages and snapshot rows.</p>
+<section class="live" aria-labelledby="live-title">
+<h2 id="live-title">Live Data Changes</h2>
+<p class="explanation">Change SQL Server and compare the same record in PostgreSQL. Pause CDC replay to hold the difference while snapshot copying continues.</p>
+<div class="live-buttons">
+<button id="live-insert">Insert New Record</button><button id="live-update">Update Migrated Record</button><button id="live-delete">Delete Migrated Record</button><button id="live-cdc">Pause CDC Replay</button>
+</div>
+<p id="live-hint" role="status">Start a migration to try live changes.</p>
+<form id="inspect-form" class="inspect-form"><label for="record-id">Order #</label><input id="record-id" type="number" min="1" step="1" required placeholder="100"><button type="submit">Inspect</button></form>
+<form id="live-edit" hidden>
+<p id="edit-title"></p>
+<div class="edit-fields"><label>Customer name<input id="edit-name" maxlength="180" required></label><label>Status<input id="edit-status" maxlength="24" required></label><label>Amount<input id="edit-amount" type="number" min="0" max="999999999999999.9999" step="0.0001" required></label></div>
+<button id="live-save" type="submit" class="accent">Apply to SQL Server</button><button id="live-cancel" type="button">Cancel</button>
+</form>
+<div id="inspector" hidden>
+<h3 id="inspect-title"></h3>
+<table class="comparison"><thead><tr><th scope="col">Field</th><th scope="col">SQL Server</th><th scope="col">PostgreSQL</th></tr></thead><tbody id="record-values"></tbody></table>
+<p id="record-sync" role="status" aria-live="polite"></p>
+<p id="record-before"></p>
+<ol id="record-path" aria-label="Real change progress"></ol>
+</div>
+</section>
+<section class="log"><h2>Live log</h2><pre id="logs" aria-label="Live migration logs">Waiting for the backend…</pre></section>
+<footer>Two related tables. Real writes. Durable checkpoints. <span>Local educational lab · no authentication</span></footer>
+</main></body></html>

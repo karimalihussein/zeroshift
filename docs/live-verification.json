@@ -1,0 +1,393 @@
+{
+  "verifiedAt": "2026-09-24T03:43:18Z",
+  "midpoint": {
+    "stage": "SNAPSHOT",
+    "status": "RUNNING",
+    "primary": "SQL_SERVER",
+    "table": "ORDERS",
+    "lastId": 2500,
+    "customerBound": 10000,
+    "orderBound": 10000,
+    "version": 7335,
+    "copied": 12500,
+    "expected": 20000,
+    "batches": 25,
+    "applied": 0,
+    "traffic": false,
+    "validation": "Not checked",
+    "error": "",
+    "checkpoint": "2026-09-24T03:43:07.651503Z",
+    "rowsPerSecond": 57100.98091491074,
+    "cdcPaused": false
+  },
+  "updatePending": {
+    "orderId": 100,
+    "source": {
+      "id": 100,
+      "customerId": 100,
+      "customerName": "Customer 100 · عميل",
+      "amount": 10.0,
+      "status": "COMPLETED"
+    },
+    "target": {
+      "id": 100,
+      "customerId": 100,
+      "customerName": "Customer 100 · عميل",
+      "amount": 10.0,
+      "status": "PENDING"
+    },
+    "experiment": {
+      "id": 10,
+      "orderId": 100,
+      "operation": "UPDATE",
+      "before": {
+        "id": 100,
+        "customerId": 100,
+        "customerName": "Customer 100 · عميل",
+        "amount": 10.0,
+        "status": "PENDING"
+      },
+      "after": {
+        "id": 100,
+        "customerId": 100,
+        "customerName": "Customer 100 · عميل",
+        "amount": 10.0,
+        "status": "COMPLETED"
+      }
+    },
+    "changes": [
+      {
+        "table": "ORDERS",
+        "recordId": 100,
+        "version": 7337,
+        "operation": "UPDATE",
+        "pending": true
+      }
+    ],
+    "inSync": false,
+    "cdcPaused": true,
+    "ordersCopiedThrough": 3500,
+    "message": "CDC pending"
+  },
+  "updateApplied": {
+    "orderId": 100,
+    "source": {
+      "id": 100,
+      "customerId": 100,
+      "customerName": "Customer 100 · عميل",
+      "amount": 10.0,
+      "status": "COMPLETED"
+    },
+    "target": {
+      "id": 100,
+      "customerId": 100,
+      "customerName": "Customer 100 · عميل",
+      "amount": 10.0,
+      "status": "COMPLETED"
+    },
+    "experiment": {
+      "id": 10,
+      "orderId": 100,
+      "operation": "UPDATE",
+      "before": {
+        "id": 100,
+        "customerId": 100,
+        "customerName": "Customer 100 · عميل",
+        "amount": 10.0,
+        "status": "PENDING"
+      },
+      "after": {
+        "id": 100,
+        "customerId": 100,
+        "customerName": "Customer 100 · عميل",
+        "amount": 10.0,
+        "status": "COMPLETED"
+      }
+    },
+    "changes": [
+      {
+        "table": "ORDERS",
+        "recordId": 100,
+        "version": 7337,
+        "operation": "UPDATE",
+        "pending": false
+      }
+    ],
+    "inSync": true,
+    "cdcPaused": false,
+    "ordersCopiedThrough": 5000,
+    "message": "IN SYNC"
+  },
+  "insertPending": {
+    "orderId": 10001,
+    "source": {
+      "id": 10001,
+      "customerId": 10001,
+      "customerName": "Live verification · عميل",
+      "amount": 500.1234,
+      "status": "PENDING"
+    },
+    "target": null,
+    "experiment": {
+      "id": 11,
+      "orderId": 10001,
+      "operation": "INSERT",
+      "before": null,
+      "after": {
+        "id": 10001,
+        "customerId": 10001,
+        "customerName": "Live verification · عميل",
+        "amount": 500.1234,
+        "status": "PENDING"
+      }
+    },
+    "changes": [
+      {
+        "table": "ORDERS",
+        "recordId": 10001,
+        "version": 7338,
+        "operation": "INSERT",
+        "pending": true
+      },
+      {
+        "table": "CUSTOMERS",
+        "recordId": 10001,
+        "version": 7338,
+        "operation": "INSERT",
+        "pending": true
+      }
+    ],
+    "inSync": false,
+    "cdcPaused": true,
+    "ordersCopiedThrough": 5000,
+    "message": "CDC pending"
+  },
+  "insertApplied": {
+    "orderId": 10001,
+    "source": {
+      "id": 10001,
+      "customerId": 10001,
+      "customerName": "Live verification · عميل",
+      "amount": 500.1234,
+      "status": "PENDING"
+    },
+    "target": {
+      "id": 10001,
+      "customerId": 10001,
+      "customerName": "Live verification · عميل",
+      "amount": 500.1234,
+      "status": "PENDING"
+    },
+    "experiment": {
+      "id": 11,
+      "orderId": 10001,
+      "operation": "INSERT",
+      "before": null,
+      "after": {
+        "id": 10001,
+        "customerId": 10001,
+        "customerName": "Live verification · عميل",
+        "amount": 500.1234,
+        "status": "PENDING"
+      }
+    },
+    "changes": [
+      {
+        "table": "ORDERS",
+        "recordId": 10001,
+        "version": 7338,
+        "operation": "INSERT",
+        "pending": false
+      },
+      {
+        "table": "CUSTOMERS",
+        "recordId": 10001,
+        "version": 7338,
+        "operation": "INSERT",
+        "pending": false
+      }
+    ],
+    "inSync": true,
+    "cdcPaused": false,
+    "ordersCopiedThrough": 5500,
+    "message": "IN SYNC"
+  },
+  "deletePending": {
+    "orderId": 10001,
+    "source": null,
+    "target": {
+      "id": 10001,
+      "customerId": 10001,
+      "customerName": "Live verification · عميل",
+      "amount": 500.1234,
+      "status": "PENDING"
+    },
+    "experiment": {
+      "id": 12,
+      "orderId": 10001,
+      "operation": "DELETE",
+      "before": {
+        "id": 10001,
+        "customerId": 10001,
+        "customerName": "Live verification · عميل",
+        "amount": 500.1234,
+        "status": "PENDING"
+      },
+      "after": null
+    },
+    "changes": [
+      {
+        "table": "ORDERS",
+        "recordId": 10001,
+        "version": 7339,
+        "operation": "DELETE",
+        "pending": true
+      },
+      {
+        "table": "CUSTOMERS",
+        "recordId": 10001,
+        "version": 7338,
+        "operation": "INSERT",
+        "pending": false
+      }
+    ],
+    "inSync": false,
+    "cdcPaused": true,
+    "ordersCopiedThrough": 5500,
+    "message": "CDC pending"
+  },
+  "deleteApplied": {
+    "orderId": 10001,
+    "source": null,
+    "target": null,
+    "experiment": {
+      "id": 12,
+      "orderId": 10001,
+      "operation": "DELETE",
+      "before": {
+        "id": 10001,
+        "customerId": 10001,
+        "customerName": "Live verification · عميل",
+        "amount": 500.1234,
+        "status": "PENDING"
+      },
+      "after": null
+    },
+    "changes": [
+      {
+        "table": "ORDERS",
+        "recordId": 10001,
+        "version": 7339,
+        "operation": "DELETE",
+        "pending": false
+      },
+      {
+        "table": "CUSTOMERS",
+        "recordId": 10001,
+        "version": 7338,
+        "operation": "INSERT",
+        "pending": false
+      }
+    ],
+    "inSync": true,
+    "cdcPaused": false,
+    "ordersCopiedThrough": 6000,
+    "message": "IN SYNC — absent in both databases"
+  },
+  "final": {
+    "migration": {
+      "stage": "COMPLETE",
+      "status": "COMPLETE",
+      "primary": "POSTGRESQL",
+      "table": "ORDERS",
+      "lastId": 10000,
+      "customerBound": 10000,
+      "orderBound": 10000,
+      "version": 7339,
+      "copied": 20000,
+      "expected": 20000,
+      "batches": 40,
+      "applied": 5,
+      "traffic": false,
+      "validation": "Passed: counts + SHA-256 + constraints",
+      "error": "",
+      "checkpoint": "2026-09-24T03:43:18.148712Z",
+      "rowsPerSecond": 0.0,
+      "cdcPaused": false
+    },
+    "progress": 100.0,
+    "source": {
+      "customers": 10001,
+      "orders": 10000
+    },
+    "target": {
+      "customers": 10001,
+      "orders": 10000
+    },
+    "pending": null,
+    "logs": [
+      "2026-09-24T03:43:18.148712Z  Final fence, catch-up, validation and sequence sync: 86 ms",
+      "2026-09-24T03:43:18.148712Z  Cutover complete. All routed writes now go to PostgreSQL; SQL Server remains fenced.",
+      "2026-09-24T03:43:18.148712Z  Validation passed: orders · source 10000 / target 10000 · SHA-256 matches",
+      "2026-09-24T03:43:18.148712Z  Validation passed: customers · source 10001 / target 10001 · SHA-256 matches",
+      "2026-09-24T03:43:18.041073Z  Cutover requested; routed traffic waits while source writes are fenced",
+      "2026-09-24T03:43:18.041073Z  Stage: FREEZE",
+      "2026-09-24T03:43:17.868733Z  Validation passed: orders · source 10000 / target 10000 · SHA-256 matches",
+      "2026-09-24T03:43:17.868733Z  Validation passed: customers · source 10001 / target 10001 · SHA-256 matches",
+      "2026-09-24T03:43:17.570448Z  Stage: READY",
+      "2026-09-24T03:43:17.570448Z  Built index and deferred constraints; synchronized sequences; ANALYZE complete",
+      "2026-09-24T03:43:17.219478Z  Stage: PREPARE",
+      "2026-09-24T03:43:16.956393Z  Stage: CATCH_UP",
+      "2026-09-24T03:43:16.566021Z  COPY 500 orders; committed key 10000",
+      "2026-09-24T03:43:16.235846Z  COPY 500 orders; committed key 9500",
+      "2026-09-24T03:43:15.918816Z  COPY 500 orders; committed key 9000",
+      "2026-09-24T03:43:15.592939Z  COPY 500 orders; committed key 8500",
+      "2026-09-24T03:43:15.271184Z  COPY 500 orders; committed key 8000",
+      "2026-09-24T03:43:14.930743Z  COPY 500 orders; committed key 7500",
+      "2026-09-24T03:43:14.600785Z  COPY 500 orders; committed key 7000",
+      "2026-09-24T03:43:14.279699Z  COPY 500 orders; committed key 6500",
+      "2026-09-24T03:43:13.928540Z  Applied 1 net changes through version 7335",
+      "2026-09-24T03:43:13.928540Z  COPY 500 orders; committed key 6000",
+      "2026-09-24T03:43:13.851130Z  CDC replay resumed",
+      "2026-09-24T03:43:13.797134Z  RUNNING",
+      "2026-09-24T03:43:13.209413Z  Backend ready; durable state loaded",
+      "2026-09-24T03:43:13.209413Z  PAUSED: Backend restarted. Resume from the durable checkpoint.",
+      "2026-09-24T03:43:09.554442Z  Manual DELETE Order #10001 in SQL Server",
+      "2026-09-24T03:43:09.547220Z  CDC replay paused; snapshot and source writes continue",
+      "2026-09-24T03:43:09.448401Z  Applied 2 net changes through version 7335",
+      "2026-09-24T03:43:09.448401Z  COPY 500 orders; committed key 5500",
+      "2026-09-24T03:43:09.432240Z  CDC replay resumed",
+      "2026-09-24T03:43:09.349864Z  Manual INSERT Order #10001 in SQL Server",
+      "2026-09-24T03:43:09.336239Z  CDC replay paused; snapshot and source writes continue",
+      "2026-09-24T03:43:09.122091Z  Applied 1 net changes through version 7335",
+      "2026-09-24T03:43:09.122091Z  COPY 500 orders; committed key 5000",
+      "2026-09-24T03:43:09.047386Z  CDC replay resumed",
+      "2026-09-24T03:43:08.858712Z  COPY 500 orders; committed key 4500",
+      "2026-09-24T03:43:08.594403Z  COPY 500 orders; committed key 4000",
+      "2026-09-24T03:43:08.549881Z  Manual UPDATE Order #100 in SQL Server",
+      "2026-09-24T03:43:08.499431Z  CDC replay paused; snapshot and source writes continue",
+      "2026-09-24T03:43:08.246902Z  Applied 1 net changes through version 7335",
+      "2026-09-24T03:43:08.246902Z  COPY 500 orders; committed key 3500",
+      "2026-09-24T03:43:07.995506Z  Manual UPDATE Order #100 in SQL Server",
+      "2026-09-24T03:43:07.946162Z  COPY 500 orders; committed key 3000",
+      "2026-09-24T03:43:07.651503Z  COPY 500 orders; committed key 2500",
+      "2026-09-24T03:43:07.353037Z  COPY 500 orders; committed key 2000",
+      "2026-09-24T03:43:07.035191Z  COPY 500 orders; committed key 1500",
+      "2026-09-24T03:43:06.727451Z  COPY 500 orders; committed key 1000",
+      "2026-09-24T03:43:06.417031Z  COPY 500 orders; committed key 500",
+      "2026-09-24T03:43:06.129690Z  Snapshot: orders",
+      "2026-09-24T03:43:05.831090Z  COPY 500 customers; committed key 10000",
+      "2026-09-24T03:43:05.510536Z  COPY 500 customers; committed key 9500",
+      "2026-09-24T03:43:05.211336Z  COPY 500 customers; committed key 9000",
+      "2026-09-24T03:43:04.902604Z  COPY 500 customers; committed key 8500",
+      "2026-09-24T03:43:04.607713Z  COPY 500 customers; committed key 8000",
+      "2026-09-24T03:43:04.308017Z  COPY 500 customers; committed key 7500",
+      "2026-09-24T03:43:04.010676Z  COPY 500 customers; committed key 7000",
+      "2026-09-24T03:43:03.714950Z  COPY 500 customers; committed key 6500",
+      "2026-09-24T03:43:03.407664Z  COPY 500 customers; committed key 6000",
+      "2026-09-24T03:43:03.108810Z  COPY 500 customers; committed key 5500"
+    ],
+    "captureError": "",
+    "seedRows": 10000
+  }
+}

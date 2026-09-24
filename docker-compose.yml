@@ -1,69 +1,55 @@
-name: zeroshift
+name: zeroshift-java
 services:
   sqlserver:
     image: mcr.microsoft.com/mssql/server:2022-latest
     platform: linux/amd64
     environment:
-      ACCEPT_EULA: Y
+      ACCEPT_EULA: 'Y'
       MSSQL_PID: Developer
       MSSQL_SA_PASSWORD: ${MSSQL_SA_PASSWORD:-ZeroShift!Local2026}
-    ports: ['${MSSQL_HOST_PORT:-1433}:1433']
-    volumes:
-      - sqlserver-data:/var/opt/mssql
-      - ./database/sqlserver:/scripts:ro
+    ports: ['127.0.0.1:${JAVA_MSSQL_PORT:-1434}:1433']
+    volumes: [sqlserver-java-data:/var/opt/mssql]
     healthcheck:
-      test:
-        [
-          'CMD-SHELL',
-          '/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P "$${MSSQL_SA_PASSWORD}" -C -Q ''SELECT 1'' || exit 1',
-        ]
-      interval: 10s
-      timeout: 5s
-      retries: 20
-      start_period: 30s
-  postgres:
-    image: postgres:16-alpine
-    environment:
-      POSTGRES_DB: ${POSTGRES_DB:-zeroshift}
-      POSTGRES_USER: ${POSTGRES_USER:-zeroshift}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-zeroshift_local}
-    ports: ['${POSTGRES_HOST_PORT:-5432}:5432']
-    volumes:
-      - postgres-data:/var/lib/postgresql/data
-      - ./database/postgres:/docker-entrypoint-initdb.d:ro
-    healthcheck:
-      test: ['CMD-SHELL', 'pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}']
+      test: ['CMD-SHELL', '/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P "$${MSSQL_SA_PASSWORD}" -C -Q "SELECT 1" -b || exit 1']
       interval: 5s
       timeout: 5s
-      retries: 15
-  backend:
-    build: { context: ., dockerfile: backend/Dockerfile }
-    env_file: [.env]
+      retries: 40
+      start_period: 30s
+  postgres:
+    image: postgres:17-alpine
     environment:
-      MSSQL_HOST: sqlserver
-      POSTGRES_HOST: postgres
-      BACKEND_PORT: 3000
-    ports: ['${BACKEND_HOST_PORT:-3000}:3000']
-    depends_on:
-      sqlserver: { condition: service_healthy }
-      postgres: { condition: service_healthy }
+      POSTGRES_DB: zeroshift
+      POSTGRES_USER: ${POSTGRES_USER:-zeroshift}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-zeroshift_local}
+    ports: ['127.0.0.1:${JAVA_POSTGRES_PORT:-55433}:5432']
+    volumes: [postgres-java-data:/var/lib/postgresql/data]
     healthcheck:
-      test:
-        [
-          'CMD',
-          'node',
-          '-e',
-          "fetch('http://localhost:3000/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))",
-        ]
-      interval: 10s
+      test: ['CMD-SHELL', 'pg_isready -U $${POSTGRES_USER} -d zeroshift']
+      interval: 5s
       timeout: 5s
-      retries: 10
-  frontend:
-    build:
-      { context: ., dockerfile: frontend/Dockerfile, args: { VITE_API_URL: http://localhost:3000 } }
-    ports: ['${FRONTEND_HOST_PORT:-5173}:80']
+      retries: 20
+  app:
+    build: .
+    environment:
+      SOURCE_URL: jdbc:sqlserver://sqlserver:1433;databaseName=zeroshift_java;encrypt=true;trustServerCertificate=true
+      MSSQL_SA_PASSWORD: ${MSSQL_SA_PASSWORD:-ZeroShift!Local2026}
+      TARGET_URL: jdbc:postgresql://postgres:5432/zeroshift
+      POSTGRES_USER: ${POSTGRES_USER:-zeroshift}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-zeroshift_local}
+      BATCH_SIZE: ${BATCH_SIZE:-500}
+      SEED_ROWS: ${SEED_ROWS:-10000}
+      TICK_MS: ${TICK_MS:-250}
+      TRAFFIC_MS: ${TRAFFIC_MS:-100}
+    ports: ['127.0.0.1:${JAVA_APP_PORT:-8080}:8080']
     depends_on:
-      backend: { condition: service_healthy }
+      sqlserver: {condition: service_healthy}
+      postgres: {condition: service_healthy}
+    healthcheck:
+      test: ['CMD', 'curl', '--fail', '--silent', 'http://localhost:8080/actuator/health']
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
 volumes:
-  sqlserver-data:
-  postgres-data:
+  sqlserver-java-data:
+  postgres-java-data:

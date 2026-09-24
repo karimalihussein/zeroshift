@@ -1,31 +1,33 @@
-# Interview notes
+# Explaining the migration
 
-“I would use a near-zero-downtime migration. I would establish change capture, take a consistent initial snapshot, migrate historical data in controlled batches using keyset pagination and bulk loading, let the target catch up with concurrent changes, validate it, briefly freeze writes, drain the final changes, and cut over to PostgreSQL.”
+A short script for explaining this approach aloud, plus the questions that usually follow.
 
-## Explain the pieces
+> "I would use a near-zero-downtime migration. Establish change capture, record a committed boundary, copy historical data in bounded keyset batches with bulk loading, let the target catch up with concurrent changes, validate, briefly fence writes, drain the final changes and cut over to PostgreSQL."
 
-- **CDC:** capture every committed insert, update, and delete from an ordered boundary. In this lab a trigger-written transactional log replaces native CDC for portability.
-- **Batching:** bound memory, transaction duration, and load. Tune throughput against source latency rather than maximizing it blindly.
-- **Keyset pagination:** `id > last_id` uses an index and has stable cost; `OFFSET 700000` repeatedly scans/skips earlier rows and changes under concurrent writes.
-- **Bulk loading:** PostgreSQL `COPY` amortizes network and parsing overhead for snapshot rows. CDC needs upserts/deletes, so it uses ordered SQL operations instead.
-- **Checkpointing:** commit data and its position atomically. A retry may repeat work but must never skip it.
-- **Catch-up:** replay everything after the boundary until lag is low enough for a short write freeze.
-- **Sequence sync:** advance every identity generator beyond the largest migrated key before target writes begin.
-- **ANALYZE:** bulk loads change table distributions; refreshed statistics let PostgreSQL’s planner choose sane plans.
-- **Validation:** combine counts, exact aggregates, normalized chunk hashes, referential checks, samples, and business queries. Counts alone miss changed values.
-- **Cutover:** pass readiness gates, freeze writes, drain to zero, validate again, switch the application, observe closely.
-- **Rollback:** once the target accepts unique writes, naive failback loses data. Use reverse replication or reconcile those writes explicitly.
+## The pieces
+
+- **Change capture:** every committed insert, update and delete after an ordered boundary. This lab uses SQL Server Change Tracking ([ADR 001](decisions/001-change-capture.md)).
+- **Batching:** bounds memory, transaction length and source load. Tune throughput against source latency instead of maximizing it blindly.
+- **Keyset pagination:** `id > last_id` uses the index at a stable cost. `OFFSET 700000` repeatedly scans and skips earlier rows, and shifts under concurrent writes.
+- **Bulk loading:** PostgreSQL `COPY` spreads network and parsing overhead across many rows. Merging from a staging table keeps retries idempotent.
+- **Checkpointing:** commit data and its position together. A retry may repeat work but must never skip it.
+- **Catch-up:** replay everything after the boundary until the backlog is small enough for a short write freeze.
+- **Sequence sync:** move every identity sequence past the largest migrated key before the target accepts writes.
+- **ANALYZE:** bulk loads change table statistics. Refreshing them lets the PostgreSQL planner choose sensible plans.
+- **Validation:** counts alone miss changed values. This lab compares ordered SHA-256 fingerprints of every column behind a write fence and validates constraints.
+- **Cutover:** pass the readiness gates, fence writes, drain to zero, validate again, switch routing, then watch closely.
+- **Rollback:** once the target accepts its own writes, a naive switch back loses data. Use reverse replication or reconcile those writes explicitly ([ADR 006](decisions/006-rollback.md)).
 
 ## Common follow-ups
 
-**How do you prevent a snapshot/CDC gap?** Establish capture first and record an ordered committed boundary. The initial copy plus replay of all events after that boundary covers every commit. Verify the exact database snapshot semantics in the production design.
+**How do you prevent a gap between the snapshot and CDC?** Enable capture first and record a committed boundary. The copy plus a replay of every change after that boundary covers every commit.
 
-**Why not timestamp ordering?** Resolution collisions, clock assumptions, and commit/order differences. Use an LSN, change version, or transactional sequence.
+**Why not order changes by timestamp?** Resolution collisions, clock assumptions, and the difference between write order and commit order. Use an LSN, a change version or a commit-ordered sequence.
 
-**What happens if an update races with copying that row?** The copy may contain the old or new image. Ordered idempotent replay after the boundary converges it to the newest committed image.
+**Why not a trigger-written change log with an identity column?** Identity values are allocated when a row is written, not when its transaction commits. A long transaction can commit a lower ID after a watermark has already passed it. Change Tracking versions are commit-ordered.
 
-**How do deletes work?** Capture the primary key in the source transaction and replay a target delete. A missing target row is already the desired result.
+**What if an update races with copying that row?** The copy may hold the old or the new image. Replaying the change idempotently after the boundary converges it to the latest committed image. The **Live Data Changes** panel shows this happening ([live-changes.md](live-changes.md)).
 
-**How do you control risk?** Rehearse at production scale, throttle and monitor source latency, keep resumable checkpoints, define abort criteria, require validation gates, freeze briefly, and keep an explicit rollback/reconciliation plan.
+**How do deletes work?** The capture feed keeps the deleted primary key. Replay deletes it on the target, and a row that is already missing is the desired result.
 
-**Would you use this trigger log in production?** Only after load and failure analysis. Native CDC, transaction-log products, or managed replication are often better operational choices; the invariant matters more than the product name.
+**How do you control risk?** Rehearse at production scale, throttle and monitor source latency, keep resumable checkpoints, define abort criteria, gate cutover on validation, keep the freeze short, and have a rollback or reconciliation plan written down.
