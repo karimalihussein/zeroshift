@@ -98,8 +98,14 @@ public final class CommerceStack {
     return POSTGRES.getJdbcUrl().replace("/" + POSTGRES.getDatabaseName(), "/" + name);
   }
 
-  /** Registers the Compose connector template for {@code database}, exactly as register.sh does. */
-  public static void registerOutboxConnector(String database) {
+  private static final Set<String> REGISTERED = new HashSet<>();
+
+  /**
+   * Registers the Compose connector template for {@code database}, exactly as register.sh does.
+   * Call after the service started: its migrations create the publication and slot. Idempotent.
+   */
+  public static synchronized void registerOutboxConnector(String database) {
+    if (!REGISTERED.add(database)) return;
     try {
       var template = Files.readString(Path.of("../infra/debezium/outbox-connector.json"));
       var config =

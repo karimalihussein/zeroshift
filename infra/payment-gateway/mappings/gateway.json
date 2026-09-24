@@ -1,0 +1,14 @@
+{
+  "mappings": [
+    {
+      "name": "charge",
+      "request": { "method": "POST", "urlPath": "/charges" },
+      "response": {
+        "status": 201,
+        "headers": { "Content-Type": "application/json" },
+        "jsonBody": { "reference": "ch_{{randomValue length=14 type='ALPHANUMERIC'}}", "status": "captured" },
+        "transformers": ["response-template"]
+      }
+    }
+  ]
+}

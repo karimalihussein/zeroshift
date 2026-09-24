@@ -69,16 +69,25 @@ public class PlatformConfiguration {
             backOff);
     // No retry can fix these: dead-letter them on the first failure.
     handler.addNotRetryableExceptions(MalformedMessageException.class);
+    // Called for every failed delivery, including the last one and poison records: log a retry
+    // only when another delivery will really follow. The recoverer logs the dead letter.
     handler.setRetryListeners(
-        (record, error, attempt) ->
+        (record, error, attempt) -> {
+          if (attempt <= MAX_RETRIES && !causedBy(error, MalformedMessageException.class))
             decisions.record(
                 consumer(record),
                 record,
                 null,
                 Decision.RETRY_SCHEDULED,
                 attempt,
-                rootMessage(error)));
+                rootMessage(error));
+        });
     return handler;
+  }
+
+  private static boolean causedBy(Throwable error, Class<? extends Throwable> type) {
+    for (var e = error; e != null; e = e.getCause()) if (type.isInstance(e)) return true;
+    return false;
   }
 
   @Bean
