@@ -84,7 +84,8 @@ public interface MigrationStore {
 
     void beginCutover();
 
-    void complete();
+    /** Makes PostgreSQL primary, recording the CDC backlog measured behind the source fence. */
+    void complete(long cdcPending);
 
     void traffic(boolean enabled);
 

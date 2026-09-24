@@ -3,6 +3,7 @@ package io.zeroshift.web;
 import io.zeroshift.application.*;
 import io.zeroshift.application.port.*;
 import io.zeroshift.domain.*;
+import java.time.Instant;
 import java.util.*;
 import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.*;
@@ -15,12 +16,23 @@ public class DashboardController {
     }
   }
 
+  /**
+   * Post-cutover summary. Every value comes from durable migration state, so a reload or restart
+   * shows the same numbers; a value that was never recorded is null, not estimated.
+   */
   public record Completion(
       boolean successful,
       boolean validationPassed,
+      String validation,
+      Primary primary,
       Long cdcPending,
+      long cdcApplied,
       long totalMigratedRows,
-      Long durationMillis) {}
+      Instant startedAt,
+      Instant completedAt,
+      Long durationMillis,
+      Double rowsPerSecond,
+      Long writeFreezeMillis) {}
 
   /**
    * Reverse sync after cutover. {@code dataLost} is reported only for a completed rollback, where
@@ -101,7 +113,7 @@ public class DashboardController {
     Long pending = null;
     String error = "";
     if (state.stage() == Stage.COMPLETED) {
-      pending = 0L;
+      pending = state.completedCdcPending();
     } else if (state.stage() != Stage.IDLE) {
       try {
         pending = catchUp.pending(store);
@@ -120,14 +132,26 @@ public class DashboardController {
         error,
         demo.defaultRows(),
         state.stage() == Stage.IDLE && sourceCounts.total() > 0,
-        new Completion(
-            state.successful(),
-            state.validationPassed(),
-            pending,
-            state.successful() ? state.completedRows() : targetCounts.total(),
-            state.durationMillis()),
+        completion(state, pending, targetCounts),
         rollback(state),
         store.logEvents());
+  }
+
+  private static Completion completion(MigrationState state, Long pending, Counts target) {
+    boolean successful = state.successful();
+    return new Completion(
+        successful,
+        state.validationPassed(),
+        state.validation(),
+        state.primary(),
+        successful ? state.completedCdcPending() : pending,
+        state.applied(),
+        successful ? state.completedRows() : target.total(),
+        state.startedAt(),
+        state.completedAt(),
+        state.durationMillis(),
+        successful ? state.averageRowsPerSecond() : null,
+        state.writeFreezeMillis());
   }
 
   private Rollback rollback(MigrationState state) {

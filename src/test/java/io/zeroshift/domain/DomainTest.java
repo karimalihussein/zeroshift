@@ -77,7 +77,8 @@ class DomainTest {
             null,
             null,
             null,
-            0);
+            0,
+            null);
 
     assertThat(state.progress()).isZero();
   }

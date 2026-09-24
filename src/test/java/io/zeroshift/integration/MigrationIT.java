@@ -58,6 +58,8 @@ class MigrationIT extends DatabaseIntegrationFixture {
     assertThat(completed.startedAt()).isNotNull();
     assertThat(completed.completedAt()).isNotNull();
     assertThat(completed.durationMillis()).isNotNull().isNotNegative();
+    assertThat(completed.completedCdcPending()).isZero();
+    assertThat(completed.writeFreezeMillis()).isNotNull().isBetween(0L, completed.durationMillis());
   }
 
   @Test

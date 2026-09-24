@@ -217,18 +217,31 @@ function renderCompletion(completion) {
   const panel = el('completion');
   panel.hidden = !completion.successful;
   if (!completion.successful) return;
-  el('completion-progress').textContent = '100% complete';
-  el('completion-primary').textContent = 'PostgreSQL is now Primary';
-  el('completion-validation').textContent = completion.validationPassed ? 'Source/target validation passed' : 'Validation not confirmed';
-  el('completion-cdc').textContent = `CDC fully caught up / ${number(completion.cdcPending)} pending`;
-  el('completion-summary').textContent = `${number(completion.totalMigratedRows)} rows migrated in ${formatDuration(completion.durationMillis)}.`;
+  // Every figure comes from durable backend timestamps and counters; nothing is timed in the browser.
+  const recorded = (value, format) => value === null || value === undefined ? 'Not recorded' : format(value);
+  el('completion-rows').textContent = number(completion.totalMigratedRows);
+  el('completion-duration').textContent = recorded(completion.durationMillis, formatDuration);
+  el('completion-throughput').textContent = recorded(completion.rowsPerSecond, rate => number(Math.round(rate)));
+  el('completion-freeze').textContent = recorded(completion.writeFreezeMillis, formatDuration);
+  el('completion-cdc-pending').textContent = recorded(completion.cdcPending, number);
+  el('completion-cdc-applied').textContent = number(completion.cdcApplied);
+  el('completion-primary').textContent = `${databaseName(completion.primary)} is now Primary`;
+  el('completion-validation').textContent = completion.validationPassed ? completion.validation : 'Validation not confirmed';
+  // A checked fact only when the backend recorded a drained stream; the tile shows any other value.
+  el('completion-cdc').hidden = completion.cdcPending !== 0;
+  const at = value => clock.format(new Date(value));
+  el('completion-summary').textContent = completion.startedAt && completion.completedAt
+    ? `Started ${at(completion.startedAt)} · PostgreSQL primary since ${at(completion.completedAt)}`
+    : 'Start or completion time was not recorded.';
 }
 
 const databaseName = primary => primary === 'SQL_SERVER' ? 'SQL Server' : 'PostgreSQL';
 function formatDuration(milliseconds) {
   if (milliseconds < 1000) return `${milliseconds} ms`;
   const seconds = milliseconds / 1000;
-  return seconds < 60 ? `${seconds.toFixed(1)} s` : `${Math.floor(seconds / 60)}m ${Math.round(seconds % 60)}s`;
+  if (seconds < 60) return `${seconds.toFixed(1)} s`;
+  const whole = Math.round(seconds);
+  return `${Math.floor(whole / 60)}m ${whole % 60}s`;
 }
 
 function renderTraffic(t, stage) {

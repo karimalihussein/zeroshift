@@ -67,7 +67,8 @@ public class PostgresMigrationStore implements MigrationStore {
                 instant(r, "started_at"),
                 instant(r, "cutover_started_at"),
                 instant(r, "completed_at"),
-                r.getLong("completed_rows")));
+                r.getLong("completed_rows"),
+                r.getObject("completed_cdc_pending", Long.class)));
   }
 
   private static Instant instant(ResultSet row, String column) throws SQLException {
@@ -199,7 +200,7 @@ public class PostgresMigrationStore implements MigrationStore {
     @Override
     public void start(SourceDatabase.Boundary b) {
       jdbc.update(
-          "UPDATE migration_state SET stage='SNAPSHOT',status='RUNNING',version=?,customer_bound=?,order_bound=?,expected=?,checkpoint=now(),started_at=now(),cutover_started_at=NULL,completed_at=NULL,completed_rows=0,validation_passed=FALSE WHERE id=1",
+          "UPDATE migration_state SET stage='SNAPSHOT',status='RUNNING',version=?,customer_bound=?,order_bound=?,expected=?,checkpoint=now(),started_at=now(),cutover_started_at=NULL,completed_at=NULL,completed_rows=0,completed_cdc_pending=NULL,validation_passed=FALSE WHERE id=1",
           b.version(),
           b.customers(),
           b.orders(),
@@ -373,10 +374,11 @@ public class PostgresMigrationStore implements MigrationStore {
     }
 
     @Override
-    public void complete() {
+    public void complete(long cdcPending) {
       int completed =
           jdbc.update(
-              "UPDATE migration_state SET stage='COMPLETED',status='SUCCESS',primary_db='POSTGRESQL',checkpoint=now(),completed_at=now(),completed_rows=(SELECT COUNT(*) FROM customers)+(SELECT COUNT(*) FROM orders) WHERE id=1 AND stage='CUTOVER' AND validation_passed=TRUE");
+              "UPDATE migration_state SET stage='COMPLETED',status='SUCCESS',primary_db='POSTGRESQL',checkpoint=now(),completed_at=now(),completed_rows=(SELECT COUNT(*) FROM customers)+(SELECT COUNT(*) FROM orders),completed_cdc_pending=? WHERE id=1 AND stage='CUTOVER' AND validation_passed=TRUE",
+              cdcPending);
       if (completed != 1)
         throw new MigrationException(
             "Migration cannot complete before cutover validation has passed");
@@ -672,7 +674,7 @@ public class PostgresMigrationStore implements MigrationStore {
       jdbc.execute("TRUNCATE orders,customers RESTART IDENTITY");
       // Keep the singleton row: deleting/reinserting it can strand waiting row-lock readers.
       jdbc.update(
-          "UPDATE migration_state SET stage=DEFAULT,status=DEFAULT,primary_db=DEFAULT,current_table=DEFAULT,last_id=DEFAULT,customer_bound=DEFAULT,order_bound=DEFAULT,version=DEFAULT,copied=DEFAULT,expected=DEFAULT,batches=DEFAULT,applied=DEFAULT,traffic=DEFAULT,crash_requested=DEFAULT,traffic_step=DEFAULT,validation=DEFAULT,error=DEFAULT,checkpoint=DEFAULT,rows_per_second=DEFAULT,cdc_paused=DEFAULT,validation_passed=DEFAULT,started_at=DEFAULT,cutover_started_at=DEFAULT,completed_at=DEFAULT,completed_rows=DEFAULT WHERE id=1");
+          "UPDATE migration_state SET stage=DEFAULT,status=DEFAULT,primary_db=DEFAULT,current_table=DEFAULT,last_id=DEFAULT,customer_bound=DEFAULT,order_bound=DEFAULT,version=DEFAULT,copied=DEFAULT,expected=DEFAULT,batches=DEFAULT,applied=DEFAULT,traffic=DEFAULT,crash_requested=DEFAULT,traffic_step=DEFAULT,validation=DEFAULT,error=DEFAULT,checkpoint=DEFAULT,rows_per_second=DEFAULT,cdc_paused=DEFAULT,validation_passed=DEFAULT,started_at=DEFAULT,cutover_started_at=DEFAULT,completed_at=DEFAULT,completed_rows=DEFAULT,completed_cdc_pending=DEFAULT WHERE id=1");
       jdbc.update(
           "UPDATE traffic_metrics SET inserts=DEFAULT,updates=DEFAULT,deletes=DEFAULT,reads=DEFAULT,errors=DEFAULT,consecutive_errors=DEFAULT,sql_server_ops=DEFAULT,postgres_ops=DEFAULT,window_started=DEFAULT,window_ops=DEFAULT,ops_per_second=DEFAULT WHERE id=1");
       jdbc.update("DELETE FROM replay_receipt");

@@ -53,12 +53,17 @@ public final class CutoverService {
         session.stage(Stage.CUTOVER);
       }
       case CUTOVER -> {
+        // The source is fenced and drained, so this must be zero; switching with a backlog loses
+        // it.
+        long pending = catchUp.pending(store);
+        if (pending > 0)
+          throw new MigrationException(
+              "Cutover blocked: " + pending + " CDC changes pending behind the write fence");
         session.synchronizeSequences();
-        session.complete();
-        var state = session.state();
-        var elapsed = Duration.between(state.cutoverStartedAt(), state.completedAt());
-        metrics.cutoverFinished(elapsed);
-        session.log("Write freeze through successful cutover: " + elapsed.toMillis() + " ms");
+        session.complete(pending);
+        long freezeMillis = session.state().writeFreezeMillis();
+        metrics.cutoverFinished(Duration.ofMillis(freezeMillis));
+        session.log("Write freeze through successful cutover: " + freezeMillis + " ms");
       }
       default -> throw new InvalidAction("No cutover is in progress");
     }

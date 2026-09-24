@@ -64,7 +64,7 @@ class DashboardControllerTest {
     var source = mock(SourceDatabase.class);
     var traffic = mock(TrafficSimulator.class);
     var started = Instant.parse("2026-01-01T00:00:00Z");
-    when(store.state()).thenReturn(completedState(started, started.plusSeconds(12)));
+    when(store.state()).thenReturn(completedState(started, started.plusSeconds(12), 0L));
     when(store.count(Table.CUSTOMERS)).thenReturn(20L);
     when(store.count(Table.ORDERS)).thenReturn(20L);
     when(store.logs()).thenReturn(List.of());
@@ -92,6 +92,41 @@ class DashboardControllerTest {
     assertThat(dashboard.completion().cdcPending()).isZero();
     assertThat(dashboard.completion().totalMigratedRows()).isEqualTo(40);
     assertThat(dashboard.completion().durationMillis()).isEqualTo(12_000);
+    assertThat(dashboard.completion().writeFreezeMillis()).isEqualTo(2_000);
+    assertThat(dashboard.completion().rowsPerSecond()).isCloseTo(40 / 12.0, within(1e-9));
+    assertThat(dashboard.completion().cdcApplied()).isEqualTo(5);
+    assertThat(dashboard.completion().primary()).isEqualTo(Primary.POSTGRESQL);
+    assertThat(dashboard.completion().validation()).startsWith("Passed:");
+  }
+
+  @Test
+  void completedSummaryNeverInventsAnUnrecordedCdcBacklog() {
+    var store = mock(MigrationStore.class);
+    var source = mock(SourceDatabase.class);
+    var traffic = mock(TrafficSimulator.class);
+    var started = Instant.parse("2026-01-01T00:00:00Z");
+    // Completed before the backlog was recorded at cutover.
+    var legacy = completedState(started, started.plusSeconds(12), null);
+    when(store.state()).thenReturn(legacy);
+    when(store.logs()).thenReturn(List.of());
+    when(store.rollback()).thenReturn(NO_ROLLBACK);
+    when(traffic.metrics())
+        .thenReturn(new TrafficMetrics(false, Primary.POSTGRESQL, 0, 0, 0, 0, 0, 0, 0, 0, 0));
+
+    var dashboard =
+        new DashboardController(
+                store,
+                source,
+                mock(MigrationCoordinator.class),
+                traffic,
+                mock(DemoDataService.class),
+                mock(CutoverService.class),
+                mock(ChangeCatchUp.class),
+                mock(RollbackService.class))
+            .status();
+
+    assertThat(dashboard.completion().cdcPending()).isNull();
+    assertThat(dashboard.pending()).isNull();
   }
 
   @Test
@@ -108,6 +143,8 @@ class DashboardControllerTest {
     assertThat(page)
         .contains("id=\"completion\"")
         .contains("CDC fully caught up / 0 pending")
+        .contains("id=\"completion-duration\"")
+        .contains("id=\"completion-freeze\"")
         .contains("Source/target validation passed")
         .contains("data-stage=\"SNAPSHOT\"")
         .contains("data-stage=\"CATCH_UP\"")
@@ -167,10 +204,12 @@ class DashboardControllerTest {
         null,
         null,
         null,
-        0);
+        0,
+        null);
   }
 
-  private static MigrationState completedState(Instant started, Instant completed) {
+  private static MigrationState completedState(
+      Instant started, Instant completed, Long cdcPending) {
     return new MigrationState(
         Stage.COMPLETED,
         RunStatus.SUCCESS,
@@ -183,7 +222,7 @@ class DashboardControllerTest {
         40,
         40,
         6,
-        0,
+        5,
         false,
         "Passed: counts + SHA-256 + constraints",
         "",
@@ -194,7 +233,8 @@ class DashboardControllerTest {
         started,
         started.plusSeconds(10),
         completed,
-        40);
+        40,
+        cdcPending);
   }
 
   private static String resource(String path) throws IOException {

@@ -26,7 +26,8 @@ public record MigrationState(
     Instant startedAt,
     Instant cutoverStartedAt,
     Instant completedAt,
-    long completedRows) {
+    long completedRows,
+    Long completedCdcPending) {
   public double progress() {
     return switch (stage) {
       case IDLE -> 0;
@@ -78,9 +79,24 @@ public record MigrationState(
   }
 
   public Long durationMillis() {
-    return startedAt == null || completedAt == null
+    return millisBetween(startedAt, completedAt);
+  }
+
+  /** Source writes are held from the durable FREEZE checkpoint until PostgreSQL becomes primary. */
+  public Long writeFreezeMillis() {
+    return millisBetween(cutoverStartedAt, completedAt);
+  }
+
+  /** Rows present at completion over the whole run, start to switch; not the last batch's rate. */
+  public Double averageRowsPerSecond() {
+    Long millis = durationMillis();
+    return millis == null || millis == 0 ? null : completedRows * 1000.0 / millis;
+  }
+
+  private static Long millisBetween(Instant from, Instant to) {
+    return from == null || to == null
         ? null
-        : Math.max(0, java.time.Duration.between(startedAt, completedAt).toMillis());
+        : Math.max(0, java.time.Duration.between(from, to).toMillis());
   }
 
   public long bound() {
