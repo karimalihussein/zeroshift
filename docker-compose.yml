@@ -29,7 +29,7 @@ services:
       timeout: 5s
       retries: 20
   app:
-    build: .
+    build: {context: ., args: {MODULE: migration-lab}}
     environment:
       SOURCE_URL: jdbc:sqlserver://sqlserver:1433;databaseName=zeroshift_java;encrypt=true;trustServerCertificate=true
       MSSQL_SA_PASSWORD: ${MSSQL_SA_PASSWORD:-ZeroShift!Local2026}
