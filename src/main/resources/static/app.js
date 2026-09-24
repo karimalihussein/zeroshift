@@ -119,7 +119,7 @@ function renderMigration(data) {
     node.classList.toggle('done', rank > index);
     node.classList.toggle('active', rank === index && s.stage !== 'COMPLETED');
   });
-  el('track-fill').style.width = `${Math.max(0, Math.min(100, rank * 25))}%`;
+  el('track-fill').style.transform = `scaleX(${Math.max(0, Math.min(100, rank * 25)) / 100})`;
 
   const migrationFinished = s.stage === 'COMPLETED' || s.stage === 'ROLLED_BACK' || ROLLBACK_STAGES.includes(s.stage);
   const migrated = migrationFinished ? data.target.customers + data.target.orders : s.copied;
