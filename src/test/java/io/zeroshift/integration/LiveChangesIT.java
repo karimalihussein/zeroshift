@@ -261,10 +261,9 @@ class LiveChangesIT extends DatabaseIntegrationFixture {
   void repeatedEmptyResetStillGeneratesPositiveIdentityOne() {
     new DemoDataService(source, store, 10).reset();
     new DemoDataService(source, store, 10).reset();
-    coordinator.start();
-    var created = live.insert(edit("PENDING"));
-    assertThat(created.orderId()).isEqualTo(1);
-    assertThat(created.after().customerId()).isEqualTo(1);
+    source.writeTraffic(TrafficOperation.INSERT);
+    assertThat(sql.queryForObject("SELECT MIN(id) FROM dbo.orders", Long.class)).isEqualTo(1L);
+    assertThat(sql.queryForObject("SELECT MIN(id) FROM dbo.customers", Long.class)).isEqualTo(1L);
   }
 
   @Test

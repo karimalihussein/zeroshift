@@ -15,6 +15,52 @@ import org.testcontainers.junit.jupiter.*;
 @TestMethodOrder(MethodOrderer.MethodName.class)
 class MigrationIT extends DatabaseIntegrationFixture {
   @Test
+  void completeLifecyclePersistsEveryCutoverStageAndFinishesAtOneHundredPercent() {
+    source.seed(20);
+    coordinator.start();
+
+    var observed = java.util.EnumSet.of(Stage.SNAPSHOT);
+    while (store.state().stage() != Stage.READY) {
+      coordinator.tick();
+      observed.add(store.state().stage());
+    }
+
+    var ready = store.state();
+    assertThat(observed).contains(Stage.SNAPSHOT, Stage.CATCH_UP, Stage.PREPARE, Stage.READY);
+    assertThat(ready.progress()).isEqualTo(95);
+    assertThat(ready.status()).isEqualTo(RunStatus.RUNNING);
+    assertThat(ready.primary()).isEqualTo(Primary.SQL_SERVER);
+
+    cutover.request();
+    assertThat(store.state().stage()).isEqualTo(Stage.FREEZE);
+    assertThat(store.state().progress()).isEqualTo(96);
+
+    coordinator.tick();
+    assertThat(store.state().stage()).isEqualTo(Stage.VALIDATION);
+    assertThat(store.state().progress()).isEqualTo(98);
+
+    coordinator.tick();
+    assertThat(store.state().stage()).isEqualTo(Stage.CUTOVER);
+    assertThat(store.state().progress()).isEqualTo(99);
+    assertThat(store.state().validationPassed()).isTrue();
+
+    coordinator.tick();
+    var completed = store.state();
+    assertThat(completed.stage()).isEqualTo(Stage.COMPLETED);
+    assertThat(completed.status()).isEqualTo(RunStatus.SUCCESS);
+    assertThat(completed.progress()).isEqualTo(100);
+    assertThat(completed.successful()).isTrue();
+    assertThat(completed.primary()).isEqualTo(Primary.POSTGRESQL);
+    assertThat(completed.validation()).startsWith("Passed:");
+    assertThat(new ChangeCatchUp(source, 7).pending(store)).isZero();
+    assertThat(store.count(Table.CUSTOMERS) + store.count(Table.ORDERS)).isEqualTo(40);
+    assertThat(completed.completedRows()).isEqualTo(40);
+    assertThat(completed.startedAt()).isNotNull();
+    assertThat(completed.completedAt()).isNotNull();
+    assertThat(completed.durationMillis()).isNotNull().isNotNegative();
+  }
+
+  @Test
   void bulkCopyPreservesUnicodeNullEmptyQuotesAndDecimalPrecision() {
     source.seed(20);
     sql.update("UPDATE dbo.customers SET name=?,email=? WHERE id=1", "عميل\ncomma,\"quote\"", "");
@@ -92,8 +138,7 @@ class MigrationIT extends DatabaseIntegrationFixture {
     traffic.toggle(true);
     traffic.tick();
     coordinator.tick();
-    cutover.request();
-    coordinator.tick();
+    completeCutover();
     assertThat(store.state().primary()).isEqualTo(Primary.POSTGRESQL);
     long sourceCount = source.count(Table.CUSTOMERS);
     traffic.tick();
@@ -114,10 +159,7 @@ class MigrationIT extends DatabaseIntegrationFixture {
     source.writeTraffic(TrafficOperation.INSERT);
     assertThat(cutover.inspect().matches()).isTrue();
     source.writeTraffic(TrafficOperation.DELETE);
-    cutover.request();
-    coordinator.tick();
-    assertThat(store.state().error()).isEmpty();
-    assertThat(store.state().stage()).isEqualTo(Stage.COMPLETE);
+    completeCutover();
   }
 
   @Test
@@ -191,14 +233,26 @@ class MigrationIT extends DatabaseIntegrationFixture {
   }
 
   @Test
-  void emptyMigrationSequencesStartAtOne() {
-    ready();
-    cutover.request();
+  void emptySourceCannotStartOrAdvanceMigration() {
+    var before = store.state();
+    var logs = store.logs();
+
+    assertThatThrownBy(coordinator::start)
+        .isInstanceOf(InvalidAction.class)
+        .hasMessage("Cannot start migration: SQL Server has no customers or orders to migrate");
     coordinator.tick();
-    traffic.toggle(true);
-    traffic.tick(); // READ
-    traffic.tick(); // INSERT
-    assertThat(pg.queryForObject("SELECT MIN(id) FROM customers", Long.class)).isEqualTo(1L);
+
+    var after = store.state();
+    assertThat(after.stage()).isEqualTo(Stage.IDLE);
+    assertThat(after.status()).isEqualTo(RunStatus.IDLE);
+    assertThat(after.progress()).isZero();
+    assertThat(after.checkpoint()).isEqualTo(before.checkpoint()).isNull();
+    assertThat(after.batches()).isZero();
+    assertThat(after.copied()).isZero();
+    assertThat(after.expected()).isZero();
+    assertThat(store.logs()).isEqualTo(logs);
+    assertThat(store.count(Table.CUSTOMERS)).isZero();
+    assertThat(store.count(Table.ORDERS)).isZero();
   }
 
   @Test
@@ -208,6 +262,7 @@ class MigrationIT extends DatabaseIntegrationFixture {
     pg.update("UPDATE customers SET name='corrupted' WHERE id=1");
     assertThat(cutover.inspect().matches()).isFalse();
     cutover.request();
+    coordinator.tick();
     coordinator.tick();
     assertThat(store.state().status()).isEqualTo(RunStatus.FAILED);
     assertThat(store.state().primary()).isEqualTo(Primary.SQL_SERVER);
@@ -226,8 +281,8 @@ class MigrationIT extends DatabaseIntegrationFixture {
     coordinator.recover();
     assertThat(store.state().status()).isEqualTo(RunStatus.PAUSED);
     coordinator.resume();
-    coordinator.tick();
-    assertThat(store.state().stage()).isEqualTo(Stage.COMPLETE);
+    for (int i = 0; i < 3; i++) coordinator.tick();
+    assertThat(store.state().stage()).isEqualTo(Stage.COMPLETED);
   }
 
   @Test

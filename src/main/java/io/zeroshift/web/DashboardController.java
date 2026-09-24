@@ -15,6 +15,13 @@ public class DashboardController {
     }
   }
 
+  public record Completion(
+      boolean successful,
+      boolean validationPassed,
+      Long cdcPending,
+      long totalMigratedRows,
+      Long durationMillis) {}
+
   public record Dashboard(
       MigrationState migration,
       double progress,
@@ -24,7 +31,9 @@ public class DashboardController {
       List<String> logs,
       TrafficMetrics traffic,
       String captureError,
-      int seedRows) {}
+      int seedRows,
+      boolean migrationStartAllowed,
+      Completion completion) {}
 
   public record ActionResult(String message) {}
 
@@ -62,9 +71,13 @@ public class DashboardController {
   @ResponseBody
   public Dashboard status() {
     var state = store.state();
+    var sourceCounts = new Counts(source.count(Table.CUSTOMERS), source.count(Table.ORDERS));
+    var targetCounts = new Counts(store.count(Table.CUSTOMERS), store.count(Table.ORDERS));
     Long pending = null;
     String error = "";
-    if (state.stage() != Stage.IDLE && state.stage() != Stage.COMPLETE) {
+    if (state.stage() == Stage.COMPLETED) {
+      pending = 0L;
+    } else if (state.stage() != Stage.IDLE) {
       try {
         pending = catchUp.pending(store);
       } catch (MigrationException e) {
@@ -74,13 +87,20 @@ public class DashboardController {
     return new Dashboard(
         state,
         state.progress(),
-        new Counts(source.count(Table.CUSTOMERS), source.count(Table.ORDERS)),
-        new Counts(store.count(Table.CUSTOMERS), store.count(Table.ORDERS)),
+        sourceCounts,
+        targetCounts,
         pending,
         store.logs(),
         traffic.metrics(),
         error,
-        demo.defaultRows());
+        demo.defaultRows(),
+        state.stage() == Stage.IDLE && sourceCounts.total() > 0,
+        new Completion(
+            state.successful(),
+            state.validationPassed(),
+            pending,
+            state.successful() ? state.completedRows() : targetCounts.total(),
+            state.durationMillis()));
   }
 
   @PostMapping("/api/actions/{action}")

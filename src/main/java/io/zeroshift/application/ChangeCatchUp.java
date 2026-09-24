@@ -63,7 +63,7 @@ public final class ChangeCatchUp {
 
   public long pending(MigrationStore store) {
     var state = store.state();
-    if (state.stage() == Stage.IDLE || state.stage() == Stage.COMPLETE) return 0;
+    if (state.stage() == Stage.IDLE || state.stage() == Stage.COMPLETED) return 0;
     long pending = 0;
     try (var capture = source.capture(state.version())) {
       for (var table : Table.values()) {

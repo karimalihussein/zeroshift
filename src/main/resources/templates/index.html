@@ -12,9 +12,15 @@
 </section>
 <p class="primary">Current primary <strong id="primary">—</strong><span id="traffic">Traffic stopped</span></p>
 <section class="controls" aria-label="Demo controls">
-<label class="seed-rows">Rows <input id="seed-rows" type="number" min="1" max="10000000" step="1" inputmode="numeric" aria-label="Demo rows per table"></label><button data-action="seed">Generate Demo Data</button><button data-action="traffic-start" id="traffic-button">Start Live Traffic</button><button data-action="start" class="accent">Start Migration</button><button data-action="pause">Pause</button><button data-action="resume">Resume</button><button data-action="crash">Simulate Crash</button><button data-action="validate">Validate</button><button data-action="cutover" class="accent">Cutover</button><button data-action="reset" class="danger">Reset</button>
+<label class="seed-rows">Rows <input id="seed-rows" type="number" min="1" max="10000000" step="1" inputmode="numeric" aria-label="Demo rows per table"></label><button data-action="seed">Generate Demo Data</button><button data-action="traffic-start" id="traffic-button">Start Live Traffic</button><button data-action="start" class="accent" disabled>Start Migration</button><button data-action="pause">Pause</button><button data-action="resume">Resume</button><button data-action="crash">Simulate Crash</button><button data-action="validate">Validate</button><button data-action="cutover" class="accent">Cutover</button><button data-action="reset" class="danger">Reset</button>
 </section>
 <p id="message" role="status" aria-live="polite">Generate demo data, start live traffic, then start the migration.</p>
+<section id="completion" class="completion" aria-labelledby="completion-title" hidden>
+<h2 id="completion-title">Migration completed successfully</h2>
+<ul>
+<li id="completion-progress">100%</li><li id="completion-primary">PostgreSQL is now Primary</li><li id="completion-validation">Source/target validation passed</li><li id="completion-cdc">CDC fully caught up / 0 pending</li><li id="completion-summary">—</li>
+</ul>
+</section>
 <dl class="metrics">
 <div><dt>Current table</dt><dd id="table">—</dd></div><div><dt>Committed batches</dt><dd id="batch">0</dd></div><div><dt>Rows / sec</dt><dd id="rate">0</dd></div><div><dt>CDC pending / applied</dt><dd id="cdc">—</dd></div><div><dt>Last checkpoint</dt><dd id="checkpoint">—</dd></div><div><dt>Validation</dt><dd id="validation">Not checked</dd></div>
 </dl>
@@ -25,7 +31,7 @@
 </dl>
 <p class="explanation" id="traffic-routing">Committed operations counted by the backend: SQL Server 0 · PostgreSQL 0</p>
 </section>
-<p class="explanation">Snapshot → catch-up → indexes & constraints → validation → write freeze → cutover.<br>CDC uses SQL Server Change Tracking: committed net changes, not every intermediate event. Progress is based on committed backend stages and snapshot rows.</p>
+<p class="explanation">Snapshot → CDC catch-up → prepare → ready for cutover → write freeze → final validation → cutover → completed.<br>CDC uses SQL Server Change Tracking: committed net changes, not every intermediate event. Progress is based on committed backend stages and snapshot rows.</p>
 <section class="live" aria-labelledby="live-title">
 <h2 id="live-title">Live Data Changes</h2>
 <p class="explanation">Change SQL Server and compare the same record in PostgreSQL. Pause CDC replay to hold the difference while snapshot copying continues.</p>

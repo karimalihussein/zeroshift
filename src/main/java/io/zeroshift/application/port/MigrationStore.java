@@ -50,6 +50,8 @@ public interface MigrationStore {
 
     void validation(ValidationResult result);
 
+    void beginCutover();
+
     void complete();
 
     void traffic(boolean enabled);

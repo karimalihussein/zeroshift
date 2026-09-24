@@ -30,9 +30,8 @@ public final class MigrationCoordinator {
             s.status(RunStatus.PAUSED, "Backend restarted. Resume from the durable checkpoint.");
           }
           // An interrupted standalone Validate can leave a committed source fence.
-          if (s.state().primary() == Primary.SQL_SERVER && s.state().stage() != Stage.FREEZE)
-            source.freeze(false);
-          s.log("Backend ready; durable state loaded");
+          if (s.state().primary() == Primary.SQL_SERVER
+              && !s.state().stage().sourceMustRemainFrozen()) source.freeze(false);
           return null;
         });
   }
@@ -42,7 +41,12 @@ public final class MigrationCoordinator {
         s -> {
           s.state()
               .require(s.state().stage() == Stage.IDLE, "Reset before starting a new migration");
-          s.start(source.boundary());
+          var boundary = source.boundary();
+          s.state()
+              .require(
+                  boundary.count() > 0,
+                  "Cannot start migration: SQL Server has no customers or orders to migrate");
+          s.start(boundary);
           return null;
         });
   }
@@ -64,7 +68,7 @@ public final class MigrationCoordinator {
         s -> {
           var state = s.state();
           state.require(
-              state.stage().canPause() && !state.active(),
+              state.stage().canResume() && !state.active(),
               "No paused or failed migration to resume");
           s.status(RunStatus.RUNNING, "");
           return null;
@@ -104,8 +108,8 @@ public final class MigrationCoordinator {
               case READY -> {
                 if (!s.state().cdcPaused()) catchUp.drain(s);
               }
-              case FREEZE -> cutover.finish(s);
-              case IDLE, COMPLETE -> {}
+              case FREEZE, VALIDATION, CUTOVER -> cutover.advance(s);
+              case IDLE, COMPLETED -> {}
             }
             return null;
           });

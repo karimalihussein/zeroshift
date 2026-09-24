@@ -7,9 +7,19 @@ public enum Stage {
   PREPARE,
   READY,
   FREEZE,
-  COMPLETE;
+  VALIDATION,
+  CUTOVER,
+  COMPLETED;
 
   public boolean canPause() {
-    return this != IDLE && this != COMPLETE;
+    return this == SNAPSHOT || this == CATCH_UP || this == PREPARE || this == READY;
+  }
+
+  public boolean canResume() {
+    return this != IDLE && this != COMPLETED;
+  }
+
+  public boolean sourceMustRemainFrozen() {
+    return this == FREEZE || this == VALIDATION || this == CUTOVER;
   }
 }

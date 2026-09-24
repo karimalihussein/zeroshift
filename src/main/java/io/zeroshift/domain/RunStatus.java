@@ -6,5 +6,5 @@ public enum RunStatus {
   PAUSED,
   CRASHED,
   FAILED,
-  COMPLETE
+  SUCCESS
 }

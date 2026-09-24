@@ -12,9 +12,11 @@ function render(data) {
       SNAPSHOT: 'Copying bounded batches. You can pause or simulate a crash to explore recovery.',
       CATCH_UP: 'Applying committed source changes to PostgreSQL.',
       PREPARE: 'Preparing indexes, constraints, sequences and statistics.',
-      READY: 'Validate the databases, then choose Cutover when you are ready.',
-      FREEZE: 'Source writes are fenced while final validation and cutover finish.',
-      COMPLETE: 'Migration complete. Writes go to PostgreSQL. Reset to run the demo again.'
+      READY: 'Ready for Cutover — 95%. Validate if desired, then choose Cutover.',
+      FREEZE: 'Source writes are fenced; draining final CDC changes.',
+      VALIDATION: 'Source and target are being validated behind the write fence.',
+      CUTOVER: 'Validation passed; switching the primary database to PostgreSQL.',
+      COMPLETED: 'Migration completed successfully. PostgreSQL is now Primary.'
     };
     showMessage(guidance[s.stage]);
     lastStage = s.stage;
@@ -26,25 +28,28 @@ function render(data) {
     el(`${side}-detail`).textContent = `${number(counts.customers)} customers · ${number(counts.orders)} orders`;
   }
   el('primary').textContent = databaseName(s.primary);
-  el('stage').textContent = s.stage.replaceAll('_', ' ').toLowerCase().replace(/^./, c => c.toUpperCase());
-  el('run-status').textContent = s.status.toLowerCase();
+  const stageLabels = { READY: 'Ready for Cutover', COMPLETED: 'Migration completed successfully' };
+  el('stage').textContent = stageLabels[s.stage] || s.stage.replaceAll('_', ' ').toLowerCase().replace(/^./, c => c.toUpperCase());
+  el('run-status').textContent = s.stage === 'READY' ? 'Waiting for cutover' : s.status.toLowerCase();
   el('progress').value = data.progress;
   el('percent').textContent = `${Math.round(data.progress)}%`;
-  el('table').textContent = s.stage === 'IDLE' ? '—' : s.table.toLowerCase();
+  el('table').textContent = ['IDLE', 'COMPLETED'].includes(s.stage) ? '—' : s.table.toLowerCase();
   el('batch').textContent = number(s.batches);
   el('rate').textContent = number(Math.round(s.rowsPerSecond));
   el('cdc').textContent = `${data.pending === null ? '—' : number(data.pending)} / ${number(s.applied)}`;
   el('checkpoint').textContent = s.checkpoint ? `${new Date(s.checkpoint).toLocaleTimeString()} · key ${s.lastId} · v${s.version}` : '—';
   el('validation').textContent = s.validation;
+  renderCompletion(data.completion);
   el('logs').textContent = data.logs.join('\n');
+  el('logs').scrollTop = 0;
   renderTraffic(data.traffic, s.stage);
   const running = s.status === 'RUNNING';
   const allowed = {
     seed: s.stage === 'IDLE' && !s.traffic && data.source.customers === 0,
-    start: s.stage === 'IDLE', pause: running,
-    resume: !running && !['IDLE', 'COMPLETE'].includes(s.stage),
+    start: data.migrationStartAllowed, pause: running && ['SNAPSHOT', 'CATCH_UP', 'PREPARE', 'READY'].includes(s.stage),
+    resume: !running && !['IDLE', 'COMPLETED'].includes(s.stage),
     crash: running, validate: s.stage === 'READY' && !s.cdcPaused, cutover: s.stage === 'READY' && running && !s.cdcPaused,
-    reset: true, 'traffic-start': s.stage !== 'FREEZE', 'traffic-stop': true
+    reset: true, 'traffic-start': !['FREEZE', 'VALIDATION', 'CUTOVER'].includes(s.stage), 'traffic-stop': true
   };
   document.querySelectorAll('[data-action]').forEach(button => { button.disabled = busy || !allowed[button.dataset.action]; });
   el('seed-rows').disabled = busy || !allowed.seed;
@@ -59,8 +64,23 @@ function render(data) {
   }
 }
 const databaseName = primary => primary === 'SQL_SERVER' ? 'SQL Server' : 'PostgreSQL';
+function renderCompletion(completion) {
+  const panel = el('completion');
+  panel.hidden = !completion.successful;
+  if (!completion.successful) return;
+  el('completion-progress').textContent = '100%';
+  el('completion-primary').textContent = 'PostgreSQL is now Primary';
+  el('completion-validation').textContent = completion.validationPassed ? 'Source/target validation passed' : 'Source/target validation not confirmed';
+  el('completion-cdc').textContent = `CDC fully caught up / ${number(completion.cdcPending)} pending`;
+  el('completion-summary').textContent = `${number(completion.totalMigratedRows)} total rows migrated in ${formatDuration(completion.durationMillis)}`;
+}
+function formatDuration(milliseconds) {
+  if (milliseconds < 1000) return `${milliseconds} ms`;
+  const seconds = milliseconds / 1000;
+  return seconds < 60 ? `${seconds.toFixed(1)} s` : `${Math.floor(seconds / 60)}m ${Math.round(seconds % 60)}s`;
+}
 function renderTraffic(t, stage) {
-  const waiting = t.running && stage === 'FREEZE';
+  const waiting = t.running && ['FREEZE', 'VALIDATION', 'CUTOVER'].includes(stage);
   el('traffic').textContent = t.running ? (waiting ? 'Live traffic waiting for the cutover fence' : `Live traffic running → ${databaseName(t.target)}`) : 'Live traffic stopped';
   const trafficButton = el('traffic-button');
   trafficButton.dataset.action = t.running ? 'traffic-stop' : 'traffic-start';

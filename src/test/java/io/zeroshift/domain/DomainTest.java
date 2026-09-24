@@ -2,6 +2,7 @@ package io.zeroshift.domain;
 
 import static org.assertj.core.api.Assertions.*;
 
+import java.time.Instant;
 import java.util.stream.LongStream;
 import org.junit.jupiter.api.Test;
 
@@ -19,8 +20,40 @@ class DomainTest {
   @Test
   void completedAndIdleRunsCannotBeResumedOrPaused() {
     assertThat(Stage.IDLE.canPause()).isFalse();
-    assertThat(Stage.COMPLETE.canPause()).isFalse();
-    assertThat(Stage.FREEZE.canPause()).isTrue();
+    assertThat(Stage.COMPLETED.canPause()).isFalse();
+    assertThat(Stage.FREEZE.canPause()).isFalse();
+    assertThat(Stage.FREEZE.canResume()).isTrue();
+  }
+
+  @Test
+  void snapshotWithNoExpectedWorkNeverReportsProgress() {
+    var state =
+        new MigrationState(
+            Stage.SNAPSHOT,
+            RunStatus.RUNNING,
+            Primary.SQL_SERVER,
+            Table.CUSTOMERS,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            false,
+            "Not checked",
+            "",
+            Instant.now(),
+            0,
+            false,
+            false,
+            null,
+            null,
+            null,
+            0);
+
+    assertThat(state.progress()).isZero();
   }
 
   @Test

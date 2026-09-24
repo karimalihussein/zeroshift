@@ -2,6 +2,7 @@ package io.zeroshift.application;
 
 import io.zeroshift.application.port.*;
 import io.zeroshift.domain.*;
+import java.time.Duration;
 
 public final class CutoverService {
   private final SourceDatabase source;
@@ -27,28 +28,36 @@ public final class CutoverService {
           state.require(
               state.stage() == Stage.READY && state.active() && !state.cdcPaused(),
               "Wait for Ready and resume migration and CDC replay before cutover");
-          s.stage(Stage.FREEZE);
-          s.log("Cutover requested; routed traffic waits while source writes are fenced");
+          s.beginCutover();
           return null;
         });
   }
 
-  public void finish(MigrationStore.Session session) {
-    // FREEZE was persisted before touching SQL Server. A crash here is safely resumable.
-    long started = System.nanoTime();
-    source.freeze(true);
-    catchUp.drain(session);
-    var result = validation.validate();
-    session.validation(result);
-    if (!result.matches())
-      throw new MigrationException(
-          "Cutover blocked: validation failed. Source remains fenced; repair or Reset.");
-    session.synchronizeSequences();
-    session.complete();
-    session.log(
-        "Final fence, catch-up, validation and sequence sync: "
-            + ((System.nanoTime() - started) / 1_000_000)
-            + " ms");
+  public void advance(MigrationStore.Session session) {
+    switch (session.state().stage()) {
+      case FREEZE -> {
+        // FREEZE was persisted before touching SQL Server. A crash here is safely resumable.
+        source.freeze(true);
+        catchUp.drain(session);
+        session.stage(Stage.VALIDATION);
+      }
+      case VALIDATION -> {
+        var result = validation.validate();
+        session.validation(result);
+        if (!result.matches())
+          throw new MigrationException(
+              "Cutover blocked: validation failed. Source remains fenced; repair or Reset.");
+        session.stage(Stage.CUTOVER);
+      }
+      case CUTOVER -> {
+        session.synchronizeSequences();
+        session.complete();
+        var state = session.state();
+        var elapsed = Duration.between(state.cutoverStartedAt(), state.completedAt());
+        session.log("Write freeze through successful cutover: " + elapsed.toMillis() + " ms");
+      }
+      default -> throw new InvalidAction("No cutover is in progress");
+    }
   }
 
   public ValidationResult inspect() {

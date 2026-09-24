@@ -35,7 +35,9 @@ public final class LiveChangesService {
 
   private void writable(MigrationState state) {
     state.require(
-        state.active() && state.primary() == Primary.SQL_SERVER && state.stage() != Stage.FREEZE,
+        state.active()
+            && state.primary() == Primary.SQL_SERVER
+            && !state.stage().sourceMustRemainFrozen(),
         "Live changes require an active migration with SQL Server as primary");
   }
 
@@ -142,7 +144,7 @@ public final class LiveChangesService {
                 ? "CDC pending"
                 : equal
                     ? (sourceRow == null ? "IN SYNC — absent in both databases" : "IN SYNC")
-                    : (state.stage() == Stage.COMPLETE
+                    : (state.stage() == Stage.COMPLETED
                         ? "Databases differ after cutover"
                         : "Waiting for snapshot or CDC replay");
     return new Inspection(

@@ -21,17 +21,37 @@ public record MigrationState(
     String error,
     Instant checkpoint,
     double rowsPerSecond,
-    boolean cdcPaused) {
+    boolean cdcPaused,
+    boolean validationPassed,
+    Instant startedAt,
+    Instant cutoverStartedAt,
+    Instant completedAt,
+    long completedRows) {
   public double progress() {
     return switch (stage) {
       case IDLE -> 0;
-      case SNAPSHOT -> Math.min(80, expected == 0 ? 80 : copied * 80.0 / expected);
+      case SNAPSHOT -> expected <= 0 ? 0 : Math.min(80, copied * 80.0 / expected);
       case CATCH_UP -> 85;
       case PREPARE -> 90;
       case READY -> 95;
-      case FREEZE -> 98;
-      case COMPLETE -> 100;
+      case FREEZE -> 96;
+      case VALIDATION -> 98;
+      case CUTOVER -> 99;
+      case COMPLETED -> successful() ? 100 : 99;
     };
+  }
+
+  public boolean successful() {
+    return stage == Stage.COMPLETED
+        && status == RunStatus.SUCCESS
+        && primary == Primary.POSTGRESQL
+        && validationPassed;
+  }
+
+  public Long durationMillis() {
+    return startedAt == null || completedAt == null
+        ? null
+        : Math.max(0, java.time.Duration.between(startedAt, completedAt).toMillis());
   }
 
   public long bound() {

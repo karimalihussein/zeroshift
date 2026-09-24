@@ -94,4 +94,13 @@ abstract class DatabaseIntegrationFixture {
     }
     assertThat(store.state().stage()).isEqualTo(Stage.READY);
   }
+
+  protected void completeCutover() {
+    cutover.request();
+    for (int i = 0; i < 5 && store.state().stage() != Stage.COMPLETED; i++) {
+      coordinator.tick();
+      assertThat(store.state().error()).isEmpty();
+    }
+    assertThat(store.state().stage()).isEqualTo(Stage.COMPLETED);
+  }
 }

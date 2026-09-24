@@ -18,6 +18,11 @@ public final class TrafficSimulator {
   public void toggle(boolean enabled) {
     store.transaction(
         s -> {
+          if (enabled)
+            s.state()
+                .require(
+                    !s.state().stage().sourceMustRemainFrozen(),
+                    "Traffic cannot start while cutover has fenced SQL Server writes");
           s.traffic(enabled);
           return null;
         });
@@ -33,7 +38,7 @@ public final class TrafficSimulator {
           s -> {
             // Routing is read under the migration row lock, so cutover cannot interleave.
             var state = s.state();
-            if (!state.traffic() || state.stage() == Stage.FREEZE) return null;
+            if (!state.traffic() || state.stage().sourceMustRemainFrozen()) return null;
             var operation = TrafficOperation.forStep(s.trafficStep());
             var target = state.primary();
             if (target == Primary.SQL_SERVER) {

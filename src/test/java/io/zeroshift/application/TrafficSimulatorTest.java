@@ -51,7 +51,7 @@ class TrafficSimulatorTest {
   @Test
   void writesToPostgresAfterCutoverAndNeverTouchesSqlServer() {
     when(state.primary()).thenReturn(Primary.POSTGRESQL);
-    when(state.stage()).thenReturn(Stage.COMPLETE);
+    when(state.stage()).thenReturn(Stage.COMPLETED);
     traffic.tick();
     verify(session).writeTraffic(TrafficOperation.INSERT);
     verifyNoInteractions(source);

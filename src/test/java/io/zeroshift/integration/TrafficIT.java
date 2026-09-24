@@ -96,10 +96,7 @@ class TrafficIT extends DatabaseIntegrationFixture {
     long sqlServerOps, sourceVersion, sourceCustomers;
     try (var _ = new BackgroundTraffic()) {
       await(m -> m.sqlServerOperations() >= 10);
-      cutover.request();
-      coordinator.tick();
-      assertThat(store.state().error()).isEmpty();
-      assertThat(store.state().stage()).isEqualTo(Stage.COMPLETE);
+      completeCutover();
       sqlServerOps = traffic.metrics().sqlServerOperations();
       sourceVersion = changeTrackingVersion();
       sourceCustomers = source.count(Table.CUSTOMERS);

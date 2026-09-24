@@ -62,7 +62,17 @@ public class PostgresMigrationStore implements MigrationStore {
                     ? null
                     : r.getTimestamp("checkpoint").toInstant(),
                 r.getDouble("rows_per_second"),
-                r.getBoolean("cdc_paused")));
+                r.getBoolean("cdc_paused"),
+                r.getBoolean("validation_passed"),
+                instant(r, "started_at"),
+                instant(r, "cutover_started_at"),
+                instant(r, "completed_at"),
+                r.getLong("completed_rows")));
+  }
+
+  private static Instant instant(ResultSet row, String column) throws SQLException {
+    var value = row.getTimestamp(column);
+    return value == null ? null : value.toInstant();
   }
 
   @Override
@@ -141,7 +151,7 @@ public class PostgresMigrationStore implements MigrationStore {
     @Override
     public void start(SourceDatabase.Boundary b) {
       jdbc.update(
-          "UPDATE migration_state SET stage='SNAPSHOT',status='RUNNING',version=?,customer_bound=?,order_bound=?,expected=?,checkpoint=now() WHERE id=1",
+          "UPDATE migration_state SET stage='SNAPSHOT',status='RUNNING',version=?,customer_bound=?,order_bound=?,expected=?,checkpoint=now(),started_at=now(),cutover_started_at=NULL,completed_at=NULL,completed_rows=0,validation_passed=FALSE WHERE id=1",
           b.version(),
           b.customers(),
           b.orders(),
@@ -275,10 +285,11 @@ public class PostgresMigrationStore implements MigrationStore {
         jdbc.execute("ALTER TABLE orders VALIDATE CONSTRAINT orders_amount_check");
       }
       jdbc.update(
-          "UPDATE migration_state SET validation=? WHERE id=1",
+          "UPDATE migration_state SET validation=?,validation_passed=? WHERE id=1",
           result.matches()
               ? "Passed: counts + SHA-256 + constraints"
-              : "FAILED: source and target differ");
+              : "FAILED: source and target differ",
+          result.matches());
       for (var table : result.tables()) {
         log(
             "Validation "
@@ -297,10 +308,22 @@ public class PostgresMigrationStore implements MigrationStore {
     }
 
     @Override
-    public void complete() {
+    public void beginCutover() {
       jdbc.update(
-          "UPDATE migration_state SET stage='COMPLETE',status='COMPLETE',primary_db='POSTGRESQL',checkpoint=now() WHERE id=1");
-      log("Cutover complete. All routed writes now go to PostgreSQL; SQL Server remains fenced.");
+          "UPDATE migration_state SET stage='FREEZE',cutover_started_at=now(),checkpoint=now() WHERE id=1");
+      log("Cutover requested; routed traffic waits while source writes are fenced");
+    }
+
+    @Override
+    public void complete() {
+      int completed =
+          jdbc.update(
+              "UPDATE migration_state SET stage='COMPLETED',status='SUCCESS',primary_db='POSTGRESQL',checkpoint=now(),completed_at=now(),completed_rows=(SELECT COUNT(*) FROM customers)+(SELECT COUNT(*) FROM orders) WHERE id=1 AND stage='CUTOVER' AND validation_passed=TRUE");
+      if (completed != 1)
+        throw new MigrationException(
+            "Migration cannot complete before cutover validation has passed");
+      log(
+          "Migration completed successfully. PostgreSQL is now Primary; SQL Server remains fenced.");
     }
 
     @Override
@@ -450,7 +473,7 @@ public class PostgresMigrationStore implements MigrationStore {
       jdbc.execute("TRUNCATE orders,customers RESTART IDENTITY");
       // Keep the singleton row: deleting/reinserting it can strand waiting row-lock readers.
       jdbc.update(
-          "UPDATE migration_state SET stage=DEFAULT,status=DEFAULT,primary_db=DEFAULT,current_table=DEFAULT,last_id=DEFAULT,customer_bound=DEFAULT,order_bound=DEFAULT,version=DEFAULT,copied=DEFAULT,expected=DEFAULT,batches=DEFAULT,applied=DEFAULT,traffic=DEFAULT,crash_requested=DEFAULT,traffic_step=DEFAULT,validation=DEFAULT,error=DEFAULT,checkpoint=DEFAULT,rows_per_second=DEFAULT,cdc_paused=DEFAULT WHERE id=1");
+          "UPDATE migration_state SET stage=DEFAULT,status=DEFAULT,primary_db=DEFAULT,current_table=DEFAULT,last_id=DEFAULT,customer_bound=DEFAULT,order_bound=DEFAULT,version=DEFAULT,copied=DEFAULT,expected=DEFAULT,batches=DEFAULT,applied=DEFAULT,traffic=DEFAULT,crash_requested=DEFAULT,traffic_step=DEFAULT,validation=DEFAULT,error=DEFAULT,checkpoint=DEFAULT,rows_per_second=DEFAULT,cdc_paused=DEFAULT,validation_passed=DEFAULT,started_at=DEFAULT,cutover_started_at=DEFAULT,completed_at=DEFAULT,completed_rows=DEFAULT WHERE id=1");
       jdbc.update(
           "UPDATE traffic_metrics SET inserts=DEFAULT,updates=DEFAULT,deletes=DEFAULT,reads=DEFAULT,errors=DEFAULT,consecutive_errors=DEFAULT,sql_server_ops=DEFAULT,postgres_ops=DEFAULT,window_started=DEFAULT,window_ops=DEFAULT,ops_per_second=DEFAULT WHERE id=1");
       jdbc.update("DELETE FROM replay_receipt");

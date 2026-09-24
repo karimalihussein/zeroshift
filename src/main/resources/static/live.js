@@ -12,7 +12,7 @@
     byId('live-hint').textContent = text;
     byId('live-hint').classList.toggle('error', error);
   };
-  const writable = () => connected && state?.migration.status === 'RUNNING' && state.migration.primary === 'SQL_SERVER' && state.migration.stage !== 'FREEZE';
+  const writable = () => connected && state?.migration.status === 'RUNNING' && state.migration.primary === 'SQL_SERVER' && !['FREEZE', 'VALIDATION', 'CUTOVER'].includes(state.migration.stage);
   function controls() {
     for (const id of ['live-insert', 'live-update', 'live-delete', 'live-cdc', 'live-save']) byId(id).disabled = working || !writable();
     byId('live-cdc').textContent = state?.migration.cdcPaused ? 'Resume CDC Replay' : 'Pause CDC Replay';
