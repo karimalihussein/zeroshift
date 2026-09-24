@@ -84,13 +84,25 @@ All Java packages are under `src/main/java/io/zeroshift/`.
 | You edit | What happens |
 |---|---|
 | Thymeleaf templates, JS, CSS | Served straight from `src/` with caching off: refresh the browser |
-| Java, `application*.yml`, `db/*.sql` | Recompiled within ~1s of saving; DevTools restarts the app once the compile succeeds. A failed compile is logged and the last good build keeps running |
+| Java, `application*.yml`, `db/source.sql`, `db/target.sql` | Recompiled within ~1s of saving; DevTools restarts the app once the compile succeeds. A failed compile is logged and the last good build keeps running |
+| `db/migration/*.sql` (Flyway) | Hot reload pauses so a half-written migration is never applied. Run `docker compose restart app` when it is ready |
 | `pom.xml` | Maven restarts with the new classpath |
 
 `docker compose logs -f app` shows the compile and restart output. The Maven cache and compiled classes live in named volumes, and the SQL Server and PostgreSQL data volumes are unchanged. To run the production image instead, bypass the override:
 
 ```sh
 docker compose -f docker-compose.yml up -d --build
+```
+
+### Schema changes
+
+The control-plane schema is versioned by Flyway in `src/main/resources/db/migration`. Once a migration has been applied it is immutable: Flyway records its checksum and refuses to start if the file changes (`Migration checksum mismatch`). To change the schema, add the next `V<n>__description.sql` and pin its checksum in `MigrationChecksumTest`, which fails fast if a released migration is edited.
+
+If a local database holds a migration you want to rewrite because it was never shared, reset the local volumes rather than weakening validation:
+
+```sh
+docker compose down -v   # drops every project volume: both databases and the Maven cache
+docker compose up --build
 ```
 
 ### Local tooling
