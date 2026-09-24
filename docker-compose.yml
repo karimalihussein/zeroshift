@@ -1,4 +1,23 @@
 name: zeroshift-java
+# Shared by the event-driven services. restart: a simulated crash (JVM halt) is followed by a real
+# restart, so recovery - rejoining the group, redelivery, duplicate suppression - can be watched.
+x-commerce-service: &commerce-service
+  restart: unless-stopped
+  mem_limit: 640m
+  depends_on:
+    kafka-init: {condition: service_completed_successfully}
+    commerce-postgres: {condition: service_healthy}
+  healthcheck:
+    test: ['CMD', 'curl', '--fail', '--silent', 'http://localhost:8080/actuator/health']
+    interval: 5s
+    timeout: 5s
+    retries: 30
+    start_period: 40s
+x-commerce-env: &commerce-env
+  PORT: 8080
+  KAFKA_BOOTSTRAP: kafka:9092
+  DB_USER: ${POSTGRES_USER:-zeroshift}
+  DB_PASSWORD: ${POSTGRES_PASSWORD:-zeroshift_local}
 services:
   sqlserver:
     image: mcr.microsoft.com/mssql/server:2022-latest
@@ -130,6 +149,65 @@ services:
       timeout: 5s
       retries: 40
       start_period: 30s
+  order-service:
+    <<: *commerce-service
+    build: {context: ., args: {MODULE: order-service}}
+    image: zeroshift/order-service:dev
+    environment:
+      <<: *commerce-env
+      DB_URL: jdbc:postgresql://commerce-postgres:5432/orders
+      SAGA_STEP_TIMEOUT: ${SAGA_STEP_TIMEOUT:-30s}
+    ports: ['127.0.0.1:${ORDER_SERVICE_PORT:-18081}:8080']
+  payment-service:
+    <<: *commerce-service
+    build: {context: ., args: {MODULE: payment-service}}
+    image: zeroshift/payment-service:dev
+    environment:
+      <<: *commerce-env
+      DB_URL: jdbc:postgresql://commerce-postgres:5432/payments
+      GATEWAY_URL: http://payment-gateway:8080
+    ports: ['127.0.0.1:${PAYMENT_SERVICE_PORT:-18082}:8080']
+  inventory-service:
+    <<: *commerce-service
+    build: {context: ., args: {MODULE: inventory-service}}
+    image: zeroshift/inventory-service:dev
+    environment:
+      <<: *commerce-env
+      DB_URL: jdbc:postgresql://commerce-postgres:5432/inventory
+    ports: ['127.0.0.1:${INVENTORY_SERVICE_PORT:-18084}:8080']
+  shipping-service:
+    <<: *commerce-service
+    build: {context: ., args: {MODULE: shipping-service}}
+    image: zeroshift/shipping-service:dev
+    environment:
+      <<: *commerce-env
+      DB_URL: jdbc:postgresql://commerce-postgres:5432/shipping
+    ports: ['127.0.0.1:${SHIPPING_SERVICE_PORT:-18085}:8080']
+  order-query-service:
+    <<: *commerce-service
+    build: {context: ., args: {MODULE: order-query-service}}
+    image: zeroshift/order-query-service:dev
+    environment:
+      <<: *commerce-env
+      DB_URL: jdbc:postgresql://commerce-postgres:5432/order_query
+    ports: ['127.0.0.1:${ORDER_QUERY_SERVICE_PORT:-18086}:8080']
+  # The external card processor: WireMock, made slow, down or declining from the dashboard.
+  payment-gateway:
+    image: wiremock/wiremock:3.13.1
+    volumes: ['./infra/payment-gateway/mappings:/home/wiremock/mappings:ro']
+    ports: ['127.0.0.1:${PAYMENT_GATEWAY_PORT:-18090}:8080']
+  # Registers the outbox connectors once the services' migrations created publication and slot.
+  connect-init:
+    image: curlimages/curl:8.16.0
+    entrypoint: ['sh', '/debezium/register.sh']
+    volumes: ['./infra/debezium:/debezium:ro']
+    depends_on:
+      kafka-connect: {condition: service_healthy}
+      order-service: {condition: service_healthy}
+      payment-service: {condition: service_healthy}
+      inventory-service: {condition: service_healthy}
+      shipping-service: {condition: service_healthy}
+    restart: 'no'
 volumes:
   sqlserver-java-data:
   postgres-java-data:

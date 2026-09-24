@@ -11,6 +11,7 @@
     <module>payment-service</module>
     <module>inventory-service</module>
     <module>shipping-service</module>
+    <module>order-query-service</module>
     <module>migration-lab</module>
   </modules>
   <properties><java.version>25</java.version><testcontainers.version>1.21.4</testcontainers.version></properties>
