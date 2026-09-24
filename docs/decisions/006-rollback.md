@@ -1,6 +1,6 @@
 # ADR 006: No automatic failback after cutover
 
-**Status:** Accepted
+**Status:** Superseded by [ADR 007](007-reverse-sync-rollback.md)
 
 ## Decision
 

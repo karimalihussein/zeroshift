@@ -23,18 +23,36 @@ public final class ValidationService {
       results.add(
           new ValidationResult.TableResult(
               table,
-              fingerprint(after -> source.read(table, after, Long.MAX_VALUE, batchSize)),
-              fingerprint(after -> store.read(table, after, batchSize))));
+              fingerprint(after -> source.read(table, after, Long.MAX_VALUE, batchSize), Set.of()),
+              fingerprint(after -> store.read(table, after, batchSize), Set.of())));
     return ValidationResult.of(results);
   }
 
-  private ValidationResult.Fingerprint fingerprint(LongFunction<List<Row>> read) {
+  /**
+   * Rollback check while PostgreSQL still takes writes: compares every row except keys whose
+   * captured change is not yet replayed, reading PostgreSQL from one snapshot. SQL Server is fenced
+   * and only reverse sync, which runs on the caller's thread, writes to it, so it is stable.
+   */
+  public ValidationResult validateSettled(MigrationStore.ReverseCapture capture) {
+    var results = new ArrayList<ValidationResult.TableResult>();
+    for (var table : Table.values()) {
+      var pending = capture.pendingKeys(table);
+      results.add(
+          new ValidationResult.TableResult(
+              table,
+              fingerprint(after -> source.read(table, after, Long.MAX_VALUE, batchSize), pending),
+              fingerprint(after -> capture.rows(table, after, batchSize), pending)));
+    }
+    return ValidationResult.of(results);
+  }
+
+  private ValidationResult.Fingerprint fingerprint(LongFunction<List<Row>> read, Set<Long> skip) {
     var digest = new RowFingerprint();
     long after = 0;
     while (true) {
       var rows = read.apply(after);
       if (rows.isEmpty()) return digest.finish();
-      rows.forEach(digest::add);
+      for (var row : rows) if (!skip.contains(row.id())) digest.add(row);
       after = rows.getLast().id();
     }
   }

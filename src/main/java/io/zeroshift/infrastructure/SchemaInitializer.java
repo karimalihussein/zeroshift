@@ -24,7 +24,13 @@ public final class SchemaInitializer {
                   + table.sqlName()
                   + "_fence ON dbo."
                   + table.sqlName()
-                  + " AFTER INSERT,UPDATE,DELETE AS BEGIN SET NOCOUNT ON; IF EXISTS(SELECT 1 FROM dbo.migration_gate WITH(HOLDLOCK) WHERE id=1 AND frozen=1) THROW 51000,'Source writes are frozen by ZeroShift',1; END");
+                  + " AFTER INSERT,UPDATE,DELETE AS BEGIN SET NOCOUNT ON;"
+                  // Reverse sync is the one writer allowed past the fence after cutover.
+                  + " IF CAST(SESSION_CONTEXT(N'"
+                  + ReverseSyncWriter.SESSION_KEY
+                  + "') AS NVARCHAR(32))=N'"
+                  + ReverseSyncWriter.SESSION_VALUE
+                  + "' RETURN; IF EXISTS(SELECT 1 FROM dbo.migration_gate WITH(HOLDLOCK) WHERE id=1 AND frozen=1) THROW 51000,'Source writes are frozen by ZeroShift',1; END");
     }
   }
 }

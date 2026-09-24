@@ -93,6 +93,27 @@ final class ChangeTrackingCapture implements SourceDatabase.Capture {
   }
 
   @Override
+  public List<Long> outOfBand(Table table) {
+    String sql =
+        "SELECT ct.id FROM CHANGETABLE(CHANGES dbo."
+            + table.sqlName()
+            + ",?) ct WHERE ct.SYS_CHANGE_CONTEXT IS NULL OR ct.SYS_CHANGE_CONTEXT<>"
+            + ReverseSyncWriter.CHANGE_CONTEXT
+            + " ORDER BY ct.id";
+    try (var statement = connection.prepareStatement(sql)) {
+      statement.setQueryTimeout(30);
+      statement.setLong(1, after);
+      try (var rs = statement.executeQuery()) {
+        List<Long> ids = new ArrayList<>();
+        while (rs.next()) ids.add(rs.getLong(1));
+        return ids;
+      }
+    } catch (SQLException e) {
+      throw new MigrationException("Cannot check " + table + " for writes outside reverse sync", e);
+    }
+  }
+
+  @Override
   public List<Change> read(Table table, long afterId, int limit) {
     String columns =
         table == Table.CUSTOMERS ? "r.name,r.email,r.active" : "r.customer_id,r.amount,r.status";

@@ -130,6 +130,47 @@ public class PostgresMigrationStore implements MigrationStore {
   }
 
   @Override
+  public RollbackState rollback() {
+    return jdbc.queryForObject(
+        "SELECT * FROM rollback_state WHERE id=1",
+        (r, n) ->
+            new RollbackState(
+                instant(r, "capture_since"),
+                r.getLong("baseline_version"),
+                instant(r, "started_at"),
+                instant(r, "freeze_at"),
+                instant(r, "completed_at"),
+                r.getLong("applied"),
+                r.getLong("conflicts"),
+                r.getString("validation"),
+                r.getBoolean("validation_passed"),
+                r.getLong("verified_rows")));
+  }
+
+  @Override
+  public long issuedKey(Table table) {
+    return Objects.requireNonNull(
+        jdbc.queryForObject(
+            "SELECT COALESCE(pg_sequence_last_value(pg_get_serial_sequence('"
+                + table.sqlName()
+                + "','id')::regclass),0)",
+            Long.class));
+  }
+
+  @Override
+  public long reversePending() {
+    return Objects.requireNonNull(
+        jdbc.queryForObject(
+            "SELECT COUNT(*) FROM (SELECT DISTINCT table_name,record_id FROM reverse_change) k",
+            Long.class));
+  }
+
+  @Override
+  public ReverseCapture reverseCapture() {
+    return new PostgresReverseCapture(dataSource);
+  }
+
+  @Override
   public long appliedVersion(Table table, long id) {
     return jdbc
         .query(
@@ -290,15 +331,25 @@ public class PostgresMigrationStore implements MigrationStore {
               ? "Passed: counts + SHA-256 + constraints"
               : "FAILED: source and target differ",
           result.matches());
+      logValidation("Validation", "source", "target", result);
+    }
+
+    private void logValidation(
+        String label, String sourceName, String targetName, ValidationResult result) {
       for (var table : result.tables()) {
         log(
-            "Validation "
+            label
+                + " "
                 + (table.matches() ? "passed" : "FAILED")
                 + ": "
                 + table.table().sqlName()
-                + " · source "
+                + " · "
+                + sourceName
+                + " "
                 + table.source().count()
-                + " / target "
+                + " / "
+                + targetName
+                + " "
                 + table.target().count()
                 + " · SHA-256 "
                 + (table.source().sha256().equals(table.target().sha256())
@@ -322,8 +373,141 @@ public class PostgresMigrationStore implements MigrationStore {
       if (completed != 1)
         throw new MigrationException(
             "Migration cannot complete before cutover validation has passed");
+      installReverseCapture();
       log(
           "Migration completed successfully. PostgreSQL is now Primary; SQL Server remains fenced.");
+      log("Reverse capture active: PostgreSQL writes are recorded for a lossless rollback");
+    }
+
+    /**
+     * Runs in the transaction that makes PostgreSQL primary. Routing reads the primary under the
+     * same row lock, so no PostgreSQL write can precede its capture.
+     */
+    private void installReverseCapture() {
+      for (var table : Table.values()) {
+        String name = table.sqlName();
+        jdbc.execute(
+            "CREATE OR REPLACE TRIGGER zeroshift_capture AFTER INSERT OR UPDATE OR DELETE ON "
+                + name
+                + " FOR EACH ROW EXECUTE FUNCTION zeroshift_capture()");
+        jdbc.execute(
+            "CREATE OR REPLACE TRIGGER zeroshift_fence BEFORE INSERT OR UPDATE OR DELETE ON "
+                + name
+                + " FOR EACH STATEMENT EXECUTE FUNCTION zeroshift_fence()");
+      }
+      jdbc.update("UPDATE write_gate SET frozen=FALSE WHERE id=1");
+      jdbc.update("DELETE FROM reverse_change");
+      jdbc.update("DELETE FROM reverse_conflict");
+      jdbc.update(
+          "UPDATE rollback_state SET capture_since=now(),baseline_version=(SELECT version FROM migration_state WHERE id=1),started_at=NULL,freeze_at=NULL,completed_at=NULL,applied=0,conflicts=0,validation=DEFAULT,validation_passed=FALSE,verified_rows=0 WHERE id=1");
+    }
+
+    @Override
+    public void beginRollback() {
+      jdbc.update(
+          "UPDATE migration_state SET stage='ROLLBACK_PREPARE',status='RUNNING',error='',checkpoint=now() WHERE id=1");
+      jdbc.update(
+          "UPDATE rollback_state SET started_at=now(),freeze_at=NULL,completed_at=NULL,applied=0,conflicts=0,validation=DEFAULT,validation_passed=FALSE,verified_rows=0 WHERE id=1");
+      jdbc.update("DELETE FROM reverse_conflict");
+      log("Rollback requested: replaying PostgreSQL's post-cutover writes into SQL Server first");
+    }
+
+    @Override
+    public void acknowledgeReverse(Table table, List<Change> changes) {
+      checkCrash();
+      jdbc.batchUpdate(
+          "DELETE FROM reverse_change WHERE table_name=? AND record_id=? AND seq<=?",
+          changes,
+          1000,
+          (p, c) -> {
+            p.setString(1, table.name());
+            p.setLong(2, c.id());
+            p.setLong(3, c.version());
+          });
+    }
+
+    @Override
+    public void reverseApplied(long applied) {
+      if (applied == 0) return;
+      jdbc.update("UPDATE rollback_state SET applied=applied+? WHERE id=1", applied);
+      jdbc.update("UPDATE migration_state SET checkpoint=now() WHERE id=1");
+      log(
+          "Reverse sync applied "
+              + applied
+              + " changed keys to SQL Server; "
+              + reversePending()
+              + " pending");
+    }
+
+    @Override
+    public void conflicts(List<ReverseConflict> conflicts) {
+      jdbc.batchUpdate(
+          "INSERT INTO reverse_conflict(table_name,record_id) VALUES(?,?) ON CONFLICT DO NOTHING",
+          conflicts,
+          1000,
+          (p, c) -> {
+            p.setString(1, c.table().name());
+            p.setLong(2, c.id());
+          });
+      jdbc.update(
+          "UPDATE rollback_state SET conflicts=(SELECT COUNT(*) FROM reverse_conflict) WHERE id=1");
+      conflicts.stream()
+          .limit(20)
+          .forEach(
+              c -> log("Conflict: SQL Server " + c + " changed outside ZeroShift after cutover"));
+    }
+
+    @Override
+    public void rollbackValidation(ValidationResult result, String scope) {
+      jdbc.update(
+          "UPDATE rollback_state SET validation=?,validation_passed=? WHERE id=1",
+          result.matches()
+              ? "Passed (" + scope + "): counts + SHA-256"
+              : "FAILED (" + scope + "): SQL Server and PostgreSQL differ",
+          result.matches());
+      logValidation("Rollback validation (" + scope + ")", "SQL Server", "PostgreSQL", result);
+    }
+
+    @Override
+    public void freezeWrites(boolean frozen) {
+      jdbc.update("UPDATE write_gate SET frozen=? WHERE id=1", frozen);
+      if (frozen) {
+        jdbc.update("UPDATE rollback_state SET freeze_at=now() WHERE id=1");
+        log("PostgreSQL writes fenced; application traffic waits for the final sync");
+      } else log("PostgreSQL write fence lifted");
+    }
+
+    @Override
+    public void completeRollback() {
+      int switched =
+          jdbc.update(
+              "UPDATE migration_state SET stage='ROLLED_BACK',status='SUCCESS',primary_db='SQL_SERVER',crash_requested=FALSE,checkpoint=now() WHERE id=1 AND stage='SWITCH_PRIMARY' AND (SELECT validation_passed FROM rollback_state WHERE id=1) AND NOT EXISTS(SELECT 1 FROM reverse_change)");
+      if (switched != 1)
+        throw new MigrationException(
+            "Rollback cannot switch primary before final validation passed with nothing pending");
+      // PostgreSQL stays fenced as the secondary; only capture stops.
+      for (var table : Table.values())
+        jdbc.execute("DROP TRIGGER IF EXISTS zeroshift_capture ON " + table.sqlName());
+      jdbc.update(
+          "UPDATE rollback_state SET completed_at=now(),verified_rows=(SELECT COUNT(*) FROM customers)+(SELECT COUNT(*) FROM orders) WHERE id=1");
+      var rollback = rollback();
+      log(
+          "Rollback completed: SQL Server is Primary; PostgreSQL is secondary and fenced."
+              + " 0 captured changes pending; "
+              + rollback.verifiedRows()
+              + " rows verified; write freeze "
+              + rollback.freezeMillis()
+              + " ms");
+    }
+
+    @Override
+    public void abortRollback() {
+      jdbc.update("UPDATE write_gate SET frozen=FALSE WHERE id=1");
+      jdbc.update(
+          "UPDATE migration_state SET stage='COMPLETED',status='SUCCESS',error='',crash_requested=FALSE,checkpoint=now() WHERE id=1");
+      log(
+          "Rollback abandoned before the switch: PostgreSQL remains Primary and accepts writes;"
+              + " reverse capture continues");
     }
 
     @Override
@@ -467,6 +651,14 @@ public class PostgresMigrationStore implements MigrationStore {
 
     @Override
     public void reset() {
+      for (var table : Table.values()) {
+        jdbc.execute("DROP TRIGGER IF EXISTS zeroshift_capture ON " + table.sqlName());
+        jdbc.execute("DROP TRIGGER IF EXISTS zeroshift_fence ON " + table.sqlName());
+      }
+      jdbc.update("UPDATE write_gate SET frozen=FALSE WHERE id=1");
+      jdbc.execute("TRUNCATE reverse_change,reverse_conflict");
+      jdbc.update(
+          "UPDATE rollback_state SET capture_since=NULL,baseline_version=DEFAULT,started_at=NULL,freeze_at=NULL,completed_at=NULL,applied=DEFAULT,conflicts=DEFAULT,validation=DEFAULT,validation_passed=DEFAULT,verified_rows=DEFAULT WHERE id=1");
       jdbc.execute("ALTER TABLE orders DROP CONSTRAINT IF EXISTS orders_customer_fk");
       jdbc.execute("ALTER TABLE orders DROP CONSTRAINT IF EXISTS orders_amount_check");
       jdbc.execute("DROP INDEX IF EXISTS orders_customer_idx");

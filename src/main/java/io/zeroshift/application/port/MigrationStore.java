@@ -2,6 +2,7 @@ package io.zeroshift.application.port;
 
 import io.zeroshift.domain.*;
 import java.util.List;
+import java.util.Set;
 import java.util.function.Function;
 
 public interface MigrationStore {
@@ -18,6 +19,34 @@ public interface MigrationStore {
   List<Row> read(Table table, long afterId, int limit);
 
   TrafficMetrics trafficMetrics();
+
+  RollbackState rollback();
+
+  /** The highest key PostgreSQL's identity sequence has handed out, 0 if none. */
+  long issuedKey(Table table);
+
+  /** Distinct keys captured on PostgreSQL since cutover and not yet acknowledged by SQL Server. */
+  long reversePending();
+
+  /** Opens one read-only PostgreSQL snapshot over captured changes and current rows. */
+  ReverseCapture reverseCapture();
+
+  /**
+   * Post-cutover changes as net images: each captured key maps to its current row, or to a delete
+   * when the row is gone. {@link Change#version()} is the highest captured sequence for that key.
+   */
+  interface ReverseCapture extends AutoCloseable {
+    List<Change> changes(Table table, long afterId, int limit);
+
+    List<Row> rows(Table table, long afterId, int limit);
+
+    Set<Long> pendingKeys(Table table);
+
+    long pending();
+
+    @Override
+    void close();
+  }
 
   interface Session {
     MigrationState state();
@@ -63,6 +92,27 @@ public interface MigrationStore {
 
     /** Counts and logs one failed operation and returns the current consecutive failure run. */
     int trafficError(TrafficOperationResult result);
+
+    void beginRollback();
+
+    /**
+     * Deletes captured entries up to each change's version. Call only after SQL Server committed
+     * those images; a crash before this commit replays them, which is idempotent.
+     */
+    void acknowledgeReverse(Table table, List<Change> changes);
+
+    void reverseApplied(long applied);
+
+    void conflicts(List<ReverseConflict> conflicts);
+
+    void rollbackValidation(ValidationResult result, String scope);
+
+    /** Sets PostgreSQL's write fence. Setting it waits for in-flight guarded writes to commit. */
+    void freezeWrites(boolean frozen);
+
+    void completeRollback();
+
+    void abortRollback();
 
     void reset();
 

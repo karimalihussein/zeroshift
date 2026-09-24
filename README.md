@@ -14,6 +14,7 @@ ZeroShift is a small Spring Boot application with a single dashboard. It copies 
 - **Pause, simulated crash and process kill:** recovery always resumes from the last committed checkpoint
 - **Full validation:** counts plus ordered SHA-256 fingerprints of every column, behind a real source write fence
 - **Gated cutover:** fence, drain, validate, sync sequences, switch routing
+- **Lossless rollback after cutover:** PostgreSQL's post-cutover writes are captured, replayed back into SQL Server, validated and fenced before SQL Server becomes primary again. Out-of-band SQL Server writes are refused as conflicts, never overwritten
 - **Live Data Changes:** insert, update or delete rows in SQL Server yourself and watch them replay into PostgreSQL, or pause replay to hold the two databases apart
 
 ## Quick start
@@ -37,7 +38,8 @@ Open **http://localhost:8080**. `docker compose up` runs the development stack w
 5. **Live Data Changes:** change real rows during the migration and compare them in the Record Inspector. See [docs/live-changes.md](docs/live-changes.md).
 6. **Validate:** briefly fences the source and compares every row.
 7. **Cutover:** fences SQL Server permanently, drains, validates, syncs sequences and makes PostgreSQL primary. Traffic continues on PostgreSQL.
-8. **Reset:** clears the lab's data in both databases.
+8. **Rollback to SQL Server** (after a successful cutover): Preparing → Reverse catch-up → Validation → Write freeze → Final sync → Switching primary → Completed. Traffic keeps writing to PostgreSQL until the freeze. **Abort rollback** is available until the switch and leaves PostgreSQL primary. See [ADR 007](docs/decisions/007-reverse-sync-rollback.md).
+9. **Reset:** clears the lab's data in both databases.
 
 Progress is stage-weighted: snapshot rows 0–80%, catch-up 85%, prepare 90%, ready 95%, freeze 98%, complete 100%. It is not an ETA.
 
@@ -151,5 +153,5 @@ ZeroShift is an educational lab for one two-table application. It is not a gener
 - **Freeze length:** the final full validation runs inside the write freeze. That is fine for demo sizes; production systems validate incrementally.
 - **Source fence:** triggers enforce the fence for ordinary DML only. Schema changes during a migration are not supported.
 - **Single instance:** one app instance owns recovery; there is no leader election.
-- **No failback:** after cutover SQL Server stays fenced ([ADR 006](docs/decisions/006-rollback.md)).
+- **Rollback is one-way back:** after a rollback PostgreSQL is a fenced, validated copy as of the switch; forward replication does not resume ([ADR 007](docs/decisions/007-reverse-sync-rollback.md)). Conflicting SQL Server writes are reported, not reconciled.
 - **Local use only:** the app has no authentication, ports bind to loopback, and the credentials in `.env.example` are local demo values. SQL Server Developer edition is licensed for development and testing only.

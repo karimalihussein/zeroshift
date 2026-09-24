@@ -26,6 +26,32 @@ class DomainTest {
   }
 
   @Test
+  void rollbackHoldsWritesFromTheFreezeAndCanBeAbandonedOnlyBeforeTheSwitch() {
+    assertThat(Stage.values())
+        .filteredOn(Stage::writesHeld)
+        .containsExactly(
+            Stage.FREEZE,
+            Stage.VALIDATION,
+            Stage.CUTOVER,
+            Stage.ROLLBACK_FREEZE,
+            Stage.FINAL_SYNC,
+            Stage.SWITCH_PRIMARY);
+    assertThat(Stage.values())
+        .filteredOn(Stage::rollbackAbortable)
+        .containsExactly(
+            Stage.ROLLBACK_PREPARE,
+            Stage.REVERSE_CATCH_UP,
+            Stage.ROLLBACK_VALIDATION,
+            Stage.ROLLBACK_FREEZE,
+            Stage.FINAL_SYNC);
+    assertThat(Stage.ROLLED_BACK.canResume()).isFalse();
+    assertThat(Stage.FINAL_SYNC.canPause()).isFalse();
+    assertThat(Stage.REVERSE_CATCH_UP.canPause()).isTrue();
+    // The SQL Server fence rule for cutover must not leak into rollback stages.
+    assertThat(Stage.FINAL_SYNC.sourceMustRemainFrozen()).isFalse();
+  }
+
+  @Test
   void snapshotWithNoExpectedWorkNeverReportsProgress() {
     var state =
         new MigrationState(

@@ -30,6 +30,13 @@ public interface SourceDatabase {
 
     long pending();
 
+    /**
+     * Keys changed after this capture's baseline by anything other than ZeroShift's reverse sync.
+     * After cutover SQL Server is fenced, so any such key is a conflict a rollback must not
+     * overwrite.
+     */
+    List<Long> outOfBand(Table table);
+
     @Override
     void close();
   }

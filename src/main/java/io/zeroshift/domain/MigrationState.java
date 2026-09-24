@@ -38,7 +38,36 @@ public record MigrationState(
       case VALIDATION -> 98;
       case CUTOVER -> 99;
       case COMPLETED -> successful() ? 100 : 99;
+      // The forward migration finished before any rollback could start.
+      case ROLLBACK_PREPARE,
+          REVERSE_CATCH_UP,
+          ROLLBACK_VALIDATION,
+          ROLLBACK_FREEZE,
+          FINAL_SYNC,
+          SWITCH_PRIMARY,
+          ROLLED_BACK ->
+          100;
     };
+  }
+
+  /** Stage-weighted like {@link #progress()}: a position in the procedure, not an ETA. */
+  public double rollbackProgress() {
+    return switch (stage) {
+      case ROLLBACK_PREPARE -> 5;
+      case REVERSE_CATCH_UP -> 30;
+      case ROLLBACK_VALIDATION -> 60;
+      case ROLLBACK_FREEZE -> 75;
+      case FINAL_SYNC -> 85;
+      case SWITCH_PRIMARY -> 95;
+      case ROLLED_BACK -> status == RunStatus.SUCCESS && primary == Primary.SQL_SERVER ? 100 : 95;
+      default -> 0;
+    };
+  }
+
+  public boolean rolledBack() {
+    return stage == Stage.ROLLED_BACK
+        && status == RunStatus.SUCCESS
+        && primary == Primary.SQL_SERVER;
   }
 
   public boolean successful() {

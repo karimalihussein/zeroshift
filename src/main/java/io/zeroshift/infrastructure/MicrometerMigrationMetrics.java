@@ -53,6 +53,12 @@ public final class MicrometerMigrationMetrics implements MigrationMetrics {
         "Captured changes not yet replayed",
         store,
         catchUp::pending);
+    gauge(
+        registry,
+        "zeroshift.reverse.changes.pending",
+        "PostgreSQL keys captured after cutover and not yet replayed into SQL Server",
+        store,
+        MigrationStore::reversePending);
     for (var stage : Stage.values())
       Gauge.builder("zeroshift.migration.stage", store, s -> s.state().stage() == stage ? 1 : 0)
           .tag("stage", tag(stage))

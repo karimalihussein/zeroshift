@@ -22,6 +22,26 @@ public class DashboardController {
       long totalMigratedRows,
       Long durationMillis) {}
 
+  /**
+   * Reverse sync after cutover. {@code dataLost} is reported only for a completed rollback, where
+   * final validation matched both databases behind both fences with nothing left to replay.
+   */
+  public record Rollback(
+      boolean available,
+      boolean inProgress,
+      boolean abortable,
+      boolean completed,
+      double progress,
+      long pending,
+      long applied,
+      long conflicts,
+      String validation,
+      boolean validationPassed,
+      Long durationMillis,
+      Long freezeMillis,
+      long verifiedRows,
+      Long dataLost) {}
+
   public record Dashboard(
       MigrationState migration,
       double progress,
@@ -33,7 +53,8 @@ public class DashboardController {
       String captureError,
       int seedRows,
       boolean migrationStartAllowed,
-      Completion completion) {}
+      Completion completion,
+      Rollback rollback) {}
 
   public record ActionResult(String message) {}
 
@@ -44,6 +65,7 @@ public class DashboardController {
   private final DemoDataService demo;
   private final CutoverService cutover;
   private final ChangeCatchUp catchUp;
+  private final RollbackService rollback;
 
   public DashboardController(
       MigrationStore store,
@@ -52,7 +74,8 @@ public class DashboardController {
       TrafficSimulator traffic,
       DemoDataService demo,
       CutoverService cutover,
-      ChangeCatchUp catchUp) {
+      ChangeCatchUp catchUp,
+      RollbackService rollback) {
     this.store = store;
     this.source = source;
     this.migration = migration;
@@ -60,6 +83,7 @@ public class DashboardController {
     this.demo = demo;
     this.cutover = cutover;
     this.catchUp = catchUp;
+    this.rollback = rollback;
   }
 
   @GetMapping("/")
@@ -100,7 +124,29 @@ public class DashboardController {
             state.validationPassed(),
             pending,
             state.successful() ? state.completedRows() : targetCounts.total(),
-            state.durationMillis()));
+            state.durationMillis()),
+        rollback(state));
+  }
+
+  private Rollback rollback(MigrationState state) {
+    var reverse = store.rollback();
+    boolean tracked = reverse.captureActive() && state.primary() == Primary.POSTGRESQL;
+    boolean completed = state.rolledBack();
+    return new Rollback(
+        state.successful() && reverse.captureActive(),
+        state.stage().rollback() && !completed,
+        state.stage().rollbackAbortable(),
+        completed,
+        state.rollbackProgress(),
+        tracked ? store.reversePending() : 0,
+        reverse.applied(),
+        reverse.conflicts(),
+        reverse.validation(),
+        reverse.validationPassed(),
+        reverse.durationMillis(),
+        reverse.freezeMillis(),
+        reverse.verifiedRows(),
+        completed && reverse.validationPassed() ? 0L : null);
   }
 
   @PostMapping("/api/actions/{action}")
@@ -120,6 +166,8 @@ public class DashboardController {
         return new ActionResult(result.matches() ? "Validation passed" : "Validation FAILED");
       }
       case "cutover" -> cutover.request();
+      case "rollback" -> rollback.request();
+      case "rollback-abort" -> rollback.abort();
       case "reset" -> demo.reset();
       default -> throw new InvalidAction("Unknown action");
     }

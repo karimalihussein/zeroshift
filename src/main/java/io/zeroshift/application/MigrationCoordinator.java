@@ -9,18 +9,21 @@ public final class MigrationCoordinator {
   private final SnapshotBatch snapshot;
   private final ChangeCatchUp catchUp;
   private final CutoverService cutover;
+  private final RollbackService rollback;
 
   public MigrationCoordinator(
       MigrationStore store,
       SourceDatabase source,
       SnapshotBatch snapshot,
       ChangeCatchUp catchUp,
-      CutoverService cutover) {
+      CutoverService cutover,
+      RollbackService rollback) {
     this.store = store;
     this.source = source;
     this.snapshot = snapshot;
     this.catchUp = catchUp;
     this.cutover = cutover;
+    this.rollback = rollback;
   }
 
   public void recover() {
@@ -109,7 +112,14 @@ public final class MigrationCoordinator {
                 if (!s.state().cdcPaused()) catchUp.drain(s);
               }
               case FREEZE, VALIDATION, CUTOVER -> cutover.advance(s);
-              case IDLE, COMPLETED -> {}
+              case ROLLBACK_PREPARE,
+                  REVERSE_CATCH_UP,
+                  ROLLBACK_VALIDATION,
+                  ROLLBACK_FREEZE,
+                  FINAL_SYNC,
+                  SWITCH_PRIMARY ->
+                  rollback.advance(s);
+              case IDLE, COMPLETED, ROLLED_BACK -> {}
             }
             return null;
           });

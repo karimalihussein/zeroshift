@@ -14,6 +14,9 @@ import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
 
 class DashboardControllerTest {
+  private static final RollbackState NO_ROLLBACK =
+      new RollbackState(null, 0, null, null, null, 0, 0, "Not checked", false, 0);
+
   @Test
   void emptySourceDisablesMigrationStartInDashboardState() {
     var store = mock(MigrationStore.class);
@@ -23,6 +26,7 @@ class DashboardControllerTest {
     var state = idleState();
     when(store.state()).thenReturn(state);
     when(store.logs()).thenReturn(List.of());
+    when(store.rollback()).thenReturn(NO_ROLLBACK);
     when(source.count(Table.CUSTOMERS)).thenReturn(0L);
     when(source.count(Table.ORDERS)).thenReturn(0L);
     when(traffic.metrics())
@@ -36,7 +40,8 @@ class DashboardControllerTest {
                 traffic,
                 demo,
                 mock(CutoverService.class),
-                mock(ChangeCatchUp.class))
+                mock(ChangeCatchUp.class),
+                mock(RollbackService.class))
             .status();
 
     assertThat(dashboard.migrationStartAllowed()).isFalse();
@@ -64,6 +69,7 @@ class DashboardControllerTest {
     when(store.count(Table.CUSTOMERS)).thenReturn(20L);
     when(store.count(Table.ORDERS)).thenReturn(20L);
     when(store.logs()).thenReturn(List.of());
+    when(store.rollback()).thenReturn(NO_ROLLBACK);
     when(source.count(any())).thenReturn(20L);
     when(traffic.metrics())
         .thenReturn(new TrafficMetrics(false, Primary.POSTGRESQL, 0, 0, 0, 0, 0, 0, 0, 0, 0));
@@ -76,7 +82,8 @@ class DashboardControllerTest {
                 traffic,
                 mock(DemoDataService.class),
                 mock(CutoverService.class),
-                mock(ChangeCatchUp.class))
+                mock(ChangeCatchUp.class),
+                mock(RollbackService.class))
             .status();
 
     assertThat(dashboard.progress()).isEqualTo(100);
@@ -119,7 +126,8 @@ class DashboardControllerTest {
             mock(TrafficSimulator.class),
             mock(DemoDataService.class),
             mock(CutoverService.class),
-            mock(ChangeCatchUp.class));
+            mock(ChangeCatchUp.class),
+            mock(RollbackService.class));
 
     assertThatThrownBy(() -> controller.action("start", null)).isSameAs(failure);
     var response = new ApiExceptionHandler().invalid(failure);

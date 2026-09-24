@@ -53,8 +53,28 @@ public class ApplicationWiring {
       SourceDatabase source,
       SnapshotBatch snapshot,
       ChangeCatchUp catchUp,
-      CutoverService cutover) {
-    return new MigrationCoordinator(store, source, snapshot, catchUp, cutover);
+      CutoverService cutover,
+      RollbackService rollback) {
+    return new MigrationCoordinator(store, source, snapshot, catchUp, cutover, rollback);
+  }
+
+  @Bean
+  ReverseCatchUp reverseCatchUp(
+      MigrationStore store,
+      SourceDatabase source,
+      SourceWriteback writeback,
+      LabSettings settings) {
+    return new ReverseCatchUp(store, source, writeback, settings.batchSize());
+  }
+
+  @Bean
+  RollbackService rollbackService(
+      MigrationStore store,
+      SourceDatabase source,
+      SourceWriteback writeback,
+      ReverseCatchUp reverse,
+      ValidationService validation) {
+    return new RollbackService(store, source, writeback, reverse, validation);
   }
 
   @Bean

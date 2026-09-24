@@ -34,6 +34,8 @@ abstract class DatabaseIntegrationFixture {
   protected MigrationCoordinator coordinator;
   protected CutoverService cutover;
   protected TrafficSimulator traffic;
+  protected RollbackService rollback;
+  protected SqlServerWriteback writeback;
   protected MicrometerMigrationMetrics metrics;
   protected JdbcTemplate sql;
   protected JdbcTemplate pg;
@@ -86,9 +88,14 @@ abstract class DatabaseIntegrationFixture {
     cutover =
         new CutoverService(
             source, store, changes, new ValidationService(source, store, 7), metrics);
+    var validation = new ValidationService(source, store, 7);
+    writeback = new SqlServerWriteback(sourceDataSource);
+    rollback =
+        new RollbackService(
+            store, source, writeback, new ReverseCatchUp(store, source, writeback, 7), validation);
     coordinator =
         new MigrationCoordinator(
-            store, source, new SnapshotBatch(source, 7, metrics), changes, cutover);
+            store, source, new SnapshotBatch(source, 7, metrics), changes, cutover, rollback);
     traffic = new TrafficSimulator(store, source);
   }
 
