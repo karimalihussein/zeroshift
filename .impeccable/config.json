@@ -1,0 +1,17 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "side-tab",
+        "value": "*",
+        "files": [
+          "src/main/resources/static/style.css"
+        ],
+        "createdAt": "2026-09-24T15:00:54.335Z",
+        "reason": "model triage: the only one-sided 3px borders in this file are .branch--source/.branch--target, the application-feeder route lines of the signal-box track drawing, not card accents"
+      }
+    ]
+  }
+}

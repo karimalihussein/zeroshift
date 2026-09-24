@@ -15,7 +15,8 @@
   const writable = () => connected && state?.migration.status === 'RUNNING' && state.migration.primary === 'SQL_SERVER' && !['FREEZE', 'VALIDATION', 'CUTOVER'].includes(state.migration.stage);
   function controls() {
     for (const id of ['live-insert', 'live-update', 'live-delete', 'live-cdc', 'live-save']) byId(id).disabled = working || !writable();
-    byId('live-cdc').textContent = state?.migration.cdcPaused ? 'Resume CDC Replay' : 'Pause CDC Replay';
+    byId('live-cdc').querySelector('.key__label').textContent = state?.migration.cdcPaused ? 'Resume CDC replay' : 'Pause CDC replay';
+    byId('live-cdc').setAttribute('aria-pressed', String(Boolean(state?.migration.cdcPaused)));
   }
   async function api(path, method = 'GET', body) {
     const response = await fetch(`/api/live${path}`, { method, headers: body ? { 'Content-Type': 'application/json' } : {}, body: body ? JSON.stringify(body) : undefined });
@@ -39,7 +40,8 @@
       }
       body.append(row);
     }
-    byId('record-sync').textContent = `${record.inSync ? '✓ ' : ''}${record.message}${record.cdcPaused ? ' · replay paused' : ''}`;
+    byId('record-sync').textContent = `${record.message}${record.cdcPaused ? ' · replay paused' : ''}`;
+    byId('record-sync').dataset.sync = String(record.inSync);
     const experiment = record.experiment;
     byId('record-before').textContent = experiment
       ? `Last manual ${experiment.operation}:\n${describe(experiment.before)} → ${describe(experiment.after)}` : '';

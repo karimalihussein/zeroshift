@@ -51,7 +51,7 @@ class DashboardControllerTest {
 
     assertThat(script).contains("start: data.migrationStartAllowed");
     assertThat(page)
-        .contains("data-action=\"start\" class=\"accent\" disabled>Start Migration</button>");
+        .containsPattern("<button[^>]*data-action=\"start\"[^>]*\\sdisabled>");
   }
 
   @Test

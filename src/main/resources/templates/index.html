@@ -1,58 +1,292 @@
 <!doctype html>
 <html lang="en" xmlns:th="http://www.thymeleaf.org">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>ZeroShift — migration lab</title><link rel="stylesheet" th:href="@{/style.css}"><script defer th:src="@{/app.js}"></script><script defer th:src="@{/live.js}"></script></head>
-<body><main>
-<header><h1>ZeroShift<span>Database migration, made visible.</span></h1><p id="connection" role="status">Connecting…</p></header>
-<section class="flow" aria-label="Migration flow">
-  <div><h2>SQL Server</h2><p><strong id="source-count">—</strong> rows</p><small id="source-detail">Source database</small></div>
-  <span class="arrow" aria-hidden="true">→</span>
-  <div class="migration"><h2 id="stage">Migration</h2><p id="run-status">Ready to begin</p><progress id="progress" value="0" max="100" aria-label="Migration progress"></progress><small id="percent">0%</small></div>
-  <span class="arrow" aria-hidden="true">→</span>
-  <div><h2>PostgreSQL</h2><p><strong id="target-count">—</strong> rows</p><small id="target-detail">Target database</small></div>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light">
+<title>ZeroShift — migration lab</title>
+<link rel="preload" th:href="@{/fonts/barlow-condensed-latin-600-normal.woff2}" as="font" type="font/woff2" crossorigin>
+<link rel="preload" th:href="@{/fonts/barlow-latin-400-normal.woff2}" as="font" type="font/woff2" crossorigin>
+<link rel="icon" th:href="@{/favicon.svg}" type="image/svg+xml">
+<link rel="stylesheet" th:href="@{/style.css}">
+<script defer th:src="@{/app.js}"></script>
+<script defer th:src="@{/live.js}"></script>
+</head>
+<body>
+<!--
+THESIS: The migration is a railway interlocking. Rows run the line from SQL Server to PostgreSQL, the write fence is a signal at danger, and cutover throws the points. Refuses the stepper-plus-stat-cards dashboard.
+OWN-WORLD: Pale green-grey signal-box room; one dark enamel mimic panel with white track paint; lamps obey law: yellow = occupied/in progress, white = route passed, green = verified/clear, red = danger (fenced, failed) only. Barlow Condensed engraved labels, Barlow text, digits in fixed cells.
+STORY: A viewer sees where the data is, which database takes writes, and what the operator may do next. Every lamp, packet and counter is a backend observation.
+FIRST VIEWPORT: Masthead with live lamp and primary plate; the full-width mimic panel (application feeder with points, two termini, seven track sections, stage caption); the control desk directly beneath.
+FORM: Signal Box, #1 on the ordered list (pick); seed 5b6e88ad.
+FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, DESIGN.md, and every shipping raster carrying its provenance
+-->
+<svg class="sprite" aria-hidden="true" focusable="false">
+  <symbol id="i-db" viewBox="0 0 24 24"><ellipse cx="12" cy="5.5" rx="7.5" ry="2.8"/><path d="M4.5 5.5v13c0 1.5 3.4 2.8 7.5 2.8s7.5-1.3 7.5-2.8v-13"/><path d="M4.5 12c0 1.5 3.4 2.8 7.5 2.8s7.5-1.3 7.5-2.8"/></symbol>
+  <symbol id="i-app" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 8.5h18M6.5 6.3h.01M9 6.3h.01"/></symbol>
+  <symbol id="i-seed" viewBox="0 0 24 24"><path d="M12 3 3.5 7.5 12 12l8.5-4.5z"/><path d="m3.5 12 8.5 4.5 8.5-4.5M3.5 16.5 12 21l8.5-4.5"/></symbol>
+  <symbol id="i-traffic" viewBox="0 0 24 24"><path d="M3 12h4l2.5-6 5 12 2.5-6h4"/></symbol>
+  <symbol id="i-play" viewBox="0 0 24 24"><path d="M7 4.5v15l12-7.5z"/></symbol>
+  <symbol id="i-pause" viewBox="0 0 24 24"><path d="M8 5v14M16 5v14"/></symbol>
+  <symbol id="i-resume" viewBox="0 0 24 24"><path d="M4 12a8 8 0 1 0 2.4-5.7"/><path d="M4 4v4.5h4.5"/></symbol>
+  <symbol id="i-crash" viewBox="0 0 24 24"><path d="M13 2.5 4.5 13.5H12l-1 8 8.5-11H12z"/></symbol>
+  <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 3 4.5 6v5.5c0 4.6 3.2 8.2 7.5 9.5 4.3-1.3 7.5-4.9 7.5-9.5V6z"/><path d="m8.8 12 2.2 2.2 4.3-4.4"/></symbol>
+  <symbol id="i-points" viewBox="0 0 24 24"><path d="M3 18h6l8-12h4"/><path d="M13 18h8"/><path d="m18 3 3 3-3 3"/></symbol>
+  <symbol id="i-reset" viewBox="0 0 24 24"><path d="M4 7h16M9.5 7V4.5h5V7M6.5 7l1 13h9l1-13"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12.5 4.5 4.5L19 7.5"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4.5 4.5"/></symbol>
+  <symbol id="i-down" viewBox="0 0 24 24"><path d="M12 4v15M6 13l6 6 6-6"/></symbol>
+  <symbol id="i-inspect" viewBox="0 0 24 24"><path d="M4 5h16M4 12h7M4 19h7"/><circle cx="16.5" cy="15.5" r="3.5"/><path d="m19 18 2 2"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+  <symbol id="i-edit" viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16z"/></symbol>
+  <symbol id="i-hold" viewBox="0 0 24 24"><rect x="5" y="5" width="14" height="14" rx="1.5"/></symbol>
+</svg>
+
+<header class="masthead">
+  <div class="brand">
+    <h1>ZeroShift</h1>
+    <p>Database migration, made visible.</p>
+  </div>
+  <div class="masthead__status">
+    <p class="conn" id="connection-plate" data-state="connecting"><span class="lamp lamp--conn" aria-hidden="true"></span><span id="connection" role="status">Connecting…</span></p>
+    <p class="primary-plate" aria-live="polite"><span>Primary</span><strong id="primary">—</strong></p>
+  </div>
+</header>
+
+<main>
+<section class="mimic" id="mimic" aria-labelledby="mimic-title" data-stage="IDLE" data-status="IDLE" data-primary="SQL_SERVER">
+  <div class="mimic__head">
+    <h2 id="mimic-title">Migration route</h2>
+    <p class="run-plate" id="run-plate" data-tone="idle"><span class="lamp" aria-hidden="true"></span><span id="run-status">Idle</span></p>
+    <div class="progress-readout">
+      <strong><span class="counter" id="percent" data-value="0">0</span><span class="unit">%</span></strong>
+      <span>Stage-weighted, not an ETA</span>
+      <progress id="progress" value="0" max="100" aria-label="Migration progress"></progress>
+    </div>
+  </div>
+
+  <div class="feeder" id="feeder" data-route="source" data-fenced="false" data-flowing="false">
+    <span class="branch branch--source" id="branch-source" aria-hidden="true"></span>
+    <span class="branch branch--target" id="branch-target" aria-hidden="true"></span>
+    <div class="feeder__node">
+      <svg class="icon" aria-hidden="true"><use href="#i-app"/></svg>
+      <span>Application writes</span>
+      <span class="signal" id="feeder-signal" aria-hidden="true"></span>
+      <strong id="feeder-rate">stopped</strong>
+    </div>
+    <div class="feeder__pulses" id="feeder-pulses" aria-hidden="true"></div>
+  </div>
+
+  <div class="line">
+    <article class="terminus" id="term-source" data-role="primary">
+      <header><svg class="icon" aria-hidden="true"><use href="#i-db"/></svg><h3>SQL Server</h3></header>
+      <p class="terminus__count"><span class="counter" id="source-count">—</span><span>rows</span></p>
+      <p class="terminus__detail" id="source-detail">Source database</p>
+      <p class="terminus__role"><span class="lamp" aria-hidden="true"></span><span id="source-role">Receives writes</span></p>
+    </article>
+
+    <div class="track" id="track" aria-label="Migration stages">
+      <div class="track__body">
+      <ol class="sections" id="sections">
+        <li data-stage="SNAPSHOT"><span class="lamp-bar"><span class="fill" id="snapshot-fill"></span></span><span class="section__name">Snapshot</span><span class="section__state">Waiting</span></li>
+        <li data-stage="CATCH_UP"><span class="lamp-bar"><span class="fill"></span></span><span class="section__name">CDC catch-up</span><span class="section__state">Waiting</span></li>
+        <li data-stage="PREPARE"><span class="lamp-bar"><span class="fill"></span></span><span class="section__name">Indexes &amp; constraints</span><span class="section__state">Waiting</span></li>
+        <li data-stage="READY"><span class="lamp-bar"><span class="fill"></span></span><span class="section__name">Ready for cutover</span><span class="section__state">Waiting</span></li>
+        <li data-stage="FREEZE"><span class="lamp-bar"><span class="fill"></span></span><span class="section__name">Write freeze</span><span class="section__state">Waiting</span></li>
+        <li data-stage="VALIDATION"><span class="lamp-bar"><span class="fill"></span></span><span class="section__name">Validation</span><span class="section__state">Waiting</span></li>
+        <li data-stage="CUTOVER"><span class="lamp-bar"><span class="fill"></span></span><span class="section__name">Cutover</span><span class="section__state">Waiting</span></li>
+      </ol>
+      <div class="rail" aria-hidden="true"><div class="packets" id="packets"></div></div>
+      </div>
+    </div>
+
+    <article class="terminus terminus--target" id="term-target" data-role="standby">
+      <header><svg class="icon" aria-hidden="true"><use href="#i-db"/></svg><h3>PostgreSQL</h3></header>
+      <p class="terminus__count"><span class="counter" id="target-count">—</span><span>rows</span></p>
+      <p class="terminus__detail" id="target-detail">Target database</p>
+      <p class="terminus__role"><span class="lamp" aria-hidden="true"></span><span id="target-role">Standby</span></p>
+    </article>
+  </div>
+
+  <div class="caption">
+    <h3 id="stage">Idle</h3>
+    <p id="message" role="status" aria-live="polite">Generate demo data, start live traffic, then start the migration.</p>
+  </div>
 </section>
-<p class="primary">Current primary <strong id="primary">—</strong><span id="traffic">Traffic stopped</span></p>
-<section class="controls" aria-label="Demo controls">
-<label class="seed-rows">Rows <input id="seed-rows" type="number" min="1" max="10000000" step="1" inputmode="numeric" aria-label="Demo rows per table"></label><button data-action="seed">Generate Demo Data</button><button data-action="traffic-start" id="traffic-button">Start Live Traffic</button><button data-action="start" class="accent" disabled>Start Migration</button><button data-action="pause">Pause</button><button data-action="resume">Resume</button><button data-action="crash">Simulate Crash</button><button data-action="validate">Validate</button><button data-action="cutover" class="accent">Cutover</button><button data-action="reset" class="danger">Reset</button>
+
+<section id="completion" class="arrival" aria-labelledby="completion-title" hidden>
+  <svg class="arrival__mark" aria-hidden="true"><use href="#i-check"/></svg>
+  <div>
+    <h2 id="completion-title">Migration completed successfully</h2>
+    <ul>
+      <li id="completion-primary">PostgreSQL is now Primary</li>
+      <li id="completion-validation">Source/target validation passed</li>
+      <li id="completion-cdc">CDC fully caught up / 0 pending</li>
+      <li id="completion-summary">—</li>
+    </ul>
+  </div>
+  <p class="arrival__progress" id="completion-progress">100%</p>
 </section>
-<p id="message" role="status" aria-live="polite">Generate demo data, start live traffic, then start the migration.</p>
-<section id="completion" class="completion" aria-labelledby="completion-title" hidden>
-<h2 id="completion-title">Migration completed successfully</h2>
-<ul>
-<li id="completion-progress">100%</li><li id="completion-primary">PostgreSQL is now Primary</li><li id="completion-validation">Source/target validation passed</li><li id="completion-cdc">CDC fully caught up / 0 pending</li><li id="completion-summary">—</li>
-</ul>
+
+<section class="desk" aria-labelledby="desk-title">
+  <h2 id="desk-title" class="visually-hidden">Operator controls</h2>
+  <div class="lever-group">
+    <h3>Demo data</h3>
+    <div class="lever-row">
+      <label class="seed-rows"><span>Rows per table</span><input id="seed-rows" type="number" min="1" max="10000000" step="1" inputmode="numeric" aria-label="Demo rows per table"></label>
+      <button class="key" data-action="seed"><svg class="icon" aria-hidden="true"><use href="#i-seed"/></svg><span class="key__label">Generate demo data</span></button>
+      <button class="key" data-action="traffic-start" id="traffic-button"><span class="lamp" aria-hidden="true"></span><svg class="icon" aria-hidden="true"><use href="#i-traffic"/></svg><span class="key__label">Start live traffic</span></button>
+    </div>
+  </div>
+  <div class="lever-group">
+    <h3>Migration</h3>
+    <div class="lever-row">
+      <button class="key key--go" data-action="start" disabled><span class="lamp" aria-hidden="true"></span><svg class="icon" aria-hidden="true"><use href="#i-play"/></svg><span class="key__label">Start migration</span></button>
+      <button class="key" data-action="pause"><svg class="icon" aria-hidden="true"><use href="#i-pause"/></svg><span class="key__label">Pause</span></button>
+      <button class="key" data-action="resume"><svg class="icon" aria-hidden="true"><use href="#i-resume"/></svg><span class="key__label">Resume</span></button>
+      <button class="key key--warn" data-action="crash"><svg class="icon" aria-hidden="true"><use href="#i-crash"/></svg><span class="key__label">Simulate crash</span></button>
+    </div>
+  </div>
+  <div class="lever-group lever-group--cutover">
+    <h3>Cutover</h3>
+    <div class="lever-row">
+      <button class="key" data-action="validate"><svg class="icon" aria-hidden="true"><use href="#i-shield"/></svg><span class="key__label">Validate</span></button>
+      <button class="key key--go key--points" data-action="cutover"><svg class="icon" aria-hidden="true"><use href="#i-points"/></svg><span class="key__label">Cutover to PostgreSQL</span></button>
+    </div>
+  </div>
+  <div class="lever-group lever-group--lab">
+    <h3>Lab</h3>
+    <div class="lever-row">
+      <button class="key key--danger" data-action="reset"><svg class="icon" aria-hidden="true"><use href="#i-reset"/></svg><span class="key__label">Reset</span></button>
+    </div>
+  </div>
 </section>
-<dl class="metrics">
-<div><dt>Current table</dt><dd id="table">—</dd></div><div><dt>Committed batches</dt><dd id="batch">0</dd></div><div><dt>Rows / sec</dt><dd id="rate">0</dd></div><div><dt>CDC pending / applied</dt><dd id="cdc">—</dd></div><div><dt>Last checkpoint</dt><dd id="checkpoint">—</dd></div><div><dt>Validation</dt><dd id="validation">Not checked</dd></div>
-</dl>
-<section class="traffic-panel" aria-labelledby="traffic-title">
-<h2 id="traffic-title">Live traffic</h2>
-<dl class="metrics traffic-metrics">
-<div><dt>Target database</dt><dd id="traffic-target">—</dd></div><div><dt>Operations / sec</dt><dd id="traffic-rate">0</dd></div><div><dt>Total operations</dt><dd id="traffic-total">0</dd></div><div><dt>Errors</dt><dd id="traffic-errors">0</dd></div><div><dt>Inserts</dt><dd id="traffic-inserts">0</dd></div><div><dt>Updates</dt><dd id="traffic-updates">0</dd></div><div><dt>Deletes</dt><dd id="traffic-deletes">0</dd></div><div><dt>Reads</dt><dd id="traffic-reads">0</dd></div>
-</dl>
-<p class="explanation" id="traffic-routing">Committed operations counted by the backend: SQL Server 0 · PostgreSQL 0</p>
+
+<section class="instruments" aria-labelledby="instruments-title">
+  <h2 id="instruments-title" class="visually-hidden">Migration instruments</h2>
+  <div class="gauge">
+    <h3>Snapshot</h3>
+    <dl>
+      <div class="gauge__lead"><dt>Rows / sec</dt><dd><span class="counter" id="rate">0</span></dd></div>
+      <div><dt>Committed batches</dt><dd><span class="counter" id="batch">0</span></dd></div>
+      <div><dt>Current table</dt><dd id="table">—</dd></div>
+    </dl>
+  </div>
+  <div class="gauge">
+    <h3>Change capture</h3>
+    <dl>
+      <div class="gauge__lead"><dt>Pending</dt><dd><span class="counter" id="cdc-pending">—</span></dd></div>
+      <div><dt>Applied</dt><dd><span class="counter" id="cdc-applied">0</span></dd></div>
+      <div><dt>Replay</dt><dd id="cdc-replay">—</dd></div>
+    </dl>
+  </div>
+  <div class="gauge">
+    <h3>Last checkpoint</h3>
+    <dl>
+      <div class="gauge__lead"><dt>Committed at</dt><dd id="checkpoint">—</dd></div>
+      <div><dt>Key</dt><dd id="checkpoint-key">—</dd></div>
+      <div><dt>CT version</dt><dd id="checkpoint-version">—</dd></div>
+    </dl>
+  </div>
+  <div class="gauge gauge--validation" id="validation-gauge" data-tone="idle">
+    <h3>Validation</h3>
+    <p class="verdict"><svg class="icon verdict__icon" aria-hidden="true"><use href="#i-shield"/></svg><span id="validation">Not checked</span></p>
+  </div>
 </section>
-<p class="explanation">Snapshot → CDC catch-up → prepare → ready for cutover → write freeze → final validation → cutover → completed.<br>CDC uses SQL Server Change Tracking: committed net changes, not every intermediate event. Progress is based on committed backend stages and snapshot rows.</p>
+
+<section class="traffic" aria-labelledby="traffic-title">
+  <header class="band-head">
+    <h2 id="traffic-title">Live traffic</h2>
+    <p class="traffic__target"><span class="lamp" id="traffic-lamp" aria-hidden="true"></span><span id="traffic-target">—</span></p>
+  </header>
+  <div class="traffic__body">
+    <dl class="traffic__totals">
+      <div><dt>Operations / sec</dt><dd><span class="counter" id="traffic-rate">0</span></dd></div>
+      <div><dt>Total operations</dt><dd><span class="counter" id="traffic-total">0</span></dd></div>
+      <div class="traffic__errors"><dt>Errors</dt><dd><span class="counter" id="traffic-errors">0</span></dd></div>
+    </dl>
+    <div class="mix">
+      <div class="mix__bar" aria-hidden="true"><span data-op="reads"></span><span data-op="inserts"></span><span data-op="updates"></span><span data-op="deletes"></span></div>
+      <dl class="mix__legend">
+        <div data-op="reads"><dt>Reads</dt><dd id="traffic-reads">0</dd></div>
+        <div data-op="inserts"><dt>Inserts</dt><dd id="traffic-inserts">0</dd></div>
+        <div data-op="updates"><dt>Updates</dt><dd id="traffic-updates">0</dd></div>
+        <div data-op="deletes"><dt>Deletes</dt><dd id="traffic-deletes">0</dd></div>
+      </dl>
+      <p class="note" id="traffic-routing">Committed operations counted by the backend: SQL Server 0 · PostgreSQL 0</p>
+    </div>
+  </div>
+</section>
+
 <section class="live" aria-labelledby="live-title">
-<h2 id="live-title">Live Data Changes</h2>
-<p class="explanation">Change SQL Server and compare the same record in PostgreSQL. Pause CDC replay to hold the difference while snapshot copying continues.</p>
-<div class="live-buttons">
-<button id="live-insert">Insert New Record</button><button id="live-update">Update Migrated Record</button><button id="live-delete">Delete Migrated Record</button><button id="live-cdc">Pause CDC Replay</button>
-</div>
-<p id="live-hint" role="status">Start a migration to try live changes.</p>
-<form id="inspect-form" class="inspect-form"><label for="record-id">Order #</label><input id="record-id" type="number" min="1" step="1" required placeholder="100"><button type="submit">Inspect</button></form>
-<form id="live-edit" hidden>
-<p id="edit-title"></p>
-<div class="edit-fields"><label>Customer name<input id="edit-name" maxlength="180" required></label><label>Status<input id="edit-status" maxlength="24" required></label><label>Amount<input id="edit-amount" type="number" min="0" max="999999999999999.9999" step="0.0001" required></label></div>
-<button id="live-save" type="submit" class="accent">Apply to SQL Server</button><button id="live-cancel" type="button">Cancel</button>
-</form>
-<div id="inspector" hidden>
-<h3 id="inspect-title"></h3>
-<table class="comparison"><thead><tr><th scope="col">Field</th><th scope="col">SQL Server</th><th scope="col">PostgreSQL</th></tr></thead><tbody id="record-values"></tbody></table>
-<p id="record-sync" role="status" aria-live="polite"></p>
-<p id="record-before"></p>
-<ol id="record-path" aria-label="Real change progress"></ol>
-</div>
+  <header class="band-head">
+    <h2 id="live-title">Live Data Changes</h2>
+    <p class="note">Change SQL Server and compare the same record in PostgreSQL. Pause CDC replay to hold the difference while snapshot copying continues.</p>
+  </header>
+  <div class="live__actions">
+    <button class="key" id="live-insert"><svg class="icon" aria-hidden="true"><use href="#i-plus"/></svg><span class="key__label">Insert new record</span></button>
+    <button class="key" id="live-update"><svg class="icon" aria-hidden="true"><use href="#i-edit"/></svg><span class="key__label">Update migrated record</span></button>
+    <button class="key" id="live-delete"><svg class="icon" aria-hidden="true"><use href="#i-reset"/></svg><span class="key__label">Delete migrated record</span></button>
+    <button class="key key--hold" id="live-cdc"><svg class="icon" aria-hidden="true"><use href="#i-hold"/></svg><span class="key__label">Pause CDC replay</span></button>
+  </div>
+  <p id="live-hint" class="note" role="status">Start a migration to try live changes.</p>
+  <form id="inspect-form" class="inspect-form">
+    <label for="record-id">Order #</label>
+    <input id="record-id" type="number" min="1" step="1" required placeholder="100">
+    <button class="key" type="submit"><svg class="icon" aria-hidden="true"><use href="#i-inspect"/></svg><span class="key__label">Inspect</span></button>
+  </form>
+  <form id="live-edit" class="live-edit" hidden>
+    <p id="edit-title"></p>
+    <div class="edit-fields">
+      <label>Customer name<input id="edit-name" maxlength="180" required></label>
+      <label>Status<input id="edit-status" maxlength="24" required></label>
+      <label>Amount<input id="edit-amount" type="number" min="0" max="999999999999999.9999" step="0.0001" required></label>
+    </div>
+    <div class="live-edit__actions">
+      <button id="live-save" type="submit" class="key key--go"><svg class="icon" aria-hidden="true"><use href="#i-check"/></svg><span class="key__label">Apply to SQL Server</span></button>
+      <button id="live-cancel" type="button" class="key"><span class="key__label">Cancel</span></button>
+    </div>
+  </form>
+  <div id="inspector" class="inspector" hidden>
+    <h3 id="inspect-title"></h3>
+    <div class="comparison-wrap">
+      <table class="comparison"><thead><tr><th scope="col">Field</th><th scope="col">SQL Server</th><th scope="col">PostgreSQL</th></tr></thead><tbody id="record-values"></tbody></table>
+    </div>
+    <p id="record-sync" role="status" aria-live="polite"></p>
+    <p id="record-before"></p>
+    <ol id="record-path" class="record-path" aria-label="Real change progress"></ol>
+  </div>
 </section>
-<section class="log"><h2>Live log</h2><pre id="logs" aria-label="Live migration logs">Waiting for the backend…</pre></section>
-<footer>Two related tables. Real writes. Durable checkpoints. <span>Local educational lab · no authentication</span></footer>
-</main></body></html>
+
+<section class="logbook" aria-labelledby="log-title">
+  <header class="logbook__head">
+    <h2 id="log-title">Live log</h2>
+    <div class="logbook__tools">
+      <div class="chips" id="log-filters" role="group" aria-label="Filter log by category">
+        <button type="button" class="chip" data-filter="all" aria-pressed="true">All <span>0</span></button>
+        <button type="button" class="chip" data-filter="migration" aria-pressed="false">Migration <span>0</span></button>
+        <button type="button" class="chip" data-filter="cdc" aria-pressed="false">Changes <span>0</span></button>
+        <button type="button" class="chip" data-filter="validation" aria-pressed="false">Validation <span>0</span></button>
+        <button type="button" class="chip" data-filter="cutover" aria-pressed="false">Cutover <span>0</span></button>
+        <button type="button" class="chip" data-filter="traffic" aria-pressed="false">Traffic <span>0</span></button>
+        <button type="button" class="chip chip--problem" data-filter="problems" aria-pressed="false">Problems <span>0</span></button>
+      </div>
+      <label class="log-search"><svg class="icon" aria-hidden="true"><use href="#i-search"/></svg><input id="log-search" type="search" placeholder="Filter text" aria-label="Filter log text"></label>
+      <button type="button" class="toggle" id="log-follow" aria-pressed="true"><span class="lamp" aria-hidden="true"></span>Follow</button>
+    </div>
+  </header>
+  <div class="terminal" id="logs" role="log" aria-label="Live migration logs" aria-live="off" tabindex="0">
+    <p class="terminal__empty">Waiting for the backend…</p>
+  </div>
+  <button type="button" class="jump" id="log-jump" hidden><svg class="icon" aria-hidden="true"><use href="#i-down"/></svg><span id="log-jump-count">0 new</span></button>
+  <p class="note logbook__foot">Newest at the bottom. The backend keeps its latest 60 lines; this view keeps what it has seen since the page opened.</p>
+</section>
+</main>
+
+<footer class="colophon">
+  <span>Two related tables. Real writes. Durable checkpoints.</span>
+  <span>Every lamp and number is read from the databases · Local educational lab · no authentication</span>
+</footer>
+</body>
+</html>
