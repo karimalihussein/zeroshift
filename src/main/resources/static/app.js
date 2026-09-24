@@ -106,7 +106,7 @@ function renderMigration(data) {
   el('percent').textContent = `${Math.round(data.progress)}%`;
   el('primary').textContent = databaseName(s.primary);
   el('source-role').textContent = s.primary === 'SQL_SERVER' ? 'Primary' : 'Source';
-  el('target-role').textContent = s.primary === 'POSTGRESQL' ? 'Primary' : 'Target';
+  el('target-role').textContent = s.primary === 'POSTGRESQL' ? 'Primary' : s.stage === 'ROLLED_BACK' ? 'Secondary' : 'Target';
   document.querySelector('.source-node').classList.toggle('is-primary', s.primary === 'SQL_SERVER');
   document.querySelector('.target-node').classList.toggle('is-primary', s.primary === 'POSTGRESQL');
   const topology = el('migration-topology');
@@ -184,6 +184,24 @@ function renderRollback(rollback, state) {
   el('rollback-pending').textContent = number(rollback.pending);
   el('rollback-applied').textContent = number(rollback.applied);
   el('rollback-conflicts').textContent = number(rollback.conflicts);
+  renderRollbackSteps(rollback, state, failed);
+  // "0 data lost" is shown only when the backend reports it: after final validation matched with nothing pending.
+  el('rollback-facts').hidden = !(rollback.completed && rollback.dataLost !== null);
+  if (rollback.completed && rollback.dataLost !== null) el('rollback-data-lost').textContent = number(rollback.dataLost);
+}
+
+const ROLLBACK_STEPS = [...ROLLBACK_STAGES, 'ROLLED_BACK'];
+function renderRollbackSteps(rollback, state, failed) {
+  const steps = el('rollback-steps');
+  steps.hidden = !(rollback.inProgress || rollback.completed);
+  if (steps.hidden) return;
+  const current = rollback.completed ? ROLLBACK_STEPS.length : ROLLBACK_STEPS.indexOf(state.stage);
+  steps.querySelectorAll('li').forEach((step, index) => {
+    step.classList.toggle('done', index < current || (rollback.completed && index === ROLLBACK_STEPS.length - 1));
+    step.classList.toggle('active', index === current && !failed);
+    step.classList.toggle('failed', index === current && failed);
+    if (index === current) step.setAttribute('aria-current', 'step'); else step.removeAttribute('aria-current');
+  });
 }
 
 function stageName(stage) {
@@ -243,11 +261,11 @@ function parseLog(raw) {
   const time = match?.[1] || '—';
   const message = match?.[2] || raw;
   const operation = message.match(/^(READ|INSERT|UPDATE|DELETE|COPY)\b/)?.[1] || '';
-  const level = /FAILED|error|crash|blocked|expired/i.test(message) ? 'ERROR'
+  const level = /FAILED|error|crash|blocked|expired|conflict/i.test(message) ? 'ERROR'
     : /paused|requested|frozen|stopped|waiting/i.test(message) ? 'WARNING'
       : /completed successfully|successful|passed|complete|generated|started|resumed|applied/i.test(message) ? 'SUCCESS' : 'INFO';
   const category = /\b(?:READ|INSERT|UPDATE|DELETE)\b|Traffic/i.test(message) ? 'TRAFFIC'
-    : /rollback|reverse sync|reverse catch|reverse change/i.test(message) ? 'ROLLBACK'
+    : /rollback|reverse sync|reverse catch|reverse change|reverse capture|conflict|PostgreSQL writes fenced|write fence lifted/i.test(message) ? 'ROLLBACK'
       : /CDC|Change Tracking|net changes|capture/i.test(message) ? 'CDC'
       : /cutover|validation|freeze|fenced|primary|sequence/i.test(message) ? 'CUTOVER' : 'MIGRATION';
   return { raw, time, message, operation, level, category };
@@ -311,7 +329,7 @@ document.querySelector('.controls').addEventListener('click', async event => {
   if (!button || busy) return;
   const action = button.dataset.action;
   if (action === 'reset' && !confirm('Delete demo data in both databases and reset all migration progress?')) return;
-  if (action === 'rollback' && !confirm('Begin lossless rollback to SQL Server? PostgreSQL remains Primary until reverse sync and validation complete.')) return;
+  if (action === 'rollback' && !confirm('Roll back to SQL Server?\n\nPostgreSQL stays Primary while its post-cutover writes are replayed into SQL Server and validated. Application writes pause briefly for the final sync. If a conflict or validation failure is found, nothing is switched and PostgreSQL remains Primary.')) return;
   if (action === 'rollback-abort' && !confirm('Abort this rollback attempt? PostgreSQL will remain Primary.')) return;
   busy = true;
   if (latest) render(latest);
