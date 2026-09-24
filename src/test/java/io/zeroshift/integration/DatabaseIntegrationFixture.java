@@ -3,6 +3,7 @@ package io.zeroshift.integration;
 import static org.assertj.core.api.Assertions.*;
 
 import com.zaxxer.hikari.HikariDataSource;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import io.zeroshift.application.*;
 import io.zeroshift.application.port.*;
 import io.zeroshift.domain.*;
@@ -33,6 +34,7 @@ abstract class DatabaseIntegrationFixture {
   protected MigrationCoordinator coordinator;
   protected CutoverService cutover;
   protected TrafficSimulator traffic;
+  protected MicrometerMigrationMetrics metrics;
   protected JdbcTemplate sql;
   protected JdbcTemplate pg;
   // Pooled like the app: background traffic would otherwise open a TCP connection per call.
@@ -80,9 +82,13 @@ abstract class DatabaseIntegrationFixture {
 
   protected void wire() {
     var changes = new ChangeCatchUp(source, 7);
-    cutover = new CutoverService(source, store, changes, new ValidationService(source, store, 7));
+    metrics = new MicrometerMigrationMetrics(new SimpleMeterRegistry(), store, changes);
+    cutover =
+        new CutoverService(
+            source, store, changes, new ValidationService(source, store, 7), metrics);
     coordinator =
-        new MigrationCoordinator(store, source, new SnapshotBatch(source, 7), changes, cutover);
+        new MigrationCoordinator(
+            store, source, new SnapshotBatch(source, 7, metrics), changes, cutover);
     traffic = new TrafficSimulator(store, source);
   }
 

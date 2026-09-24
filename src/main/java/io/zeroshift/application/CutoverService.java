@@ -9,16 +9,19 @@ public final class CutoverService {
   private final MigrationStore store;
   private final ChangeCatchUp catchUp;
   private final ValidationService validation;
+  private final MigrationMetrics metrics;
 
   public CutoverService(
       SourceDatabase source,
       MigrationStore store,
       ChangeCatchUp catchUp,
-      ValidationService validation) {
+      ValidationService validation,
+      MigrationMetrics metrics) {
     this.source = source;
     this.store = store;
     this.catchUp = catchUp;
     this.validation = validation;
+    this.metrics = metrics;
   }
 
   public void request() {
@@ -54,6 +57,7 @@ public final class CutoverService {
         session.complete();
         var state = session.state();
         var elapsed = Duration.between(state.cutoverStartedAt(), state.completedAt());
+        metrics.cutoverFinished(elapsed);
         session.log("Write freeze through successful cutover: " + elapsed.toMillis() + " ms");
       }
       default -> throw new InvalidAction("No cutover is in progress");

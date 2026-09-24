@@ -1,14 +1,17 @@
 package io.zeroshift.application;
 
 import io.zeroshift.application.port.*;
+import java.time.Duration;
 
 public final class SnapshotBatch {
   private final SourceDatabase source;
   private final int batchSize;
+  private final MigrationMetrics metrics;
 
-  public SnapshotBatch(SourceDatabase source, int batchSize) {
+  public SnapshotBatch(SourceDatabase source, int batchSize, MigrationMetrics metrics) {
     this.source = source;
     this.batchSize = batchSize;
+    this.metrics = metrics;
   }
 
   public void copy(MigrationStore.Session session) {
@@ -21,5 +24,6 @@ public final class SnapshotBatch {
       return;
     }
     session.snapshot(rows, rows.getLast().id(), started);
+    metrics.batchCopied(state.table(), Duration.ofNanos(System.nanoTime() - started));
   }
 }

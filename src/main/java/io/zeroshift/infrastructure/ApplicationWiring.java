@@ -13,8 +13,17 @@ public class ApplicationWiring {
   }
 
   @Bean
-  SnapshotBatch snapshotBatch(SourceDatabase source, LabSettings settings) {
-    return new SnapshotBatch(source, settings.batchSize());
+  MigrationMetrics migrationMetrics(
+      io.micrometer.core.instrument.MeterRegistry registry,
+      MigrationStore store,
+      ChangeCatchUp catchUp) {
+    return new MicrometerMigrationMetrics(registry, store, catchUp);
+  }
+
+  @Bean
+  SnapshotBatch snapshotBatch(
+      SourceDatabase source, LabSettings settings, MigrationMetrics metrics) {
+    return new SnapshotBatch(source, settings.batchSize(), metrics);
   }
 
   @Bean
@@ -33,8 +42,9 @@ public class ApplicationWiring {
       SourceDatabase source,
       MigrationStore store,
       ChangeCatchUp catchUp,
-      ValidationService validation) {
-    return new CutoverService(source, store, catchUp, validation);
+      ValidationService validation,
+      MigrationMetrics metrics) {
+    return new CutoverService(source, store, catchUp, validation, metrics);
   }
 
   @Bean
