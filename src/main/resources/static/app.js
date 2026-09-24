@@ -1,198 +1,209 @@
-// Renders backend observations and submits operator commands. Every lamp, counter and moving
-// packet below is driven by a value /api/status reported; motion only replays a difference between
-// two real polls, it never predicts one.
 const el = id => document.getElementById(id);
 const number = value => new Intl.NumberFormat().format(value);
-const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
-const narrow = matchMedia('(max-width: 820px)');
-const STAGES = ['SNAPSHOT', 'CATCH_UP', 'PREPARE', 'READY', 'FREEZE', 'VALIDATION', 'CUTOVER'];
-const FENCED = ['FREEZE', 'VALIDATION', 'CUTOVER'];
-const STAGE_LABELS = {
-  IDLE: 'Idle', SNAPSHOT: 'Snapshot copy', CATCH_UP: 'CDC catch-up', PREPARE: 'Indexes & constraints',
-  READY: 'Ready for Cutover', FREEZE: 'Write freeze', VALIDATION: 'Final validation', CUTOVER: 'Cutover',
-  COMPLETED: 'Migration completed successfully'
-};
+const CUTOVER_STAGES = ['FREEZE', 'VALIDATION', 'CUTOVER'];
+const ROLLBACK_STAGES = ['ROLLBACK_PREPARE', 'REVERSE_CATCH_UP', 'ROLLBACK_VALIDATION', 'ROLLBACK_FREEZE', 'FINAL_SYNC', 'SWITCH_PRIMARY'];
+const WRITE_HELD_STAGES = [...CUTOVER_STAGES, 'ROLLBACK_FREEZE', 'FINAL_SYNC', 'SWITCH_PRIMARY'];
 let busy = false;
 let latest;
-let previous;
 let lastStage;
+let logPaused = false;
+let backendLogs = [];
+let visibleLogs = [];
 
 function render(data) {
   latest = data;
   const s = data.migration;
   if (s.stage !== lastStage && !busy) {
     const guidance = {
-      IDLE: data.source.customers ? 'Start live traffic, then start the migration.' : 'Generate demo data, start live traffic, then start the migration.',
-      SNAPSHOT: 'Copying bounded batches. You can pause or simulate a crash to explore recovery.',
-      CATCH_UP: 'Applying committed source changes to PostgreSQL.',
-      PREPARE: 'Preparing indexes, constraints, sequences and statistics.',
-      READY: 'Ready for Cutover — 95%. Validate if desired, then choose Cutover.',
-      FREEZE: 'Source writes are fenced; draining final CDC changes.',
-      VALIDATION: 'Source and target are being validated behind the write fence.',
-      CUTOVER: 'Validation passed; switching the primary database to PostgreSQL.',
-      COMPLETED: 'PostgreSQL is now Primary and takes all application writes. SQL Server stays fenced. Reset to run the lab again.'
+      IDLE: data.source.customers ? 'Source data is ready. Start traffic or begin the migration.' : 'Generate demo data to prepare SQL Server.',
+      SNAPSHOT: 'Copying a bounded snapshot into PostgreSQL.',
+      CATCH_UP: 'Replaying committed SQL Server changes through CDC.',
+      PREPARE: 'Building indexes and validating target constraints.',
+      READY: 'Ready for Cutover — 95%. Review validation, then cut over when ready.',
+      FREEZE: 'SQL Server writes are fenced while final CDC changes drain.',
+      VALIDATION: 'Comparing source and target behind the write fence.',
+      CUTOVER: 'Validation passed. Switching application writes to PostgreSQL.',
+      COMPLETED: 'Migration completed successfully. PostgreSQL is now Primary.',
+      ROLLBACK_PREPARE: 'Preparing a safe reverse synchronization to SQL Server.',
+      REVERSE_CATCH_UP: 'Replaying PostgreSQL changes back into SQL Server.',
+      ROLLBACK_VALIDATION: 'Validating both databases before the rollback fence.',
+      ROLLBACK_FREEZE: 'PostgreSQL writes are fenced while the final reverse changes drain.',
+      FINAL_SYNC: 'Applying the final reverse change set behind the write fence.',
+      SWITCH_PRIMARY: 'Validation passed. Switching application writes back to SQL Server.',
+      ROLLED_BACK: 'Rollback completed successfully. SQL Server is Primary again.'
     };
     showMessage(guidance[s.stage]);
     lastStage = s.stage;
   }
-  connection(true);
-  renderHeader(data);
-  renderTermini(data);
-  renderTrack(data);
-  renderFeeder(data);
-  renderInstruments(data);
+
+  const connection = el('connection');
+  connection.innerHTML = '<i></i> Connected';
+  connection.classList.remove('disconnected');
+  for (const side of ['source', 'target']) {
+    const counts = data[side];
+    el(`${side}-count`).textContent = number(counts.customers + counts.orders);
+    el(`${side}-detail`).textContent = `${number(counts.customers)} customers · ${number(counts.orders)} orders`;
+  }
+
+  renderMigration(data);
   renderCompletion(data.completion);
+  renderRollback(data.rollback, s);
   renderTraffic(data.traffic, s.stage);
-  logbook.ingest(data.logs);
-  if (previous) animateDeltas(previous, data);
-  previous = data;
+  receiveLogs(data.logs);
 
   const running = s.status === 'RUNNING';
   const allowed = {
     seed: s.stage === 'IDLE' && !s.traffic && data.source.customers === 0,
-    start: data.migrationStartAllowed, pause: running && ['SNAPSHOT', 'CATCH_UP', 'PREPARE', 'READY'].includes(s.stage),
-    resume: !running && !['IDLE', 'COMPLETED'].includes(s.stage),
-    crash: running, validate: s.stage === 'READY' && !s.cdcPaused, cutover: s.stage === 'READY' && running && !s.cdcPaused,
-    reset: true, 'traffic-start': !FENCED.includes(s.stage), 'traffic-stop': true
+    start: data.migrationStartAllowed,
+    pause: running && ['SNAPSHOT', 'CATCH_UP', 'PREPARE', 'READY', 'ROLLBACK_PREPARE', 'REVERSE_CATCH_UP', 'ROLLBACK_VALIDATION'].includes(s.stage),
+    resume: !running && !['IDLE', 'COMPLETED', 'ROLLED_BACK'].includes(s.stage),
+    crash: running,
+    validate: s.stage === 'READY' && !s.cdcPaused,
+    cutover: s.stage === 'READY' && running && !s.cdcPaused,
+    reset: true,
+    rollback: data.rollback.available,
+    'rollback-abort': data.rollback.abortable,
+    'traffic-start': !WRITE_HELD_STAGES.includes(s.stage),
+    'traffic-stop': data.traffic.running
   };
   document.querySelectorAll('[data-action]').forEach(button => { button.disabled = busy || !allowed[button.dataset.action]; });
-  const startKey = document.querySelector('[data-action="start"]');
-  const migrating = running && s.stage !== 'IDLE' && s.stage !== 'COMPLETED';
-  startKey.dataset.running = String(migrating);
-  startKey.querySelector('.key__label').textContent = migrating ? 'Migration running' : 'Start migration';
   el('seed-rows').disabled = busy || !allowed.seed;
   if (!el('seed-rows').value) el('seed-rows').placeholder = number(data.seedRows);
   document.dispatchEvent(new CustomEvent('migration-state', { detail: data }));
+
   if (s.error || data.captureError) {
     showMessage(s.error || data.captureError, true);
     el('message').dataset.backendError = 'true';
   } else if (el('message').dataset.backendError === 'true') {
-    showMessage('Backend recovered. The displayed checkpoint is current.');
+    showMessage('Backend recovered. The durable checkpoint is current.');
     el('message').dataset.backendError = 'false';
   }
 }
 
-const databaseName = primary => primary === 'SQL_SERVER' ? 'SQL Server' : 'PostgreSQL';
-
-function renderHeader(data) {
+function renderMigration(data) {
   const s = data.migration;
-  const primary = el('primary');
-  const name = databaseName(s.primary);
-  if (primary.textContent !== name) {
-    primary.textContent = name;
-    if (previous) replay(primary, 'flip');
-  }
-  const tone = { IDLE: 'idle', RUNNING: 'running', PAUSED: 'held', CRASHED: 'danger', FAILED: 'danger', SUCCESS: 'clear' }[s.status] || 'idle';
-  const status = s.stage === 'READY' && s.status === 'RUNNING' ? 'Waiting for cutover'
-    : s.stage === 'COMPLETED' ? 'Completed' : s.status.charAt(0) + s.status.slice(1).toLowerCase();
-  el('run-plate').dataset.tone = tone;
-  el('run-status').textContent = status;
-  el('stage').textContent = STAGE_LABELS[s.stage] || s.stage;
+  const stageLabels = {
+    IDLE: 'Idle', SNAPSHOT: 'Snapshot', CATCH_UP: 'CDC catch-up', PREPARE: 'Indexes & constraints',
+    READY: 'Ready for Cutover', FREEZE: 'Write freeze', VALIDATION: 'Final validation',
+    CUTOVER: 'Cutover', COMPLETED: 'Completed', ROLLBACK_PREPARE: 'Preparing rollback',
+    REVERSE_CATCH_UP: 'Reverse CDC catch-up', ROLLBACK_VALIDATION: 'Rollback validation',
+    ROLLBACK_FREEZE: 'Rollback write freeze', FINAL_SYNC: 'Final reverse sync',
+    SWITCH_PRIMARY: 'Switching primary', ROLLED_BACK: 'Rolled back'
+  };
+  const trackStates = {
+    IDLE: 'Waiting to start', SNAPSHOT: 'Copying source rows', CATCH_UP: 'Applying change stream',
+    PREPARE: 'Preparing target', READY: 'Operator confirmation required', FREEZE: 'Source writes fenced',
+    VALIDATION: 'Checksums and counts', CUTOVER: 'Switching primary', COMPLETED: 'Successful',
+    ROLLBACK_PREPARE: 'Preparing reverse capture', REVERSE_CATCH_UP: 'Applying PostgreSQL changes',
+    ROLLBACK_VALIDATION: 'Comparing both databases', ROLLBACK_FREEZE: 'PostgreSQL writes fenced',
+    FINAL_SYNC: 'Draining final changes', SWITCH_PRIMARY: 'Restoring SQL Server', ROLLED_BACK: 'Rollback successful'
+  };
+  el('stage').textContent = stageLabels[s.stage];
+  el('track-state').textContent = trackStates[s.stage];
+  el('run-status').textContent = s.stage === 'READY' ? 'Waiting for cutover' : s.stage === 'ROLLED_BACK' ? 'Rollback complete' : s.status.toLowerCase();
+  el('run-status').className = `status-pill ${statusTone(s)}`;
   el('progress').value = data.progress;
-  setCounter(el('percent'), String(Math.round(data.progress)));
-  const mimic = el('mimic');
-  mimic.dataset.stage = s.stage;
-  mimic.dataset.status = s.status;
-  mimic.dataset.primary = s.primary;
-}
+  el('percent').textContent = `${Math.round(data.progress)}%`;
+  el('primary').textContent = databaseName(s.primary);
+  el('source-role').textContent = s.primary === 'SQL_SERVER' ? 'Primary' : 'Source';
+  el('target-role').textContent = s.primary === 'POSTGRESQL' ? 'Primary' : 'Target';
+  document.querySelector('.source-node').classList.toggle('is-primary', s.primary === 'SQL_SERVER');
+  document.querySelector('.target-node').classList.toggle('is-primary', s.primary === 'POSTGRESQL');
+  const topology = el('migration-topology');
+  topology.classList.toggle('is-moving', s.status === 'RUNNING' && !ROLLBACK_STAGES.includes(s.stage) && !['READY', 'COMPLETED'].includes(s.stage));
+  topology.classList.toggle('is-reversing', s.status === 'RUNNING' && ROLLBACK_STAGES.includes(s.stage));
 
-function renderTermini(data) {
-  const s = data.migration;
-  for (const side of ['source', 'target']) {
-    const counts = data[side];
-    setCounter(el(`${side}-count`), number(counts.customers + counts.orders));
-    el(`${side}-detail`).textContent = `${number(counts.customers)} customers · ${number(counts.orders)} orders`;
-  }
-  const fenced = FENCED.includes(s.stage);
-  const [sourceRole, sourceText] = s.primary === 'POSTGRESQL' ? ['fenced', 'Fenced · retired']
-    : fenced ? ['fenced', 'Writes fenced'] : ['primary', 'Receives writes'];
-  const [targetRole, targetText] = s.primary === 'POSTGRESQL'
-    ? [data.completion.successful ? 'arrived' : 'primary', 'Primary · receives writes']
-    : s.stage === 'IDLE' ? ['standby', 'Standby'] : ['standby', 'Receiving migration'];
-  el('term-source').dataset.role = sourceRole;
-  el('source-role').textContent = sourceText;
-  el('term-target').dataset.role = targetRole;
-  el('target-role').textContent = targetText;
-}
-
-function renderTrack(data) {
-  const s = data.migration;
-  const current = s.stage === 'COMPLETED' ? STAGES.length : STAGES.indexOf(s.stage);
-  const heldReplay = s.cdcPaused && ['CATCH_UP', 'READY'].includes(s.stage);
-  const snapshotShare = s.expected > 0 ? Math.min(100, (s.copied / s.expected) * 100) : 0;
-  el('sections').querySelectorAll('li').forEach((section, index) => {
-    const stage = section.dataset.stage;
-    let state = 'waiting';
-    let text = s.stage === 'IDLE' ? '—' : 'Waiting';
-    if (index < current) {
-      state = 'passed';
-      text = stage === 'SNAPSHOT' ? `${number(s.copied)} rows` : 'Passed';
-    } else if (index === current) {
-      state = ['CRASHED', 'FAILED'].includes(s.status) ? 'danger' : s.status === 'PAUSED' || heldReplay ? 'held' : 'occupied';
-      text = state === 'danger' ? (s.status === 'CRASHED' ? 'Crashed · resume from checkpoint' : 'Failed')
-        : s.status === 'PAUSED' ? 'Paused at checkpoint'
-        : heldReplay ? 'Replay held'
-        : {
-          SNAPSHOT: `${Math.floor(snapshotShare)}% · ${s.table.toLowerCase()}`,
-          CATCH_UP: data.pending === null ? 'Replaying' : `${number(data.pending)} pending`,
-          PREPARE: 'Building',
-          READY: 'Awaiting cutover',
-          FREEZE: 'Draining CDC',
-          VALIDATION: 'Comparing rows',
-          CUTOVER: 'Switching primary'
-        }[stage];
-    }
-    section.dataset.state = state;
-    section.dataset.moving = String(s.status === 'RUNNING');
-    section.querySelector('.section__state').textContent = text;
-    const fill = section.querySelector('.fill');
-    fill.style.setProperty('--fill', stage === 'SNAPSHOT' && index === current ? String(snapshotShare / 100) : '0');
+  const rank = { IDLE: -1, SNAPSHOT: 0, CATCH_UP: 1, PREPARE: 2, READY: 3, FREEZE: 3, VALIDATION: 3, CUTOVER: 4, COMPLETED: 5,
+    ROLLBACK_PREPARE: 5, REVERSE_CATCH_UP: 5, ROLLBACK_VALIDATION: 5, ROLLBACK_FREEZE: 5, FINAL_SYNC: 5, SWITCH_PRIMARY: 5, ROLLED_BACK: 5 }[s.stage];
+  document.querySelectorAll('.stage-node').forEach((node, index) => {
+    node.classList.toggle('done', rank > index);
+    node.classList.toggle('active', rank === index && s.stage !== 'COMPLETED');
   });
-}
+  el('track-fill').style.width = `${Math.max(0, Math.min(100, rank * 25))}%`;
 
-function renderFeeder(data) {
-  const s = data.migration;
-  const t = data.traffic;
-  const fenced = FENCED.includes(s.stage);
-  const feeder = el('feeder');
-  feeder.dataset.route = s.primary === 'SQL_SERVER' ? 'source' : 'target';
-  feeder.dataset.fenced = String(fenced && t.running);
-  el('feeder-signal').dataset.aspect = !t.running ? 'off' : fenced ? 'danger' : 'clear';
-  el('feeder-rate').textContent = !t.running ? `→ ${databaseName(s.primary)} · stopped`
-    : fenced ? `→ ${databaseName(t.target)} · held at fence` : `→ ${databaseName(t.target)} · ${t.operationsPerSecond.toFixed(1)} ops/s`;
-}
-
-function renderInstruments(data) {
-  const s = data.migration;
-  setCounter(el('rate'), number(Math.round(s.rowsPerSecond)));
-  setCounter(el('batch'), number(s.batches));
-  el('table').textContent = ['IDLE', 'COMPLETED'].includes(s.stage) ? '—' : s.table.toLowerCase();
-  setCounter(el('cdc-pending'), data.pending === null ? '—' : number(data.pending));
-  setCounter(el('cdc-applied'), number(s.applied));
-  el('cdc-replay').textContent = s.stage === 'IDLE' ? '—' : s.stage === 'COMPLETED' ? 'Drained' : s.cdcPaused ? 'Held by operator' : 'Replaying';
-  el('checkpoint').textContent = s.checkpoint ? new Date(s.checkpoint).toLocaleTimeString() : '—';
-  el('checkpoint-key').textContent = s.checkpoint ? number(s.lastId) : '—';
-  el('checkpoint-version').textContent = s.checkpoint ? `v${s.version}` : '—';
+  const migrationFinished = s.stage === 'COMPLETED' || s.stage === 'ROLLED_BACK' || ROLLBACK_STAGES.includes(s.stage);
+  const migrated = migrationFinished ? data.target.customers + data.target.orders : s.copied;
+  const total = migrationFinished ? data.target.customers + data.target.orders : s.expected;
+  el('rows-summary').textContent = `${number(migrated)} / ${number(total)} rows`;
+  el('table').textContent = ['IDLE', 'COMPLETED', 'ROLLED_BACK'].includes(s.stage) ? '—' : s.table.toLowerCase();
+  el('batch').textContent = number(s.batches);
+  el('rate').textContent = number(Math.round(s.rowsPerSecond));
+  el('cdc').textContent = `${data.pending === null ? '—' : number(data.pending)} / ${number(s.applied)}`;
+  el('checkpoint').textContent = s.checkpoint ? `${new Date(s.checkpoint).toLocaleTimeString()} · key ${s.lastId} · v${s.version}` : '—';
   el('validation').textContent = s.validation;
-  el('validation-gauge').dataset.tone = s.stage === 'VALIDATION' && s.status === 'RUNNING' ? 'running'
-    : s.validation.startsWith('FAILED') ? 'fail'
-    : s.validationPassed || s.validation.startsWith('Passed') ? 'pass' : 'idle';
+  el('rollback-state').textContent = rollbackState(s, data.rollback);
+  el('cutover-note').textContent = cutoverNote(s);
+}
+
+function statusTone(state) {
+  if (state.status === 'SUCCESS') return 'success';
+  if (['FAILED', 'CRASHED'].includes(state.status)) return 'failed';
+  if (state.stage === 'READY' || state.status === 'PAUSED') return 'waiting';
+  return state.status === 'RUNNING' ? 'running' : '';
+}
+
+function rollbackState(state, rollback) {
+  if (state.stage === 'IDLE') return 'No migration active';
+  if (rollback.completed) return 'Completed · SQL Server restored';
+  if (rollback.inProgress) return `${Math.round(rollback.progress)}% · ${number(rollback.pending)} pending`;
+  if (rollback.available) return 'Available · reverse capture active';
+  if (CUTOVER_STAGES.includes(state.stage)) return state.status === 'FAILED' ? 'Cutover halted · source fenced' : 'SQL Server writes fenced';
+  if (state.stage === 'COMPLETED') return 'Source retained · writes fenced';
+  return 'SQL Server remains authoritative';
+}
+
+function cutoverNote(state) {
+  if (state.stage === 'READY') return 'Final CDC drain and validation run behind the write fence.';
+  if (CUTOVER_STAGES.includes(state.stage)) return 'Cutover is in progress. Source writes remain fenced.';
+  if (state.stage === 'COMPLETED') return 'Cutover completed and recorded by the backend.';
+  if (ROLLBACK_STAGES.includes(state.stage)) return 'Rollback is in progress. Primary switches only after final validation.';
+  if (state.stage === 'ROLLED_BACK') return 'Rollback completed and SQL Server is Primary again.';
+  return 'Available after CDC catch-up and target preparation.';
+}
+
+function renderRollback(rollback, state) {
+  const panel = el('rollback-panel');
+  const controls = el('rollback-controls');
+  const visible = rollback.available || rollback.inProgress || rollback.completed;
+  panel.hidden = !visible;
+  controls.hidden = !(rollback.available || rollback.inProgress);
+  if (!visible) return;
+
+  const failed = rollback.inProgress && ['FAILED', 'CRASHED'].includes(state.status);
+  el('rollback-title').textContent = rollback.completed ? 'Rollback completed successfully'
+    : failed ? 'Rollback requires attention'
+      : rollback.inProgress ? 'Rollback in progress' : 'Rollback available';
+  el('rollback-message').textContent = rollback.completed
+    ? `${number(rollback.verifiedRows)} rows verified in ${formatDuration(rollback.durationMillis)} · ${number(rollback.dataLost)} lost.`
+    : failed ? 'The backend stopped safely. Review the event log, then resume or abort while it is still safe.'
+      : rollback.inProgress ? `${stageName(state.stage)} · primary remains ${databaseName(state.primary)} until the switch is committed.`
+        : 'Post-cutover PostgreSQL writes are being captured for a lossless reverse synchronization.';
+  el('rollback-progress').value = rollback.progress;
+  el('rollback-progress-label').textContent = `${Math.round(rollback.progress)}%`;
+  el('rollback-validation').textContent = rollback.validationPassed ? 'Validation passed' : rollback.validation;
+  el('rollback-pending').textContent = number(rollback.pending);
+  el('rollback-applied').textContent = number(rollback.applied);
+  el('rollback-conflicts').textContent = number(rollback.conflicts);
+}
+
+function stageName(stage) {
+  return ({ ROLLBACK_PREPARE: 'Preparing reverse sync', REVERSE_CATCH_UP: 'Reverse CDC catch-up',
+    ROLLBACK_VALIDATION: 'Validating both databases', ROLLBACK_FREEZE: 'PostgreSQL write freeze',
+    FINAL_SYNC: 'Final reverse sync', SWITCH_PRIMARY: 'Switching primary' })[stage] || stage;
 }
 
 function renderCompletion(completion) {
   const panel = el('completion');
-  const wasHidden = panel.hidden;
   panel.hidden = !completion.successful;
   if (!completion.successful) return;
-  el('completion-progress').textContent = '100%';
+  el('completion-progress').textContent = '100% complete';
   el('completion-primary').textContent = 'PostgreSQL is now Primary';
-  el('completion-validation').textContent = completion.validationPassed ? 'Source/target validation passed' : 'Source/target validation not confirmed';
+  el('completion-validation').textContent = completion.validationPassed ? 'Source/target validation passed' : 'Validation not confirmed';
   el('completion-cdc').textContent = `CDC fully caught up / ${number(completion.cdcPending)} pending`;
-  el('completion-summary').textContent = `${number(completion.totalMigratedRows)} total rows migrated in ${formatDuration(completion.durationMillis)}`;
-  // Celebrate only a completion observed live, not one that was already true when the page opened.
-  if (wasHidden && previous && !previous.completion.successful) replay(panel, 'is-new', 1600);
+  el('completion-summary').textContent = `${number(completion.totalMigratedRows)} rows migrated in ${formatDuration(completion.durationMillis)}.`;
 }
 
+const databaseName = primary => primary === 'SQL_SERVER' ? 'SQL Server' : 'PostgreSQL';
 function formatDuration(milliseconds) {
   if (milliseconds < 1000) return `${milliseconds} ms`;
   const seconds = milliseconds / 1000;
@@ -200,115 +211,79 @@ function formatDuration(milliseconds) {
 }
 
 function renderTraffic(t, stage) {
-  const waiting = t.running && FENCED.includes(stage);
+  const waiting = t.running && WRITE_HELD_STAGES.includes(stage);
+  el('traffic').textContent = t.running ? (waiting ? 'Waiting at cutover fence' : `Routing to ${databaseName(t.target)}`) : 'Traffic stopped';
   const trafficButton = el('traffic-button');
   trafficButton.dataset.action = t.running ? 'traffic-stop' : 'traffic-start';
-  trafficButton.dataset.running = String(t.running);
-  trafficButton.querySelector('.key__label').textContent = t.running ? 'Stop live traffic' : 'Start live traffic';
-  el('traffic-target').textContent = t.running ? (waiting ? `${databaseName(t.target)} · held at fence` : `Writing to ${databaseName(t.target)}`) : 'Stopped';
-  el('traffic-lamp').dataset.lit = !t.running ? 'off' : waiting ? 'red' : 'yellow';
-  setCounter(el('traffic-rate'), t.operationsPerSecond.toFixed(1));
-  for (const key of ['total', 'errors']) setCounter(el(`traffic-${key}`), number(t[key]));
-  el('traffic-errors').closest('div').dataset.bad = String(t.errors > 0);
-  const operations = ['reads', 'inserts', 'updates', 'deletes'];
-  const committed = operations.reduce((sum, key) => sum + t[key], 0);
-  for (const key of operations) {
-    el(`traffic-${key}`).textContent = number(t[key]);
-    document.querySelector(`.mix__bar [data-op="${key}"]`).style.width = committed ? `${(t[key] / committed) * 100}%` : '0';
-  }
-  el('traffic-routing').textContent = `Committed operations counted by the backend: SQL Server ${number(t.sqlServerOperations)} · PostgreSQL ${number(t.postgresOperations)}`;
+  setButtonLabel(trafficButton, 'activity', t.running ? 'Stop live traffic' : 'Start live traffic');
+  el('traffic-target').textContent = t.running ? (waiting ? `${databaseName(t.target)} · fenced` : databaseName(t.target)) : 'Not running';
+  el('traffic-rate').textContent = t.operationsPerSecond.toFixed(1);
+  for (const key of ['total', 'inserts', 'updates', 'deletes', 'reads', 'errors']) el(`traffic-${key}`).textContent = number(t[key]);
+  el('traffic-routing').textContent = `Committed operations · SQL Server ${number(t.sqlServerOperations)} · PostgreSQL ${number(t.postgresOperations)}`;
 }
 
-// ── Motion driven by observed deltas ──
-function animateDeltas(before, after) {
-  if (reducedMotion.matches || document.hidden) return;
-  const a = before.migration;
-  const b = after.migration;
-  const sameRun = b.stage !== 'IDLE' && b.copied >= a.copied && b.applied >= a.applied;
-  if (sameRun) {
-    const batches = b.batches - a.batches;
-    if (batches > 0) {
-      for (let i = 0; i < Math.min(3, batches); i++) {
-        sendPacket('snapshot', i === 0 ? `+${number(b.copied - a.copied)} rows` : '', i * 260);
-      }
+function setButtonLabel(button, icon, label) {
+  button.replaceChildren();
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  const use = document.createElementNS('http://www.w3.org/2000/svg', 'use');
+  use.setAttribute('href', `#icon-${icon}`);
+  svg.append(use);
+  button.append(svg, document.createTextNode(label));
+}
+
+function receiveLogs(logs) {
+  backendLogs = logs;
+  if (logPaused) return;
+  visibleLogs = logs;
+  renderLogs();
+}
+
+function parseLog(raw) {
+  const match = raw.match(/^\[(\d{2}:\d{2}:\d{2})]\s*(.*)$/);
+  const time = match?.[1] || '—';
+  const message = match?.[2] || raw;
+  const operation = message.match(/^(READ|INSERT|UPDATE|DELETE|COPY)\b/)?.[1] || '';
+  const level = /FAILED|error|crash|blocked|expired/i.test(message) ? 'ERROR'
+    : /paused|requested|frozen|stopped|waiting/i.test(message) ? 'WARNING'
+      : /completed successfully|successful|passed|complete|generated|started|resumed|applied/i.test(message) ? 'SUCCESS' : 'INFO';
+  const category = /\b(?:READ|INSERT|UPDATE|DELETE)\b|Traffic/i.test(message) ? 'TRAFFIC'
+    : /rollback|reverse sync|reverse catch|reverse change/i.test(message) ? 'ROLLBACK'
+      : /CDC|Change Tracking|net changes|capture/i.test(message) ? 'CDC'
+      : /cutover|validation|freeze|fenced|primary|sequence/i.test(message) ? 'CUTOVER' : 'MIGRATION';
+  return { raw, time, message, operation, level, category };
+}
+
+function renderLogs() {
+  const query = el('log-search').value.trim().toLowerCase();
+  const level = el('log-level').value;
+  const category = el('log-category').value;
+  const events = visibleLogs.map(parseLog).filter(event =>
+    (level === 'ALL' || event.level === level) &&
+    (category === 'ALL' || event.category === category) &&
+    (!query || event.raw.toLowerCase().includes(query)));
+  const viewer = el('logs');
+  viewer.replaceChildren();
+  if (!events.length) {
+    const empty = document.createElement('p');
+    empty.className = 'log-empty';
+    empty.textContent = visibleLogs.length ? 'No events match these filters.' : 'Waiting for backend events…';
+    viewer.append(empty);
+  } else {
+    for (const event of events) {
+      const row = document.createElement('div');
+      row.className = 'log-row';
+      const time = document.createElement('time'); time.className = 'log-time'; time.textContent = event.time;
+      const badge = document.createElement('span'); badge.className = `log-level ${event.level.toLowerCase()}`; badge.textContent = event.level;
+      const category = document.createElement('span'); category.className = 'log-category'; category.textContent = event.category;
+      const message = document.createElement('span'); message.className = 'log-message';
+      if (event.operation) { const operation = document.createElement('b'); operation.className = 'log-operation'; operation.textContent = event.operation; message.append(operation, document.createTextNode(event.message.slice(event.operation.length).trim())); }
+      else message.textContent = event.message;
+      row.append(time, badge, category, message);
+      viewer.append(row);
     }
-    const applied = b.applied - a.applied;
-    if (applied > 0) sendPacket('cdc', `+${number(applied)} CDC`, 120);
+    viewer.scrollTop = 0;
   }
-  const operations = after.traffic.total - before.traffic.total;
-  if (operations > 0 && !FENCED.includes(b.stage)) {
-    const count = Math.min(5, operations);
-    for (let i = 0; i < count; i++) sendPulse(after.migration.primary, (i * 900) / count);
-  }
-}
-
-function sendPacket(kind, label, delay) {
-  const rail = el('packets');
-  const packet = document.createElement('span');
-  packet.className = `packet packet--${kind}`;
-  if (label) {
-    const text = document.createElement('span');
-    text.className = 'packet__label';
-    text.textContent = label;
-    packet.append(text);
-  }
-  rail.append(packet);
-  const vertical = narrow.matches;
-  const length = vertical ? rail.clientHeight : rail.clientWidth;
-  const move = offset => vertical ? `translateY(${offset}px)` : `translateX(${offset}px)`;
-  const turn = kind === 'cdc' ? ' rotate(45deg)' : '';
-  packet.animate([
-    { transform: move(-10) + turn, opacity: 0 },
-    { transform: move(length * 0.08) + turn, opacity: 1, offset: 0.1 },
-    { transform: move(length * 0.92) + turn, opacity: 1, offset: 0.9 },
-    { transform: move(length) + turn, opacity: 0 }
-  ], { duration: 1500, delay, easing: 'cubic-bezier(.45,0,.25,1)', fill: 'both' }).finished.then(() => packet.remove(), () => packet.remove());
-}
-
-function sendPulse(primary, delay) {
-  if (narrow.matches) return;
-  const layer = el('feeder-pulses');
-  const box = layer.getBoundingClientRect();
-  const branch = el(primary === 'SQL_SERVER' ? 'branch-source' : 'branch-target').getBoundingClientRect();
-  const startX = box.width / 2;
-  const cornerX = (primary === 'SQL_SERVER' ? branch.left : branch.right) - box.left;
-  const top = branch.top - box.top + 1.5;
-  const bottom = branch.bottom - box.top;
-  const pulse = document.createElement('span');
-  pulse.className = 'pulse';
-  layer.append(pulse);
-  const at = (x, y) => `translate(${x}px, ${y}px)`;
-  pulse.animate([
-    { transform: at(startX, top), opacity: 0 },
-    { transform: at(startX, top), opacity: 1, offset: 0.08 },
-    { transform: at(cornerX, top), opacity: 1, offset: 0.75 },
-    { transform: at(cornerX, bottom), opacity: 0 }
-  ], { duration: 950, delay, easing: 'linear', fill: 'both' }).finished.then(() => pulse.remove(), () => pulse.remove());
-}
-
-// Counters roll only the characters that changed between two backend values.
-function setCounter(node, text) {
-  if (node.dataset.value === text) return;
-  const old = node.dataset.value ?? '';
-  node.dataset.value = text;
-  const animate = !reducedMotion.matches && old !== '' && old.length === text.length && old !== '—';
-  node.replaceChildren(...[...text].map((character, index) => {
-    const digit = document.createElement('span');
-    digit.className = 'digit';
-    digit.textContent = character;
-    if (animate && old[index] !== character) {
-      digit.animate([{ transform: 'translateY(45%)', opacity: 0 }, { transform: 'none', opacity: 1 }],
-        { duration: 340, easing: 'cubic-bezier(.16,1,.3,1)' });
-    }
-    return digit;
-  }));
-}
-
-function replay(node, className, duration = 900) {
-  node.classList.remove(className);
-  void node.offsetWidth;
-  node.classList.add(className);
-  setTimeout(() => node.classList.remove(className), duration);
+  el('log-count').textContent = `${number(events.length)} ${events.length === 1 ? 'event' : 'events'}${logPaused ? ' · stream paused' : ''}`;
 }
 
 function showMessage(message, error = false) {
@@ -316,212 +291,52 @@ function showMessage(message, error = false) {
   el('message').classList.toggle('error', error);
 }
 
-function connection(live) {
-  const plate = el('connection-plate');
-  plate.dataset.state = live ? 'live' : 'lost';
-  el('connection').textContent = live ? 'Live · backend state' : 'Disconnected · displayed values may be stale';
-  if (live) replay(plate.querySelector('.lamp--conn'), 'beat', 900);
-}
-
-// ── Live log ──
-const logbook = (() => {
-  const LIMIT = 500;
-  const view = el('logs');
-  const entries = [];
-  let lastTop = [];
-  let filter = 'all';
-  let query = '';
-  let follow = true;
-  let unseen = 0;
-  let loaded = false;
-
-  function classify(message) {
-    const traffic = /^(INSERT|UPDATE|DELETE|READ) → /.test(message);
-    let cat = 'migration';
-    if (traffic || /^Traffic /.test(message)) cat = 'traffic';
-    else if (/^Validation|validation/i.test(message)) cat = 'validation';
-    else if (/Cutover|cutover|Write freeze|fence|Migration completed|^Stage: (FREEZE|VALIDATION|CUTOVER|COMPLETED)/.test(message)) cat = 'cutover';
-    else if (/Change Tracking|net changes|CDC|^Manual (INSERT|UPDATE|DELETE)/.test(message)) cat = 'cdc';
-    let level = 'info';
-    if (/✗$|^(CRASHED|FAILED)|FAILED|cannot|blocked|error/i.test(message) && !/✓$/.test(message)) level = 'error';
-    else if (/^PAUSED|Crash armed|paused|Traffic stopped after/.test(message)) level = 'warn';
-    else if (!traffic && /passed|Passed|completed successfully|successful cutover|Reset complete|ANALYZE complete|^Stage: COMPLETED/.test(message)) level = 'ok';
-    return { cat, level };
-  }
-
-  function parse(line) {
-    const match = /^\[(\d{2}:\d{2}:\d{2})\] ([\s\S]*)$/.exec(line);
-    const time = match ? match[1] : '';
-    const message = match ? match[2] : line;
-    return { time, message, ...classify(message) };
-  }
-
-  const LABEL = { migration: 'Migration', cdc: 'Changes', validation: 'Validation', cutover: 'Cutover', traffic: 'Traffic' };
-  const LEVEL = { info: 'INFO', ok: 'OK', warn: 'WARN', error: 'ERR' };
-  const matches = entry => (entry.gap || filter === 'all' || (filter === 'problems' ? ['error', 'warn'].includes(entry.level) : entry.cat === filter))
-    && (!query || (entry.message || '').toLowerCase().includes(query));
-
-  function row(entry, fresh) {
-    if (entry.gap) {
-      const gap = document.createElement('p');
-      gap.className = 'gap';
-      gap.textContent = '… older lines rotated out of the backend log before this page saw them';
-      return gap;
-    }
-    const line = document.createElement('div');
-    line.className = 'row';
-    line.dataset.level = entry.level;
-    line.dataset.cat = entry.cat;
-    if (fresh) line.classList.add('is-new');
-    const time = document.createElement('time');
-    time.textContent = entry.time;
-    const level = document.createElement('span');
-    level.className = `lvl lvl--${entry.level}`;
-    level.textContent = LEVEL[entry.level];
-    const cat = document.createElement('span');
-    cat.className = 'cat';
-    cat.textContent = LABEL[entry.cat];
-    const message = document.createElement('span');
-    message.className = 'msg';
-    message.textContent = entry.message;
-    line.append(time, level, cat, message);
-    return line;
-  }
-
-  function counts() {
-    const tally = { all: 0, problems: 0, migration: 0, cdc: 0, validation: 0, cutover: 0, traffic: 0 };
-    for (const entry of entries) {
-      if (entry.gap) continue;
-      tally.all++;
-      tally[entry.cat]++;
-      if (entry.level === 'error' || entry.level === 'warn') tally.problems++;
-    }
-    document.querySelectorAll('#log-filters .chip').forEach(chip => {
-      chip.querySelector('span').textContent = number(tally[chip.dataset.filter]);
-      if (chip.dataset.filter === 'problems') chip.dataset.has = String(tally.problems > 0);
-    });
-  }
-
-  function redraw() {
-    const visible = entries.filter(matches);
-    view.replaceChildren(...(visible.length ? visible.map(entry => row(entry, false)) : [empty()]));
-    unseen = 0;
-    jump();
-    if (follow) view.scrollTop = view.scrollHeight;
-  }
-
-  function empty() {
-    const p = document.createElement('p');
-    p.className = 'terminal__empty';
-    p.textContent = entries.length ? 'No lines match this filter.' : 'No log lines yet.';
-    return p;
-  }
-
-  function jump() {
-    el('log-jump').hidden = follow || unseen === 0;
-    el('log-jump-count').textContent = `${number(unseen)} new`;
-  }
-
-  function setFollow(value) {
-    follow = value;
-    el('log-follow').setAttribute('aria-pressed', String(value));
-    if (value) { unseen = 0; view.scrollTop = view.scrollHeight; }
-    jump();
-  }
-
-  function ingest(lines) {
-    if (!lines.length && !entries.length) {
-      if (!loaded) { loaded = true; redraw(); }
-      return;
-    }
-    let fresh;
-    const at = lastTop.length ? lines.findIndex((line, index) => line === lastTop[0] && (lastTop[1] === undefined || lines[index + 1] === lastTop[1])) : -1;
-    if (!lastTop.length) fresh = lines.slice().reverse().map(parse);
-    else if (at >= 0) fresh = lines.slice(0, at).reverse().map(parse);
-    else fresh = [{ gap: true }, ...lines.slice().reverse().map(parse)];
-    lastTop = lines.slice(0, 2);
-    if (!fresh.length) return;
-
-    entries.push(...fresh);
-    const overflow = entries.length - LIMIT;
-    if (overflow > 0) entries.splice(0, overflow);
-    counts();
-    if (!loaded || overflow > 0) { loaded = true; redraw(); return; }
-
-    const visible = fresh.filter(matches);
-    if (!visible.length) return;
-    view.querySelector('.terminal__empty')?.remove();
-    view.append(...visible.map(entry => row(entry, !reducedMotion.matches)));
-    if (follow) view.scrollTop = view.scrollHeight;
-    else { unseen += visible.length; jump(); }
-  }
-
-  el('log-filters').addEventListener('click', event => {
-    const chip = event.target.closest('.chip');
-    if (!chip) return;
-    filter = chip.dataset.filter;
-    document.querySelectorAll('#log-filters .chip').forEach(c => c.setAttribute('aria-pressed', String(c === chip)));
-    redraw();
-  });
-  el('log-search').addEventListener('input', event => { query = event.target.value.trim().toLowerCase(); redraw(); });
-  el('log-follow').addEventListener('click', () => setFollow(!follow));
-  el('log-jump').addEventListener('click', () => setFollow(true));
-  view.addEventListener('scroll', () => {
-    const atBottom = view.scrollHeight - view.scrollTop - view.clientHeight < 24;
-    if (atBottom !== follow) setFollow(atBottom);
-  }, { passive: true });
-
-  return { ingest };
-})();
-
 async function refresh() {
   try {
     const response = await fetch('/api/status');
     if (!response.ok) throw new Error('Backend unavailable');
     render(await response.json());
   } catch (error) {
-    connection(false);
+    const connection = el('connection');
+    connection.innerHTML = '<i></i> Disconnected';
+    connection.classList.add('disconnected');
     document.dispatchEvent(new CustomEvent('migration-disconnected'));
     document.querySelectorAll('[data-action]').forEach(button => { button.disabled = true; });
     el('seed-rows').disabled = true;
   }
 }
 
-function settle(button, state, duration) {
-  button.dataset.state = state;
-  clearTimeout(button.settleTimer);
-  button.settleTimer = setTimeout(() => { delete button.dataset.state; }, duration);
-}
-
-document.querySelector('.desk').addEventListener('click', async event => {
+document.querySelector('.controls').addEventListener('click', async event => {
   const button = event.target.closest('[data-action]');
   if (!button || busy) return;
   const action = button.dataset.action;
-  if (action === 'reset' && !confirm('Delete demo data in both databases and reset migration progress?')) return;
+  if (action === 'reset' && !confirm('Delete demo data in both databases and reset all migration progress?')) return;
+  if (action === 'rollback' && !confirm('Begin lossless rollback to SQL Server? PostgreSQL remains Primary until reverse sync and validation complete.')) return;
+  if (action === 'rollback-abort' && !confirm('Abort this rollback attempt? PostgreSQL will remain Primary.')) return;
   busy = true;
-  clearTimeout(button.settleTimer);
-  button.dataset.state = 'loading';
-  button.setAttribute('aria-busy', 'true');
   if (latest) render(latest);
   showMessage('Working…');
   try {
     const rows = el('seed-rows').value;
-    if (action === 'seed' && rows) showMessage(`Generating ${number(rows)} customers and ${number(rows)} orders…`);
+    if (action === 'seed' && rows) showMessage(`Generating ${number(rows)} customers and orders…`);
     const query = action === 'seed' && rows ? `?rows=${encodeURIComponent(rows)}` : '';
     const response = await fetch(`/api/actions/${action}${query}`, { method: 'POST' });
     const body = await response.json();
     if (!response.ok) throw new Error(body.detail || 'Action failed');
     showMessage(body.message);
-    settle(button, body.message.includes('FAILED') ? 'error' : 'success', 1400);
     if (action === 'reset') document.dispatchEvent(new CustomEvent('migration-reset'));
-  } catch (error) {
-    showMessage(error.message, true);
-    settle(button, 'error', 1600);
-  } finally {
-    button.removeAttribute('aria-busy');
-    busy = false;
-    await refresh();
-  }
+  } catch (error) { showMessage(error.message, true); }
+  finally { busy = false; await refresh(); }
+});
+
+for (const id of ['log-search', 'log-level', 'log-category']) el(id).addEventListener(id === 'log-search' ? 'input' : 'change', renderLogs);
+el('log-pause').addEventListener('click', () => {
+  logPaused = !logPaused;
+  const button = el('log-pause');
+  button.classList.toggle('is-paused', logPaused);
+  setButtonLabel(button, logPaused ? 'play' : 'pause', logPaused ? 'Resume stream' : 'Pause stream');
+  if (!logPaused) visibleLogs = backendLogs;
+  renderLogs();
 });
 
 async function poll() { await refresh(); setTimeout(poll, 1000); }

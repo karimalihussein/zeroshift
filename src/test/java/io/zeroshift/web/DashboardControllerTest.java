@@ -55,8 +55,7 @@ class DashboardControllerTest {
     String page = resource("/templates/index.html");
 
     assertThat(script).contains("start: data.migrationStartAllowed");
-    assertThat(page)
-        .containsPattern("<button[^>]*data-action=\"start\"[^>]*\\sdisabled>");
+    assertThat(page).containsPattern("<button[^>]*data-action=\"start\"[^>]*\\sdisabled>");
   }
 
   @Test
@@ -104,11 +103,20 @@ class DashboardControllerTest {
         .contains("Ready for Cutover — 95%")
         .contains("Migration completed successfully")
         .contains("PostgreSQL is now Primary")
-        .contains("['IDLE', 'COMPLETED']");
+        .contains("ROLLED_BACK")
+        .contains("renderRollback(data.rollback, s)");
     assertThat(page)
         .contains("id=\"completion\"")
         .contains("CDC fully caught up / 0 pending")
-        .contains("Source/target validation passed");
+        .contains("Source/target validation passed")
+        .contains("data-stage=\"SNAPSHOT\"")
+        .contains("data-stage=\"CATCH_UP\"")
+        .contains("data-stage=\"PREPARE\"")
+        .contains("data-stage=\"VALIDATION\"")
+        .contains("data-stage=\"CUTOVER\"")
+        .contains("id=\"log-search\"")
+        .contains("id=\"log-pause\"")
+        .contains("data-action=\"rollback\"");
   }
 
   @Test

@@ -109,7 +109,16 @@
   });
   document.addEventListener('migration-state', async event => {
     state = event.detail; connected = true; controls();
-    if (!selected && !working) hint(writable() ? `Migration ${Math.round(state.progress)}% · ${state.migration.cdcPaused ? 'CDC replay paused; source writes and snapshot continue.' : 'Select an already migrated order to begin.'}` : 'Start or resume a migration to try live changes.');
+    if (!selected && !working) {
+      const stage = state.migration.stage;
+      const message = writable()
+        ? `Migration ${Math.round(state.progress)}% · ${state.migration.cdcPaused ? 'CDC replay paused; source writes and snapshot continue.' : 'Select an already migrated order to begin.'}`
+        : stage === 'COMPLETED' ? 'Migration complete · live application traffic is now routed to PostgreSQL.'
+          : stage === 'ROLLED_BACK' ? 'Rollback complete · live application traffic is now routed to SQL Server.'
+            : state.rollback?.inProgress ? 'Rollback in progress · use the main status and event log to follow reverse synchronization.'
+              : 'Start or resume a migration to try live changes.';
+      hint(message);
+    }
     if (selected && !working && !reading) {
       reading = true;
       const current = generation; const id = selected.orderId;
