@@ -17,6 +17,8 @@ public interface MigrationStore {
 
   List<Row> read(Table table, long afterId, int limit);
 
+  TrafficMetrics trafficMetrics();
+
   interface Session {
     MigrationState state();
 
@@ -53,6 +55,12 @@ public interface MigrationStore {
     void traffic(boolean enabled);
 
     void writeTraffic(TrafficOperation operation);
+
+    /** Counts one committed operation against the database it was routed to. */
+    void recordTraffic(TrafficOperation operation, Primary target);
+
+    /** Counts one failed operation and returns the current run of consecutive failures. */
+    int trafficError();
 
     void reset();
 

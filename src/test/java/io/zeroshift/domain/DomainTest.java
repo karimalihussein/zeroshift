@@ -2,6 +2,7 @@ package io.zeroshift.domain;
 
 import static org.assertj.core.api.Assertions.*;
 
+import java.util.stream.LongStream;
 import org.junit.jupiter.api.Test;
 
 class DomainTest {
@@ -20,5 +21,15 @@ class DomainTest {
     assertThat(Stage.IDLE.canPause()).isFalse();
     assertThat(Stage.COMPLETE.canPause()).isFalse();
     assertThat(Stage.FREEZE.canPause()).isTrue();
+  }
+
+  @Test
+  void trafficMixIsReadHeavyAndCoversEveryOperation() {
+    var mix = LongStream.range(0, 10).mapToObj(TrafficOperation::forStep).toList();
+    assertThat(mix).filteredOn(o -> o == TrafficOperation.READ).hasSize(4);
+    assertThat(mix).containsOnlyOnce(TrafficOperation.DELETE);
+    assertThat(mix).filteredOn(o -> o == TrafficOperation.UPDATE).hasSize(3);
+    assertThat(mix).filteredOn(o -> o == TrafficOperation.INSERT).hasSize(2);
+    assertThat(TrafficOperation.forStep(10)).isEqualTo(TrafficOperation.forStep(0));
   }
 }

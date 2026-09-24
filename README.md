@@ -10,7 +10,7 @@ ZeroShift is a small Spring Boot application with a single dashboard. It copies 
 
 - **Change capture from a committed boundary** using native SQL Server Change Tracking
 - **Resumable keyset snapshot** loaded with PostgreSQL `COPY`, with each checkpoint committed atomically with its rows
-- **Catch-up under live traffic:** real INSERT, UPDATE and DELETE transactions keep running during the copy
+- **Catch-up under live traffic:** a read-heavy mix of real INSERT, UPDATE, DELETE and READ operations on random rows keeps running during the copy, catch-up, validation and cutover
 - **Pause, simulated crash and process kill:** recovery always resumes from the last committed checkpoint
 - **Full validation:** counts plus ordered SHA-256 fingerprints of every column, behind a real source write fence
 - **Gated cutover:** fence, drain, validate, sync sequences, switch routing
@@ -31,7 +31,7 @@ Open **http://localhost:8080**. On the first start, SQL Server takes a minute to
 ## Using the dashboard
 
 1. **Generate Demo Data:** customers and related orders, including Unicode, `NULL` emails and exact decimals. The **Rows** field accepts 1–10,000,000; the default is 10,000.
-2. **Start Traffic:** continuous real transactions against whichever database is primary.
+2. **Start Live Traffic:** continuous real operations against whichever database is primary: SQL Server (captured by Change Tracking) before cutover, PostgreSQL directly after. The Live traffic panel shows backend-counted totals per operation, operations/sec, errors and the current target. A failed operation is counted and retried; five failures in a row stop traffic.
 3. **Start Migration:** snapshot → catch-up → indexes and constraints → **Ready**.
 4. **Pause / Resume / Simulate Crash:** stop and resume at durable checkpoints. A simulated crash rolls back a half-written batch.
 5. **Live Data Changes:** change real rows during the migration and compare them in the Record Inspector. See [docs/live-changes.md](docs/live-changes.md).

@@ -236,7 +236,8 @@ class LiveChangesIT extends DatabaseIntegrationFixture {
     live.pauseReplay(true);
     traffic.toggle(true);
     long count = source.count(Table.CUSTOMERS);
-    traffic.tick();
+    traffic.tick(); // READ
+    traffic.tick(); // INSERT
     tick();
     assertThat(source.count(Table.CUSTOMERS)).isEqualTo(count + 1);
     assertThat(store.count(Table.CUSTOMERS)).isEqualTo(count);

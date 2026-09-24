@@ -92,6 +92,29 @@ public class PostgresMigrationStore implements MigrationStore {
   }
 
   @Override
+  public TrafficMetrics trafficMetrics() {
+    // A window with no committed operation for 3s means traffic is stalled, not still flowing.
+    return jdbc.queryForObject(
+        "SELECT s.traffic,s.primary_db,m.*,CASE WHEN s.traffic AND now()-m.window_started<interval '3 seconds' THEN m.ops_per_second ELSE 0 END AS rate FROM traffic_metrics m CROSS JOIN migration_state s WHERE m.id=1 AND s.id=1",
+        (r, n) ->
+            new TrafficMetrics(
+                r.getBoolean("traffic"),
+                Primary.valueOf(r.getString("primary_db")),
+                r.getLong("inserts")
+                    + r.getLong("updates")
+                    + r.getLong("deletes")
+                    + r.getLong("reads"),
+                r.getLong("inserts"),
+                r.getLong("updates"),
+                r.getLong("deletes"),
+                r.getLong("reads"),
+                r.getLong("errors"),
+                r.getLong("sql_server_ops"),
+                r.getLong("postgres_ops"),
+                r.getDouble("rate")));
+  }
+
+  @Override
   public long appliedVersion(Table table, long id) {
     return jdbc
         .query(
@@ -278,6 +301,8 @@ public class PostgresMigrationStore implements MigrationStore {
     @Override
     public void traffic(boolean enabled) {
       jdbc.update("UPDATE migration_state SET traffic=? WHERE id=1", enabled);
+      jdbc.update(
+          "UPDATE traffic_metrics SET consecutive_errors=0,ops_per_second=0,window_started=now(),window_ops=inserts+updates+deletes+reads WHERE id=1");
       log("Traffic " + (enabled ? "started" : "stopped"));
     }
 
@@ -299,18 +324,79 @@ public class PostgresMigrationStore implements MigrationStore {
                   Long.class);
           jdbc.update("INSERT INTO orders(customer_id,amount,status) VALUES(?,12.3456,'NEW')", id);
         }
-        case UPDATE -> {
-          jdbc.update(
-              "UPDATE customers SET active=NOT active WHERE id=(SELECT MAX(id) FROM customers)");
-          jdbc.update(
-              "UPDATE orders SET amount=amount+1.0001,status='UPDATED' WHERE id=(SELECT MAX(id) FROM orders)");
-        }
-        case DELETE -> {
-          jdbc.update("DELETE FROM orders WHERE customer_id=(SELECT MIN(id) FROM customers)");
-          jdbc.update("DELETE FROM customers WHERE id=(SELECT MIN(id) FROM customers)");
-        }
-        default -> throw new IllegalStateException("Unexpected traffic operation");
+        case UPDATE ->
+            randomRow("orders", "id,customer_id")
+                .ifPresent(
+                    order -> {
+                      jdbc.update(
+                          "UPDATE orders SET amount=amount+1.0001,status='UPDATED' WHERE id=?",
+                          order.get("id"));
+                      jdbc.update(
+                          "UPDATE customers SET active=NOT active WHERE id=?",
+                          order.get("customer_id"));
+                    });
+        case DELETE ->
+            randomRow("customers", "id")
+                .ifPresent(
+                    customer -> {
+                      jdbc.update("DELETE FROM orders WHERE customer_id=?", customer.get("id"));
+                      jdbc.update("DELETE FROM customers WHERE id=?", customer.get("id"));
+                    });
+        case READ ->
+            randomRow("orders", "id")
+                .ifPresent(
+                    order ->
+                        jdbc.queryForList(
+                            "SELECT o.id,o.amount,o.status,c.name,c.email FROM orders o JOIN customers c ON c.id=o.customer_id WHERE o.id=?",
+                            order.get("id")));
       }
+    }
+
+    /** Seeks the first key at a uniformly random point of the id range; no full scan. */
+    private Optional<Map<String, Object>> randomRow(String table, String columns) {
+      return jdbc
+          .queryForList(
+              "SELECT "
+                  + columns
+                  + " FROM "
+                  + table
+                  + " WHERE id>=(SELECT MIN(id)+floor(random()*(MAX(id)-MIN(id)+1))::bigint FROM "
+                  + table
+                  + ") ORDER BY id LIMIT 1")
+          .stream()
+          .findFirst();
+    }
+
+    @Override
+    public void recordTraffic(TrafficOperation operation, Primary target) {
+      String counter = operation.name().toLowerCase(Locale.ROOT) + "s";
+      String routed = target == Primary.SQL_SERVER ? "sql_server_ops" : "postgres_ops";
+      // All right-hand values are pre-update; the rate is recomputed about once per second.
+      jdbc.update(
+          "UPDATE traffic_metrics SET "
+              + counter
+              + "="
+              + counter
+              + "+1,"
+              + routed
+              + "="
+              + routed
+              + "+1,consecutive_errors=0,"
+              + "ops_per_second=CASE WHEN now()-window_started>=interval '1 second'"
+              + " THEN (inserts+updates+deletes+reads+1-window_ops)/extract(epoch FROM now()-window_started)"
+              + " ELSE ops_per_second END,"
+              + "window_ops=CASE WHEN now()-window_started>=interval '1 second'"
+              + " THEN inserts+updates+deletes+reads+1 ELSE window_ops END,"
+              + "window_started=CASE WHEN now()-window_started>=interval '1 second'"
+              + " THEN now() ELSE window_started END WHERE id=1");
+    }
+
+    @Override
+    public int trafficError() {
+      return Objects.requireNonNull(
+          jdbc.queryForObject(
+              "UPDATE traffic_metrics SET errors=errors+1,consecutive_errors=consecutive_errors+1 WHERE id=1 RETURNING consecutive_errors",
+              Integer.class));
     }
 
     @Override
@@ -322,6 +408,8 @@ public class PostgresMigrationStore implements MigrationStore {
       // Keep the singleton row: deleting/reinserting it can strand waiting row-lock readers.
       jdbc.update(
           "UPDATE migration_state SET stage=DEFAULT,status=DEFAULT,primary_db=DEFAULT,current_table=DEFAULT,last_id=DEFAULT,customer_bound=DEFAULT,order_bound=DEFAULT,version=DEFAULT,copied=DEFAULT,expected=DEFAULT,batches=DEFAULT,applied=DEFAULT,traffic=DEFAULT,crash_requested=DEFAULT,traffic_step=DEFAULT,validation=DEFAULT,error=DEFAULT,checkpoint=DEFAULT,rows_per_second=DEFAULT,cdc_paused=DEFAULT WHERE id=1");
+      jdbc.update(
+          "UPDATE traffic_metrics SET inserts=DEFAULT,updates=DEFAULT,deletes=DEFAULT,reads=DEFAULT,errors=DEFAULT,consecutive_errors=DEFAULT,sql_server_ops=DEFAULT,postgres_ops=DEFAULT,window_started=DEFAULT,window_ops=DEFAULT,ops_per_second=DEFAULT WHERE id=1");
       jdbc.update("DELETE FROM replay_receipt");
       jdbc.update("DELETE FROM migration_log");
       log("Reset complete");

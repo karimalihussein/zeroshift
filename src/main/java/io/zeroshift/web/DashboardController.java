@@ -22,6 +22,7 @@ public class DashboardController {
       Counts target,
       Long pending,
       List<String> logs,
+      TrafficMetrics traffic,
       String captureError,
       int seedRows) {}
 
@@ -77,6 +78,7 @@ public class DashboardController {
         new Counts(store.count(Table.CUSTOMERS), store.count(Table.ORDERS)),
         pending,
         store.logs(),
+        traffic.metrics(),
         error,
         demo.defaultRows());
   }

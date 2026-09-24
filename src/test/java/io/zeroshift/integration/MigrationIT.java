@@ -30,17 +30,15 @@ class MigrationIT extends DatabaseIntegrationFixture {
   void capturesInsertUpdateDeleteAndForeignKeyTransactions() {
     source.seed(20);
     ready();
-    source.writeTraffic(TrafficOperation.forStep(0));
-    source.writeTraffic(TrafficOperation.forStep(1));
-    source.writeTraffic(TrafficOperation.forStep(2));
+    source.writeTraffic(TrafficOperation.INSERT);
+    source.writeTraffic(TrafficOperation.DELETE);
+    source.writeTraffic(TrafficOperation.UPDATE);
     coordinator.tick();
     assertThat(cutover.inspect().matches()).isTrue();
     assertThat(store.state().applied()).isGreaterThanOrEqualTo(4);
-    assertThat(pg.queryForObject("SELECT count(*) FROM customers WHERE id=1", Long.class)).isZero();
-    assertThat(
-            pg.queryForObject(
-                "SELECT status FROM orders WHERE id=(SELECT MAX(id) FROM orders)", String.class))
-        .isEqualTo("UPDATED");
+    assertThat(store.count(Table.CUSTOMERS)).isEqualTo(20);
+    assertThat(pg.queryForObject("SELECT count(*) FROM orders WHERE status='UPDATED'", Long.class))
+        .isOne();
   }
 
   @Test
@@ -104,7 +102,7 @@ class MigrationIT extends DatabaseIntegrationFixture {
     assertThat(source.count(Table.CUSTOMERS)).isEqualTo(sourceCount);
     assertThat(pg.queryForObject("SELECT MAX(id) FROM customers", Long.class))
         .isGreaterThan(sql.queryForObject("SELECT MAX(id) FROM dbo.customers", Long.class));
-    assertThatThrownBy(() -> source.writeTraffic(TrafficOperation.forStep(0)))
+    assertThatThrownBy(() -> source.writeTraffic(TrafficOperation.INSERT))
         .hasMessageContaining("frozen");
     assertThat(store.state().traffic()).isTrue();
   }
@@ -198,7 +196,8 @@ class MigrationIT extends DatabaseIntegrationFixture {
     cutover.request();
     coordinator.tick();
     traffic.toggle(true);
-    traffic.tick();
+    traffic.tick(); // READ
+    traffic.tick(); // INSERT
     assertThat(pg.queryForObject("SELECT MIN(id) FROM customers", Long.class)).isEqualTo(1L);
   }
 
@@ -212,7 +211,7 @@ class MigrationIT extends DatabaseIntegrationFixture {
     coordinator.tick();
     assertThat(store.state().status()).isEqualTo(RunStatus.FAILED);
     assertThat(store.state().primary()).isEqualTo(Primary.SQL_SERVER);
-    assertThatThrownBy(() -> source.writeTraffic(TrafficOperation.forStep(0)))
+    assertThatThrownBy(() -> source.writeTraffic(TrafficOperation.INSERT))
         .hasMessageContaining("frozen");
   }
 
@@ -252,7 +251,7 @@ class MigrationIT extends DatabaseIntegrationFixture {
     source.seed(20);
     ready();
     sql.execute("ALTER TABLE dbo.customers DISABLE CHANGE_TRACKING");
-    source.writeTraffic(TrafficOperation.forStep(0));
+    source.writeTraffic(TrafficOperation.INSERT);
     sql.execute("ALTER TABLE dbo.customers ENABLE CHANGE_TRACKING");
     coordinator.tick();
     assertThat(store.state().status()).isEqualTo(RunStatus.FAILED);
@@ -266,7 +265,7 @@ class MigrationIT extends DatabaseIntegrationFixture {
     long version = store.state().version();
     pg.execute("ALTER TABLE customers ADD CONSTRAINT reject_live CHECK(name NOT LIKE 'Live%')");
     try {
-      source.writeTraffic(TrafficOperation.forStep(0));
+      source.writeTraffic(TrafficOperation.INSERT);
       coordinator.tick();
       assertThat(store.state().status()).isEqualTo(RunStatus.FAILED);
       assertThat(store.state().version()).isEqualTo(version);

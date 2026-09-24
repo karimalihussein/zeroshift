@@ -126,19 +126,47 @@ public class SqlServerReader implements SourceDatabase {
               jdbc.update(
                   "INSERT dbo.orders(customer_id,amount,status) VALUES(?,12.3456,'NEW')", id);
             }
-            case UPDATE -> {
-              jdbc.update(
-                  "UPDATE dbo.customers SET active=CASE active WHEN 1 THEN 0 ELSE 1 END WHERE id=(SELECT MAX(id) FROM dbo.customers)");
-              jdbc.update(
-                  "UPDATE dbo.orders SET amount=amount+1.0001,status='UPDATED' WHERE id=(SELECT MAX(id) FROM dbo.orders)");
-            }
-            case DELETE -> {
-              jdbc.update(
-                  "DELETE dbo.orders WHERE customer_id=(SELECT MIN(id) FROM dbo.customers)");
-              jdbc.update("DELETE dbo.customers WHERE id=(SELECT MIN(id) FROM dbo.customers)");
-            }
-            default -> throw new IllegalStateException("Unexpected traffic operation");
+            case UPDATE ->
+                randomRow("orders", "id,customer_id")
+                    .ifPresent(
+                        order -> {
+                          jdbc.update(
+                              "UPDATE dbo.orders SET amount=amount+1.0001,status='UPDATED' WHERE id=?",
+                              order.get("id"));
+                          jdbc.update(
+                              "UPDATE dbo.customers SET active=CASE active WHEN 1 THEN 0 ELSE 1 END WHERE id=?",
+                              order.get("customer_id"));
+                        });
+            case DELETE ->
+                randomRow("customers", "id")
+                    .ifPresent(
+                        customer -> {
+                          jdbc.update("DELETE dbo.orders WHERE customer_id=?", customer.get("id"));
+                          jdbc.update("DELETE dbo.customers WHERE id=?", customer.get("id"));
+                        });
+            case READ ->
+                randomRow("orders", "id")
+                    .ifPresent(
+                        order ->
+                            jdbc.queryForList(
+                                "SELECT o.id,o.amount,o.status,c.name,c.email FROM dbo.orders o JOIN dbo.customers c ON c.id=o.customer_id WHERE o.id=?",
+                                order.get("id")));
           }
         });
+  }
+
+  /** Seeks the first key at a uniformly random point of the id range; no full scan. */
+  private Optional<Map<String, Object>> randomRow(String table, String columns) {
+    return jdbc
+        .queryForList(
+            "SELECT TOP (1) "
+                + columns
+                + " FROM dbo."
+                + table
+                + " WHERE id>=(SELECT MIN(id)+CAST(FLOOR(RAND()*(MAX(id)-MIN(id)+1)) AS BIGINT) FROM dbo."
+                + table
+                + ") ORDER BY id")
+        .stream()
+        .findFirst();
   }
 }

@@ -8,7 +8,7 @@ function render(data) {
   const s = data.migration;
   if (s.stage !== lastStage && !busy) {
     const guidance = {
-      IDLE: data.source.customers ? 'Start traffic, then start the migration.' : 'Generate demo data, start traffic, then start the migration.',
+      IDLE: data.source.customers ? 'Start live traffic, then start the migration.' : 'Generate demo data, start live traffic, then start the migration.',
       SNAPSHOT: 'Copying bounded batches. You can pause or simulate a crash to explore recovery.',
       CATCH_UP: 'Applying committed source changes to PostgreSQL.',
       PREPARE: 'Preparing indexes, constraints, sequences and statistics.',
@@ -25,7 +25,7 @@ function render(data) {
     el(`${side}-count`).textContent = number(counts.customers + counts.orders);
     el(`${side}-detail`).textContent = `${number(counts.customers)} customers · ${number(counts.orders)} orders`;
   }
-  el('primary').textContent = s.primary === 'SQL_SERVER' ? 'SQL Server' : 'PostgreSQL';
+  el('primary').textContent = databaseName(s.primary);
   el('stage').textContent = s.stage.replaceAll('_', ' ').toLowerCase().replace(/^./, c => c.toUpperCase());
   el('run-status').textContent = s.status.toLowerCase();
   el('progress').value = data.progress;
@@ -37,10 +37,7 @@ function render(data) {
   el('checkpoint').textContent = s.checkpoint ? `${new Date(s.checkpoint).toLocaleTimeString()} · key ${s.lastId} · v${s.version}` : '—';
   el('validation').textContent = s.validation;
   el('logs').textContent = data.logs.join('\n');
-  el('traffic').textContent = s.traffic ? (s.stage === 'FREEZE' ? 'Traffic waiting for cutover' : 'Traffic running · INSERT / UPDATE / DELETE') : 'Traffic stopped';
-  const trafficButton = el('traffic-button');
-  trafficButton.dataset.action = s.traffic ? 'traffic-stop' : 'traffic-start';
-  trafficButton.textContent = s.traffic ? 'Stop Traffic' : 'Start Traffic';
+  renderTraffic(data.traffic, s.stage);
   const running = s.status === 'RUNNING';
   const allowed = {
     seed: s.stage === 'IDLE' && !s.traffic && data.source.customers === 0,
@@ -60,6 +57,18 @@ function render(data) {
     showMessage('Backend recovered. The displayed checkpoint is current.');
     el('message').dataset.backendError = 'false';
   }
+}
+const databaseName = primary => primary === 'SQL_SERVER' ? 'SQL Server' : 'PostgreSQL';
+function renderTraffic(t, stage) {
+  const waiting = t.running && stage === 'FREEZE';
+  el('traffic').textContent = t.running ? (waiting ? 'Live traffic waiting for the cutover fence' : `Live traffic running → ${databaseName(t.target)}`) : 'Live traffic stopped';
+  const trafficButton = el('traffic-button');
+  trafficButton.dataset.action = t.running ? 'traffic-stop' : 'traffic-start';
+  trafficButton.textContent = t.running ? 'Stop Live Traffic' : 'Start Live Traffic';
+  el('traffic-target').textContent = t.running ? (waiting ? `${databaseName(t.target)} (fenced)` : databaseName(t.target)) : '—';
+  el('traffic-rate').textContent = t.operationsPerSecond.toFixed(1);
+  for (const key of ['total', 'inserts', 'updates', 'deletes', 'reads', 'errors']) el(`traffic-${key}`).textContent = number(t[key]);
+  el('traffic-routing').textContent = `Committed operations counted by the backend: SQL Server ${number(t.sqlServerOperations)} · PostgreSQL ${number(t.postgresOperations)}`;
 }
 function showMessage(message, error = false) {
   el('message').textContent = message;

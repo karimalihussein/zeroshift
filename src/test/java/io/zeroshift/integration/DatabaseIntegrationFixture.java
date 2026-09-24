@@ -2,6 +2,7 @@ package io.zeroshift.integration;
 
 import static org.assertj.core.api.Assertions.*;
 
+import com.zaxxer.hikari.HikariDataSource;
 import io.zeroshift.application.*;
 import io.zeroshift.application.port.*;
 import io.zeroshift.domain.*;
@@ -33,8 +34,9 @@ abstract class DatabaseIntegrationFixture {
   protected TrafficSimulator traffic;
   protected JdbcTemplate sql;
   protected JdbcTemplate pg;
-  protected DriverManagerDataSource targetDataSource;
-  protected DriverManagerDataSource sourceDataSource;
+  // Pooled like the app: background traffic would otherwise open a TCP connection per call.
+  protected HikariDataSource targetDataSource;
+  protected HikariDataSource sourceDataSource;
 
   @BeforeEach
   void setup() {
@@ -46,12 +48,11 @@ abstract class DatabaseIntegrationFixture {
     master.execute(
         "IF NOT EXISTS(SELECT 1 FROM sys.change_tracking_databases WHERE database_id=DB_ID('zeroshift_java')) ALTER DATABASE zeroshift_java SET CHANGE_TRACKING=ON (CHANGE_RETENTION=7 DAYS,AUTO_CLEANUP=ON)");
     sourceDataSource =
-        new DriverManagerDataSource(
+        pool(
             SQL.getJdbcUrl() + ";databaseName=zeroshift_java",
             SQL.getUsername(),
             SQL.getPassword());
-    targetDataSource =
-        new DriverManagerDataSource(PG.getJdbcUrl(), PG.getUsername(), PG.getPassword());
+    targetDataSource = pool(PG.getJdbcUrl(), PG.getUsername(), PG.getPassword());
     new SchemaInitializer(targetDataSource, sourceDataSource);
     source = new SqlServerReader(sourceDataSource);
     store = new PostgresMigrationStore(targetDataSource);
@@ -59,6 +60,20 @@ abstract class DatabaseIntegrationFixture {
     pg = new JdbcTemplate(targetDataSource);
     new DemoDataService(source, store, 20).reset();
     wire();
+  }
+
+  @AfterEach
+  void closePools() {
+    sourceDataSource.close();
+    targetDataSource.close();
+  }
+
+  private static HikariDataSource pool(String url, String user, String password) {
+    var pool = new HikariDataSource();
+    pool.setJdbcUrl(url);
+    pool.setUsername(user);
+    pool.setPassword(password);
+    return pool;
   }
 
   protected void wire() {
