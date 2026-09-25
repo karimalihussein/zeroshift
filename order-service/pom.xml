@@ -3,6 +3,7 @@
   <modelVersion>4.0.0</modelVersion>
   <parent><groupId>io.zeroshift</groupId><artifactId>zeroshift-parent</artifactId><version>1.0.0</version></parent>
   <artifactId>order-service</artifactId>
+  <properties><jooq.codegen.skip>false</jooq.codegen.skip><jooq.package>io.zeroshift.order.db</jooq.package></properties>
   <name>ZeroShift order service</name><description>Event-sourced orders and the order saga orchestrator</description>
   <dependencies>
     <dependency><groupId>io.zeroshift</groupId><artifactId>platform</artifactId><version>${project.version}</version></dependency>

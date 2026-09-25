@@ -22,8 +22,11 @@ import org.testcontainers.kafka.KafkaContainer;
 public final class CommerceStack {
   private static final Network NETWORK = Network.newNetwork();
 
+  /** The image the lab runs: tests and jOOQ code generation use the same PostgreSQL. */
+  public static final String POSTGRES_IMAGE = "postgres:17-alpine";
+
   public static final PostgreSQLContainer<?> POSTGRES =
-      new PostgreSQLContainer<>("postgres:17-alpine")
+      new PostgreSQLContainer<>(POSTGRES_IMAGE)
           .withNetwork(NETWORK)
           .withNetworkAliases("postgres")
           .withCommand("postgres", "-c", "wal_level=logical", "-c", "max_replication_slots=10");

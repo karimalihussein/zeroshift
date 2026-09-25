@@ -3,6 +3,7 @@
   <modelVersion>4.0.0</modelVersion>
   <parent><groupId>io.zeroshift</groupId><artifactId>zeroshift-parent</artifactId><version>1.0.0</version></parent>
   <artifactId>inventory-service</artifactId>
+  <properties><jooq.codegen.skip>false</jooq.codegen.skip><jooq.package>io.zeroshift.inventory.db</jooq.package></properties>
   <name>ZeroShift inventory service</name><description>Reserves and releases stock with optimistic locking</description>
   <dependencies>
     <dependency><groupId>io.zeroshift</groupId><artifactId>platform</artifactId><version>${project.version}</version></dependency>

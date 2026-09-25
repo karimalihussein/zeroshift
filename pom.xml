@@ -14,7 +14,13 @@
     <module>order-query-service</module>
     <module>migration-lab</module>
   </modules>
-  <properties><java.version>25</java.version><testcontainers.version>1.21.4</testcontainers.version></properties>
+  <properties>
+    <java.version>25</java.version><testcontainers.version>1.21.4</testcontainers.version>
+    <!-- jOOQ code generation (profile jooq-codegen): modules with a database opt in. -->
+    <jooq.codegen.skip>true</jooq.codegen.skip>
+    <jooq.migrations>${project.basedir}/src/main/resources/db/migration</jooq.migrations>
+    <jooq.package>unset</jooq.package>
+  </properties>
   <dependencyManagement>
     <dependencies>
       <dependency><groupId>org.testcontainers</groupId><artifactId>testcontainers-bom</artifactId><version>${testcontainers.version}</version><type>pom</type><scope>import</scope></dependency>
@@ -26,7 +32,38 @@
     <plugins>
       <plugin><groupId>org.apache.maven.plugins</groupId><artifactId>maven-surefire-plugin</artifactId><configuration><excludes><exclude>**/*IT.java</exclude></excludes></configuration></plugin>
       <plugin><groupId>org.apache.maven.plugins</groupId><artifactId>maven-failsafe-plugin</artifactId><executions><execution><goals><goal>integration-test</goal><goal>verify</goal></goals></execution></executions></plugin>
+      <!-- Generated jOOQ classes are committed here, outside src/main/java (and so outside spotless). -->
+      <plugin><groupId>org.codehaus.mojo</groupId><artifactId>build-helper-maven-plugin</artifactId>
+        <executions><execution><id>jooq-sources</id><phase>generate-sources</phase><goals><goal>add-source</goal></goals>
+          <configuration><sources><source>${project.basedir}/src/generated/java</source></sources></configuration></execution></executions></plugin>
       <plugin><groupId>com.diffplug.spotless</groupId><artifactId>spotless-maven-plugin</artifactId><version>3.0.0</version><configuration><java><googleJavaFormat><version>1.28.0</version></googleJavaFormat></java></configuration></plugin>
     </plugins>
   </build>
+  <profiles>
+    <!--
+      Regenerates the jOOQ classes of every module with a database, from its Flyway migrations
+      applied to a real PostgreSQL (Testcontainers). Run after adding a migration, then commit:
+        mvn -Pjooq-codegen -DskipTests process-test-classes
+    -->
+    <profile>
+      <id>jooq-codegen</id>
+      <dependencies>
+        <dependency><groupId>org.jooq</groupId><artifactId>jooq-codegen</artifactId><scope>test</scope></dependency>
+      </dependencies>
+      <build><plugins>
+        <plugin><groupId>org.codehaus.mojo</groupId><artifactId>exec-maven-plugin</artifactId>
+          <executions><execution><id>jooq-codegen</id><phase>process-test-classes</phase><goals><goal>java</goal></goals>
+            <configuration>
+              <skip>${jooq.codegen.skip}</skip>
+              <mainClass>io.zeroshift.platform.testing.JooqCodegen</mainClass>
+              <classpathScope>test</classpathScope>
+              <arguments>
+                <argument>${jooq.migrations}</argument>
+                <argument>${jooq.package}</argument>
+                <argument>${project.basedir}/src/generated/java</argument>
+              </arguments>
+            </configuration></execution></executions></plugin>
+      </plugins></build>
+    </profile>
+  </profiles>
 </project>

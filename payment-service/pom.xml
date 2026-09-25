@@ -3,8 +3,8 @@
   <modelVersion>4.0.0</modelVersion>
   <parent><groupId>io.zeroshift</groupId><artifactId>zeroshift-parent</artifactId><version>1.0.0</version></parent>
   <artifactId>payment-service</artifactId>
+  <properties><jooq.codegen.skip>false</jooq.codegen.skip><jooq.package>io.zeroshift.payment.db</jooq.package><resilience4j.version>2.4.0</resilience4j.version></properties>
   <name>ZeroShift payment service</name><description>Authorizes and refunds order payments through an unreliable gateway</description>
-  <properties><resilience4j.version>2.4.0</resilience4j.version></properties>
   <dependencies>
     <dependency><groupId>io.zeroshift</groupId><artifactId>platform</artifactId><version>${project.version}</version></dependency>
     <dependency><groupId>io.github.resilience4j</groupId><artifactId>resilience4j-circuitbreaker</artifactId><version>${resilience4j.version}</version></dependency>

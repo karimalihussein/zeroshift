@@ -3,11 +3,14 @@
   <modelVersion>4.0.0</modelVersion>
   <parent><groupId>io.zeroshift</groupId><artifactId>zeroshift-parent</artifactId><version>1.0.0</version></parent>
   <artifactId>platform</artifactId>
+  <properties><jooq.codegen.skip>false</jooq.codegen.skip><jooq.package>io.zeroshift.platform.db</jooq.package><jooq.migrations>${project.basedir}/src/main/resources/db/platform</jooq.migrations></properties>
   <name>ZeroShift service platform</name><description>What every event-driven service repeats: outbox, idempotent inbox, dead letters, fault switches, lab admin API</description>
   <dependencies>
     <dependency><groupId>io.zeroshift</groupId><artifactId>contracts</artifactId><version>${project.version}</version></dependency>
     <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-webmvc</artifactId></dependency>
     <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-jdbc</artifactId></dependency>
+    <!-- Typed SQL over the generated schema; joins Spring's transactions like JdbcTemplate does. -->
+    <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-jooq</artifactId></dependency>
     <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-kafka</artifactId></dependency>
     <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-flyway</artifactId></dependency>
     <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-actuator</artifactId></dependency>
@@ -23,6 +26,8 @@
     <dependency><groupId>org.springframework</groupId><artifactId>spring-test</artifactId><scope>test</scope></dependency>
     <dependency><groupId>org.testcontainers</groupId><artifactId>postgresql</artifactId><scope>test</scope></dependency>
     <dependency><groupId>org.testcontainers</groupId><artifactId>kafka</artifactId><scope>test</scope></dependency>
+    <!-- JooqCodegen (test-jar), run through the jooq-codegen profile. -->
+    <dependency><groupId>org.jooq</groupId><artifactId>jooq-codegen</artifactId><scope>test</scope></dependency>
   </dependencies>
   <build>
     <plugins>
