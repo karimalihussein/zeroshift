@@ -8,8 +8,8 @@ import io.zeroshift.platform.Outbox;
 import java.util.List;
 import java.util.Map;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
+import org.jooq.DSLContext;
 import org.springframework.context.annotation.*;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.web.bind.annotation.*;
 
@@ -19,12 +19,12 @@ public class InventoryWiring {
   public static final String CONSUMER = "inventory-service";
 
   @Bean
-  JdbcStock stock(JdbcTemplate jdbc) {
-    return new JdbcStock(jdbc);
+  PostgresStock stock(DSLContext db) {
+    return new PostgresStock(db);
   }
 
   @Bean
-  InventoryHandler inventoryHandler(JdbcStock stock, Outbox outbox, Faults faults) {
+  InventoryHandler inventoryHandler(PostgresStock stock, Outbox outbox, Faults faults) {
     return new InventoryHandler(stock, outbox, faults);
   }
 
@@ -50,9 +50,9 @@ public class InventoryWiring {
 
   @RestController
   public static class StockController {
-    private final JdbcStock stock;
+    private final PostgresStock stock;
 
-    public StockController(JdbcStock stock) {
+    public StockController(PostgresStock stock) {
       this.stock = stock;
     }
 

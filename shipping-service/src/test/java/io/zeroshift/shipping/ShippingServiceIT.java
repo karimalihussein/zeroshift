@@ -31,6 +31,12 @@ class ShippingServiceIT {
   }
 
   @Test
+  void generatedJooqClassesMatchTheMigratedSchema(@Autowired org.jooq.DSLContext db) {
+    io.zeroshift.platform.testing.GeneratedSchema.assertMatchesDatabase(
+        db, io.zeroshift.platform.db.Public.PUBLIC, io.zeroshift.shipping.db.Public.PUBLIC);
+  }
+
+  @Test
   void schedulesOnceAndAnswersARepeatWithTheSameTrackingNumber() {
     var order = UUID.randomUUID();
     send(kafka, new ScheduleShipment(order, "c-1"));

@@ -36,6 +36,12 @@ class InventoryServiceIT {
   }
 
   @Test
+  void generatedJooqClassesMatchTheMigratedSchema(@Autowired org.jooq.DSLContext db) {
+    io.zeroshift.platform.testing.GeneratedSchema.assertMatchesDatabase(
+        db, io.zeroshift.platform.db.Public.PUBLIC, io.zeroshift.inventory.db.Public.PUBLIC);
+  }
+
+  @Test
   void reservesAndReleasesStock() {
     int before = reserved("SKU-KEYBOARD");
     var order = UUID.randomUUID();

@@ -51,6 +51,12 @@ class PaymentServiceIT {
   }
 
   @Test
+  void generatedJooqClassesMatchTheMigratedSchema(@Autowired org.jooq.DSLContext db) {
+    io.zeroshift.platform.testing.GeneratedSchema.assertMatchesDatabase(
+        db, io.zeroshift.platform.db.Public.PUBLIC, io.zeroshift.payment.db.Public.PUBLIC);
+  }
+
+  @Test
   @Order(1)
   void authorizesThroughTheGatewayOnceEvenIfTheCommandIsSentTwice() {
     var order = UUID.randomUUID();

@@ -5,8 +5,8 @@ import io.zeroshift.platform.Faults;
 import io.zeroshift.platform.Inbox;
 import io.zeroshift.platform.Outbox;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
+import org.jooq.DSLContext;
 import org.springframework.context.annotation.*;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.kafka.annotation.KafkaListener;
 
 @Configuration(proxyBeanMethods = false)
@@ -14,8 +14,13 @@ public class ShippingWiring {
   public static final String CONSUMER = "shipping-service";
 
   @Bean
-  ShippingHandler shippingHandler(JdbcTemplate jdbc, Outbox outbox, Faults faults) {
-    return new ShippingHandler(jdbc, outbox, faults);
+  Shipments shipments(DSLContext db) {
+    return new Shipments(db);
+  }
+
+  @Bean
+  ShippingHandler shippingHandler(Shipments shipments, Outbox outbox, Faults faults) {
+    return new ShippingHandler(shipments, outbox, faults);
   }
 
   @Bean

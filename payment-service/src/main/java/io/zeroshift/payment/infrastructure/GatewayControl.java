@@ -3,7 +3,9 @@ package io.zeroshift.payment.infrastructure;
 import io.github.resilience4j.circuitbreaker.CircuitBreaker;
 import java.net.URI;
 import java.net.http.*;
+import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
@@ -41,8 +43,7 @@ public class GatewayControl {
   }
 
   @GetMapping("/calls")
-  public java.util.List<Map<String, Object>> calls(
-      @RequestParam(required = false) java.util.UUID orderId) {
+  public List<Map<String, Object>> calls(@RequestParam(required = false) UUID orderId) {
     return calls.recent(orderId, 100);
   }
 

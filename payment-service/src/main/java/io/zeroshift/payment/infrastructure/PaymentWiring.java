@@ -13,9 +13,9 @@ import io.zeroshift.platform.Outbox;
 import java.math.BigDecimal;
 import java.net.URI;
 import java.time.Duration;
+import org.jooq.DSLContext;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.*;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.support.TransactionTemplate;
 
 @Configuration(proxyBeanMethods = false)
@@ -59,8 +59,8 @@ public class PaymentWiring {
   }
 
   @Bean
-  GatewayCalls gatewayCalls(JdbcTemplate jdbc, TransactionTemplate transactions) {
-    return new GatewayCalls(jdbc, transactions);
+  GatewayCalls gatewayCalls(DSLContext db, TransactionTemplate transactions) {
+    return new GatewayCalls(db, transactions);
   }
 
   @Bean
@@ -74,8 +74,8 @@ public class PaymentWiring {
   }
 
   @Bean
-  Payments payments(JdbcTemplate jdbc) {
-    return new JdbcPayments(jdbc);
+  Payments payments(DSLContext db) {
+    return new PostgresPayments(db);
   }
 
   @Bean

@@ -1,41 +1,49 @@
 package io.zeroshift.payment.infrastructure;
 
+import static io.zeroshift.payment.db.Tables.GATEWAY_CALL;
+
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import org.springframework.jdbc.core.JdbcTemplate;
+import org.jooq.DSLContext;
+import org.jooq.impl.DSL;
 import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.support.TransactionTemplate;
 
 /** Durable log of gateway attempts, committed independently of the delivery's transaction. */
 public final class GatewayCalls {
-  private final JdbcTemplate jdbc;
+  private final DSLContext db;
   private final TransactionTemplate separate;
 
-  public GatewayCalls(JdbcTemplate jdbc, TransactionTemplate transactions) {
-    this.jdbc = jdbc;
+  public GatewayCalls(DSLContext db, TransactionTemplate transactions) {
+    this.db = db;
     separate = new TransactionTemplate(transactions.getTransactionManager());
     separate.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
   }
 
+  /**
+   * Committed on its own: a call the gateway saw stays logged even if the delivery that made it
+   * rolls back and is retried.
+   */
   public void record(
       UUID orderId, String outcome, long latencyMillis, String breaker, String detail) {
     separate.executeWithoutResult(
         s ->
-            jdbc.update(
-                "INSERT INTO gateway_call(order_id,outcome,latency_ms,breaker_state,detail) VALUES(?,?,?,?,?)",
-                orderId,
-                outcome,
-                latencyMillis,
-                breaker,
-                detail));
+            db.insertInto(GATEWAY_CALL)
+                .set(GATEWAY_CALL.ORDER_ID, orderId)
+                .set(GATEWAY_CALL.OUTCOME, outcome)
+                .set(GATEWAY_CALL.LATENCY_MS, latencyMillis)
+                .set(GATEWAY_CALL.BREAKER_STATE, breaker)
+                .set(GATEWAY_CALL.DETAIL, detail)
+                .execute());
   }
 
+  /** For the control plane, newest first; every order's calls when {@code orderId} is null. */
   public List<Map<String, Object>> recent(UUID orderId, int limit) {
-    return jdbc.queryForList(
-        "SELECT * FROM gateway_call WHERE (?::uuid IS NULL OR order_id=?) ORDER BY id DESC LIMIT ?",
-        orderId,
-        orderId,
-        limit);
+    return db.selectFrom(GATEWAY_CALL)
+        .where(orderId == null ? DSL.noCondition() : GATEWAY_CALL.ORDER_ID.eq(orderId))
+        .orderBy(GATEWAY_CALL.ID.desc())
+        .limit(limit)
+        .fetchMaps();
   }
 }

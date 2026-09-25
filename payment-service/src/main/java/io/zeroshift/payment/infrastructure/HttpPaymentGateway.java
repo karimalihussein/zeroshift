@@ -9,6 +9,7 @@ import java.math.BigDecimal;
 import java.net.URI;
 import java.net.http.*;
 import java.time.Duration;
+import java.util.Map;
 import java.util.UUID;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -56,7 +57,7 @@ public final class HttpPaymentGateway implements PaymentGateway {
     try {
       var body =
           json.writeValueAsString(
-              java.util.Map.of("orderId", orderId, "amount", amount, "currency", currency));
+              Map.of("orderId", orderId, "amount", amount, "currency", currency));
       var response =
           http.send(
               HttpRequest.newBuilder(baseUri.resolve("/charges"))
