@@ -46,6 +46,22 @@ public class LabServices {
     }
   }
 
+  /**
+   * Replicas of a service share its database, so one answer is enough; try the next replica when
+   * one is down (crashed on purpose, most likely). Replica names are the service name plus "-b".
+   */
+  public JsonNode tryGetAnyReplica(String service, String path) {
+    var answer = tryGet(service, path);
+    var replica = service + "-b";
+    return answer.has("error") && settings.services().containsKey(replica)
+        ? tryGet(replica, path)
+        : answer;
+  }
+
+  public static boolean isReplica(String service) {
+    return service.endsWith("-b");
+  }
+
   public JsonNode post(String service, String path, Object body) {
     return send(url(service) + path, "POST", body);
   }

@@ -1,6 +1,7 @@
 package io.zeroshift.order.infrastructure;
 
 import io.zeroshift.order.application.*;
+import io.zeroshift.platform.Faults;
 import io.zeroshift.platform.Inbox;
 import io.zeroshift.platform.Outbox;
 import java.time.Clock;
@@ -67,9 +68,20 @@ public class OrderWiring {
   }
 
   @Bean
+  PostgresLease lease(
+      JdbcTemplate jdbc, @Value("${zeroshift.instance:${HOSTNAME:local}}") String instance) {
+    return new PostgresLease(jdbc, instance);
+  }
+
+  @Bean
   SagaTimeouts sagaTimeouts(
-      SagaStore sagas, OrderSaga saga, TransactionTemplate transactions, Clock clock) {
-    return new SagaTimeouts(sagas, saga, transactions, clock);
+      SagaStore sagas,
+      OrderSaga saga,
+      TransactionTemplate transactions,
+      Clock clock,
+      PostgresLease lease,
+      Faults faults) {
+    return new SagaTimeouts(sagas, saga, transactions, clock, lease, faults);
   }
 
   @Bean

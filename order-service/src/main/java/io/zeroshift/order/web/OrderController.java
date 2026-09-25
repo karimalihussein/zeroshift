@@ -6,6 +6,8 @@ import io.zeroshift.order.domain.Order;
 import io.zeroshift.order.domain.OrderRuleViolation;
 import io.zeroshift.order.domain.Saga;
 import io.zeroshift.order.infrastructure.DualWriteDemo;
+import io.zeroshift.order.infrastructure.PostgresLease;
+import io.zeroshift.order.infrastructure.SagaTimeouts;
 import io.zeroshift.platform.Traces;
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -51,6 +53,7 @@ public class OrderController {
   private final Catalog catalog;
   private final DualWriteDemo dualWrite;
   private final JdbcTemplate jdbc;
+  private final PostgresLease lease;
 
   public OrderController(
       PlaceOrder placeOrder,
@@ -59,7 +62,9 @@ public class OrderController {
       SagaStore sagas,
       Catalog catalog,
       DualWriteDemo dualWrite,
-      JdbcTemplate jdbc) {
+      JdbcTemplate jdbc,
+      PostgresLease lease) {
+    this.lease = lease;
     this.placeOrder = placeOrder;
     this.orders = orders;
     this.events = events;
@@ -132,6 +137,15 @@ public class OrderController {
   @ResponseStatus(HttpStatus.NO_CONTENT)
   public void discardSnapshot(@PathVariable UUID id) {
     jdbc.update("DELETE FROM order_snapshot WHERE stream_id=?", id);
+  }
+
+  /** Who currently runs the saga-timeout scanner, and with which fencing token. */
+  @GetMapping("/lab/lease")
+  public Map<String, Object> lease() {
+    var lease = this.lease.describe(SagaTimeouts.LEASE);
+    var result = new LinkedHashMap<String, Object>(lease);
+    result.put("instance", this.lease.owner());
+    return result;
   }
 
   @GetMapping("/catalog")

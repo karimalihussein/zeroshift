@@ -39,15 +39,12 @@ public class LabAdminController {
   private final KafkaListenerEndpointRegistry registry;
   private final Faults faults;
   private final JdbcTemplate jdbc;
-  private final org.springframework.kafka.core.KafkaAdmin kafkaAdmin;
 
   public LabAdminController(
       @Value("${spring.application.name}") String service,
       KafkaListenerEndpointRegistry registry,
       Faults faults,
-      JdbcTemplate jdbc,
-      org.springframework.kafka.core.KafkaAdmin kafkaAdmin) {
-    this.kafkaAdmin = kafkaAdmin;
+      JdbcTemplate jdbc) {
     this.service = service;
     this.registry = registry;
     this.faults = faults;
@@ -98,38 +95,6 @@ public class LabAdminController {
         table.get("last"));
   }
 
-  /**
-   * Replays (or skips) by moving this consumer group's committed offset. A group's offsets can only
-   * change while it has no members, so the consumer leaves, the offset moves, the consumer rejoins
-   * and resumes from there. Records already processed come back as duplicates the inbox skips.
-   */
-  @PostMapping("/consumers/{id}/seek")
-  public State seek(
-      @PathVariable String id,
-      @RequestParam String topic,
-      @RequestParam int partition,
-      @RequestParam long offset)
-      throws Exception {
-    var container = registry.getListenerContainer(id);
-    if (container == null)
-      throw new ResponseStatusException(HttpStatus.NOT_FOUND, "No consumer " + id);
-    container.stop();
-    try (var admin =
-        org.apache.kafka.clients.admin.Admin.create(kafkaAdmin.getConfigurationProperties())) {
-      admin
-          .alterConsumerGroupOffsets(
-              container.getGroupId(),
-              Map.of(
-                  new TopicPartition(topic, partition),
-                  new org.apache.kafka.clients.consumer.OffsetAndMetadata(offset)))
-          .all()
-          .get();
-    } finally {
-      container.start();
-    }
-    return state();
-  }
-
   @GetMapping("/decisions")
   public List<Map<String, Object>> decisions(
       @RequestParam(required = false) String orderId,
@@ -162,7 +127,11 @@ public class LabAdminController {
     switch (action) {
       case "pause" -> container.pause();
       case "resume" -> container.resume();
-      default -> throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "pause or resume");
+      // Stopping leaves the consumer group (pausing does not): needed before offsets can move.
+      case "stop" -> container.stop();
+      case "start" -> container.start();
+      default ->
+          throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "pause, resume, stop or start");
     }
     return state();
   }

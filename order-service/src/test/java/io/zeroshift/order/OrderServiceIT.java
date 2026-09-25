@@ -179,6 +179,26 @@ class OrderServiceIT {
     assertThat(orders.load(id).cancelReason()).contains("Timed out");
   }
 
+  @Test
+  @org.junit.jupiter.api.Order(8)
+  void aLeaseExcludesOtherReplicasUntilItExpiresThenFencesTheOldHolder() throws Exception {
+    var a = new io.zeroshift.order.infrastructure.PostgresLease(jdbc, "replica-a");
+    var b = new io.zeroshift.order.infrastructure.PostgresLease(jdbc, "replica-b");
+    var ttl = Duration.ofMillis(800);
+
+    long first = a.acquire("test-lease", ttl).orElseThrow();
+    assertThat(b.acquire("test-lease", ttl)).isEmpty();
+    assertThat(a.acquire("test-lease", ttl)).hasValue(first); // renewal keeps the token
+
+    Thread.sleep(1000); // a stops renewing: crashed, paused or partitioned
+    long second = b.acquire("test-lease", ttl).orElseThrow();
+    assertThat(second).isGreaterThan(first);
+    assertThat(a.acquire("test-lease", ttl)).isEmpty(); // the old holder is out
+    // Woken from its stall, a still has token `first`: the fence rejects it, b passes.
+    assertThat(a.fence("test-lease", first)).isFalse();
+    assertThat(b.fence("test-lease", second)).isTrue();
+  }
+
   private void reply(UUID orderId, Message payload) {
     var saga = sagas.find(orderId).orElseThrow();
     publish(Envelope.of(payload, saga.correlationId(), null));

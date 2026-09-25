@@ -8,9 +8,11 @@ import org.springframework.jdbc.core.JdbcTemplate;
 /** Durable record of every delivery outcome. Joins the caller's transaction when there is one. */
 public final class DecisionLog {
   private final JdbcTemplate jdbc;
+  private final String instance;
 
-  public DecisionLog(JdbcTemplate jdbc) {
+  public DecisionLog(JdbcTemplate jdbc, String instance) {
     this.jdbc = jdbc;
+    this.instance = instance;
   }
 
   public void record(
@@ -23,7 +25,7 @@ public final class DecisionLog {
     if (envelope == null) envelope = tryDecode(record);
     jdbc.update(
         "INSERT INTO consumer_decision(consumer,event_id,order_id,type,topic,kafka_partition,"
-            + "kafka_offset,decision,attempt,detail,trace_id) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+            + "kafka_offset,decision,attempt,detail,trace_id,instance) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
         consumer,
         envelope == null ? null : envelope.eventId(),
         envelope == null ? keyOf(record) : envelope.orderId().toString(),
@@ -34,7 +36,8 @@ public final class DecisionLog {
         decision.name(),
         attempt,
         detail == null ? "" : detail.substring(0, Math.min(detail.length(), 1000)),
-        Traces.traceId());
+        Traces.traceId(),
+        instance);
   }
 
   /** Retries and dead letters are logged before (or without) a successful decode. */

@@ -53,8 +53,8 @@ public class LabOverview {
     var tasks = new LinkedHashMap<String, Callable<Object>>();
     for (var service : services.names())
       tasks.put("service:" + service, () -> services.get(service, "/lab/state"));
-    tasks.put("orders", () -> services.get("order-service", "/orders?limit=25"));
-    tasks.put("catalog", () -> services.get("order-service", "/catalog"));
+    tasks.put("orders", () -> services.tryGetAnyReplica("order-service", "/orders?limit=25"));
+    tasks.put("catalog", () -> services.tryGetAnyReplica("order-service", "/catalog"));
     tasks.put("gateway", () -> services.get("payment-service", "/lab/gateway"));
     tasks.put("stock", () -> services.get("inventory-service", "/stock"));
     tasks.put("projection", () -> services.get("order-query-service", "/lab/projection"));
@@ -62,10 +62,16 @@ public class LabOverview {
     tasks.put("connectors", () -> services.connect("/connectors?expand=status"));
     tasks.put("topics", kafka::topics);
     tasks.put("groups", kafka::groups);
+    // Per database, not per replica: replicas share their service's tables.
     for (var service : services.names()) {
-      tasks.put("decisions:" + service, () -> services.get(service, "/lab/decisions?limit=40"));
-      tasks.put("outbox:" + service, () -> services.get(service, "/lab/outbox?limit=200"));
+      if (LabServices.isReplica(service)) continue;
+      tasks.put(
+          "decisions:" + service,
+          () -> services.tryGetAnyReplica(service, "/lab/decisions?limit=40"));
+      tasks.put(
+          "outbox:" + service, () -> services.tryGetAnyReplica(service, "/lab/outbox?limit=200"));
     }
+    tasks.put("lease", () -> services.tryGetAnyReplica("order-service", "/lab/lease"));
     var futures = new LinkedHashMap<String, Future<Object>>();
     tasks.forEach((k, t) -> futures.put(k, pool.submit(t)));
 

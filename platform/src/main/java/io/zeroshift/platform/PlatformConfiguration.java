@@ -58,8 +58,11 @@ public class PlatformConfiguration {
   }
 
   @Bean
-  DecisionLog decisionLog(JdbcTemplate jdbc, PlatformSchema schema) {
-    return new DecisionLog(jdbc);
+  DecisionLog decisionLog(
+      JdbcTemplate jdbc,
+      PlatformSchema schema,
+      @Value("${zeroshift.instance:${HOSTNAME:local}}") String instance) {
+    return new DecisionLog(jdbc, instance);
   }
 
   @Bean
@@ -129,12 +132,20 @@ public class PlatformConfiguration {
   ConcurrentKafkaListenerContainerFactory<Object, Object> kafkaListenerContainerFactory(
       ConcurrentKafkaListenerContainerFactoryConfigurer configurer,
       ConsumerFactory<Object, Object> consumers,
-      DefaultErrorHandler errorHandler) {
+      DefaultErrorHandler errorHandler,
+      @Value("${zeroshift.instance:${HOSTNAME:local}}") String instance) {
     var factory = new ConcurrentKafkaListenerContainerFactory<Object, Object>();
     configurer.configure(factory, consumers);
     factory.setCommonErrorHandler(errorHandler);
     // Stamps each delivery with its attempt number, shown next to every decision.
     factory.getContainerProperties().setDeliveryAttemptHeader(true);
+    // Kafka's default client id ("consumer-<group>-1") is the same on every replica. Naming the
+    // instance makes the group's member list show which replica owns which partition.
+    factory.setContainerCustomizer(
+        container ->
+            container
+                .getContainerProperties()
+                .setClientId(instance + "/" + container.getListenerId()));
     return factory;
   }
 

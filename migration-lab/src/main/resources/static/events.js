@@ -6,8 +6,8 @@ const clock = new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-d
 const time = value => value ? clock.format(new Date(value)) : '—';
 const duration = ms => ms >= 86_400_000 ? `${Math.round(ms / 86_400_000)} d` : ms >= 3_600_000 ? `${Math.round(ms / 3_600_000)} h` : ms >= 60_000 ? `${Math.round(ms / 60_000)} min` : `${Math.round(ms / 1000)} s`;
 const short = id => id ? String(id).slice(0, 8) : '—';
-const SERVICES = ['order-service', 'payment-service', 'inventory-service', 'shipping-service', 'order-query-service'];
 const SERVICE_FAULTS = {
+  'order-service': [['scanner-stall', '8000', 'Stall timeout scanner 8 s (fencing)']],
   'payment-service': [['payment-decline', 'decline', 'Decline next payment']],
   'inventory-service': [['inventory-reject', 'reject', 'Reject next reservation'], ['inventory-slow', '700', 'Slow next 2 reservations (race)', 2]],
   'shipping-service': [['shipping-fail', 'fail', 'Fail next shipment']]
@@ -80,7 +80,7 @@ function renderPipeline(s) {
   const projectionLag = groups?.find(g => g.groupId === 'order-projection')?.totalLag ?? 0;
   const cdcLag = outboxes.reduce((sum, o) => sum + (o.lagBytes || 0), 0);
   const unpublished = Object.values(s.unpublished || {}).reduce((sum, u) => sum + u.count, 0);
-  const allUp = SERVICES.every(n => ok(services[n]));
+  const allUp = Object.keys(services).every(n => ok(services[n]));
   const j = journey && !journey.order?.error ? journey : null;
   const messages = j?.messages || [];
   const stages = [
@@ -144,7 +144,17 @@ function renderScenarios() {
     ['Crash after commit', () => arm('payment-service', 'crash-after-commit', 'crash'), 'payment-service commits, dies before the offset commit, restarts, and skips the redelivery as a duplicate.', 'danger'],
     ['Gateway down', () => act('gateway', { mode: 'down' }), 'Gateway 503s: in-process retries, breaker opens, Kafka retries, DLQ, saga timeout.', 'danger']
   ];
+  const race = async () => {
+    try {
+      await act('fault-arm', { service: 'inventory-service', name: 'inventory-slow', mode: '700', times: 2 }, 'Widening the race window…');
+      const order = { customerId: 'race', items: [{ sku: 'SKU-KEYBOARD', quantity: 1 }] };
+      await Promise.all([fetch('/api/events/actions/place-order', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ order }) }),
+        fetch('/api/events/actions/place-order', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ order: { ...order, customerId: 'race-2' } }) })]);
+      showMessage('Two orders reserve SKU-KEYBOARD at once. If they land on different partitions, both read version n; one write wins and the other retries (StockChanged in the decisions feed). On the same partition they run one after the other: no conflict.');
+    } catch { /* shown */ } finally { refresh(); }
+  };
   el('scenarios').replaceChildren(...list.map(([label, setup, note, tone]) => h('button', { type: 'button', class: tone, disabled: busy, onclick: () => scenario(setup, note) }, label)),
+    h('button', { type: 'button', disabled: busy, onclick: race, title: 'Optimistic locking on the stock row' }, 'Concurrent reservations'),
     h('button', { type: 'button', class: 'danger', disabled: busy, title: 'Commits the order, then kills order-service before it publishes to Kafka',
       onclick: () => act('dual-write', { mode: 'COMMIT_THEN_CRASH', order: currentOrder() }, 'Dual write: committing, then crashing…').then(() => {}, () => showMessage('order-service died between the database commit and the Kafka publish: the order exists, its event never will. The outbox makes this impossible.')) }, 'Dual write: lost event'),
     h('button', { type: 'button', class: 'danger', disabled: busy, title: 'Publishes to Kafka, then rolls the database back',
@@ -212,7 +222,7 @@ function renderJourney() {
         h('div', { class: 'muted' }, `seen on Kafka ${time(k.tappedAt)}${m.outboxAt ? ` · +${Math.max(0, new Date(k.tappedAt) - new Date(m.outboxAt))} ms after commit` : ''}`))))
       : h('div', { class: 'stage-cell' }, h('span', { class: 'missing' }, 'Not on Kafka yet'), h('span', {}, 'Connector paused, or WAL not read yet'));
     const deliveries = m.deliveries?.length
-      ? h('div', {}, ...m.deliveries.sort((a, b) => a.at.localeCompare(b.at)).map(d => h('div', { class: 'delivery' }, h('div', { class: 'chips' }, chip(d.consumer), chip(d.decision, decisionTone(d.decision)), d.attempt > 1 ? chip(`attempt ${d.attempt}`, 'warn') : null), h('span', {}, `${time(d.at)} · ${d.detail}`))))
+      ? h('div', {}, ...m.deliveries.sort((a, b) => a.at.localeCompare(b.at)).map(d => h('div', { class: 'delivery' }, h('div', { class: 'chips' }, chip(d.instance && (d.instance !== d.service || state?.services?.[`${d.service}-b`]) ? `${d.consumer} @ ${d.instance}` : d.consumer), chip(d.decision, decisionTone(d.decision)), d.attempt > 1 ? chip(`attempt ${d.attempt}`, 'warn') : null), h('span', {}, `${time(d.at)} · ${d.detail}`))))
       : m.kafka?.length ? h('span', { class: 'missing' }, 'Not consumed yet') : h('span', { class: 'muted' }, '—');
     const saga = m.sagaTransition ? h('div', { class: 'stage-cell' }, h('b', {}, `${m.sagaTransition.from_state || '∅'} → ${m.sagaTransition.to_state}`), h('span', {}, m.sagaTransition.detail)) : h('span', { class: 'muted' }, '—');
     const first = m.kafka?.[0];
@@ -253,21 +263,24 @@ function renderTopics(topics) {
 
 function renderGroups(groups, services) {
   if (!Array.isArray(groups)) { el('groups').replaceChildren(empty(`Kafka unreachable: ${groups?.error || ''}`)); return; }
-  const owner = new Map();
-  for (const [name, s] of Object.entries(services || {})) if (ok(s)) for (const c of s.consumers) owner.set(c.groupId, { service: name, consumer: c });
+  // A group may run on several replicas: levers act on every live one.
+  const owners = new Map();
+  for (const [name, s] of Object.entries(services || {})) if (ok(s)) for (const c of s.consumers) owners.set(c.groupId, [...(owners.get(c.groupId) || []), { service: name, consumer: c }]);
   el('groups').replaceChildren(...groups.map(g => {
-    const o = owner.get(g.groupId);
-    const paused = o?.consumer.pauseRequested;
+    const list = owners.get(g.groupId) || [];
+    const o = list[0];
+    const paused = list.some(x => x.consumer.pauseRequested);
+    const all = action => list.reduce((chain, x) => chain.then(() => act(action, { service: x.service, consumer: x.consumer.id })), Promise.resolve()).catch(() => {});
     return h('div', { class: 'group' },
       h('header', {}, h('div', { class: 'chips' }, h('strong', {}, g.groupId), chip(g.state, g.state === 'STABLE' ? 'good' : g.state === 'EMPTY' ? 'bad' : 'warn'), chip(`lag ${number(g.totalLag)}`, g.totalLag ? 'warn' : 'good'), paused ? chip('paused', 'warn') : null),
         o ? h('div', { class: 'chips' },
-          button(paused ? 'Resume' : 'Pause', () => act(paused ? 'consumer-resume' : 'consumer-pause', { service: o.service, consumer: o.consumer.id })),
+          button(paused ? 'Resume' : 'Pause', () => all(paused ? 'consumer-resume' : 'consumer-pause'), { title: `On ${list.map(x => x.service).join(' and ')}` }),
           button('Replay from 0', () => {
-            const parts = g.partitions.filter(p => p.committed !== null);
-            if (!confirm(`Move ${g.groupId}'s committed offsets back to 0 on ${parts.length} partition(s)? Its records are redelivered; the inbox should skip them as duplicates.`)) return;
-            parts.reduce((chain, p) => chain.then(() => act('consumer-seek', { service: o.service, consumer: o.consumer.id, topic: p.topic, partition: p.partition, offset: 0 }, `Rewinding ${p.topic}-${p.partition}…`)), Promise.resolve()).catch(() => {});
-          }, { title: 'Stop the consumer, reset its committed offsets, start it again' }),
-          button('Crash service', () => confirm(`Kill ${o.service}'s JVM now? Docker restarts it.`) && act('crash', { service: o.service }), { class: 'danger' })) : null),
+            const partitions = g.partitions.filter(p => p.committed !== null).map(p => ({ topic: p.topic, partition: p.partition }));
+            if (!confirm(`Stop ${g.groupId} on ${list.length} replica(s), move its committed offsets back to 0 on ${partitions.length} partition(s), start again? Everything is redelivered; the inbox should skip it all as duplicates.`)) return;
+            act('consumer-seek', { group: g.groupId, consumer: o.consumer.id, owners: list.map(x => x.service), partitions, offset: 0 }, 'Stopping consumers, moving offsets…')
+              .then(() => showMessage(`${g.groupId} rewound: watch its lag jump, then DUPLICATE_SKIPPED decisions drain it.`), () => {});
+          }, { title: 'Stop the consumer on every replica, reset its committed offsets, start again' })) : null),
       h('div', { class: 'members' }, g.members.length ? g.members.map(m => h('div', { class: 'member' }, h('span', { class: 'mono' }, m.clientId), ...(m.assignments.length > 6 ? [chip(`${m.assignments.length} partitions`)] : m.assignments.map(a => chip(a))))) : h('span', { class: 'muted' }, 'No members: nothing is consuming. Offsets stay committed in Kafka.')),
       h('details', { open: g.totalLag > 0 || openGroups.has(g.groupId) || null, ontoggle: e => e.target.open ? openGroups.add(g.groupId) : openGroups.delete(g.groupId) },
         h('summary', {}, `Committed offsets on ${g.partitions.length} partitions${g.totalLag ? ` · ${g.partitions.filter(p => p.lag).length} lagging` : ''}`),
@@ -277,8 +290,9 @@ function renderGroups(groups, services) {
 
 // ---- Services, connectors, gateway ------------------------------------------------------------
 function renderServices(services) {
-  el('services').replaceChildren(...SERVICES.map(name => {
+  el('services').replaceChildren(...Object.keys(services || {}).map(name => {
     const s = services?.[name];
+    const lease = ok(state?.lease) && name.startsWith('order-service') ? state.lease : null;
     if (!ok(s)) return h('div', { class: 'service down' }, h('header', {}, h('strong', {}, name), chip('down', 'bad')), h('p', { class: 'muted' }, s?.error || 'No answer. If you crashed it, Docker is restarting it.'));
     const armed = new Map(s.faults.map(f => [f.name, f]));
     const fault = (label, faultName, mode, times, tone) => armed.has(faultName)
@@ -286,10 +300,11 @@ function renderServices(services) {
       : button(label, () => act('fault-arm', { service: name, name: faultName, mode, times }), { class: tone });
     const specific = (SERVICE_FAULTS[name] || []).map(([f, mode, label, times]) => fault(label, f, mode, times ?? 1));
     return h('div', { class: 'service' },
-      h('header', {}, h('strong', {}, name), chip('up', 'good')),
+      h('header', {}, h('strong', {}, name), h('div', { class: 'chips' }, lease?.owner === name && lease.held ? chip(`scanner lease · token ${lease.token}`, 'info') : null, chip('up', 'good'))),
       h('dl', {},
         h('dt', {}, 'Consumers'), h('dd', {}, ...s.consumers.map(c => chip(`${c.id}: ${c.pauseRequested ? 'paused' : c.running ? 'running' : 'stopped'} · ${c.assignedPartitions.length} partitions`, c.pauseRequested ? 'warn' : 'good'))),
         s.outbox?.slot ? [h('dt', {}, 'Outbox'), h('dd', {}, `${number(s.outbox.rows)} rows · ${number(state?.unpublished?.[name]?.count ?? 0)} not yet on Kafka · slot ${s.outbox.slotActive ? 'active' : 'idle'}`)] : [h('dt', {}, 'Outbox'), h('dd', {}, 'none (read side)')],
+        lease ? [h('dt', {}, 'Lease'), h('dd', {}, lease.held ? `saga-timeout-scanner held by ${lease.owner} (token ${lease.token}) until ${time(lease.expires_at)}` : 'saga-timeout-scanner free')] : null,
         h('dt', {}, 'Faults'), h('dd', {}, s.faults.length ? h('div', { class: 'chips' }, ...s.faults.map(f => chip(`${f.name}=${f.mode}${f.remaining !== null ? ` ×${f.remaining}` : ''}`, 'bad'))) : 'none armed')),
       h('div', { class: 'buttons' },
         fault('Error ×3', 'transient-error', 'error', 3, ''), fault('Crash after commit', 'crash-after-commit', 'crash', 1, 'danger'), ...specific,

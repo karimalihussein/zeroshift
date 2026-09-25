@@ -37,7 +37,7 @@ public class Journey {
 
   public ObjectNode of(UUID orderId) {
     var result = json.createObjectNode();
-    var order = services.tryGet("order-service", "/orders/" + orderId);
+    var order = services.tryGetAnyReplica("order-service", "/orders/" + orderId);
     result.set("order", order);
     result.set("readModel", services.tryGet("order-query-service", "/orders/" + orderId));
     result.set(
@@ -47,7 +47,9 @@ public class Journey {
     var messages = new LinkedHashMap<String, ObjectNode>();
     for (var service : PRODUCERS)
       for (var row :
-          array(services.tryGet(service, "/lab/outbox?orderId=" + orderId + "&limit=200"))) {
+          array(
+              services.tryGetAnyReplica(
+                  service, "/lab/outbox?orderId=" + orderId + "&limit=200"))) {
         var m = message(messages, row.path("id").asString());
         m.put("producer", service);
         m.put("type", row.path("type").asString());
@@ -96,7 +98,9 @@ public class Journey {
 
     for (var service : CONSUMERS)
       for (var row :
-          array(services.tryGet(service, "/lab/decisions?orderId=" + orderId + "&limit=500"))) {
+          array(
+              services.tryGetAnyReplica(
+                  service, "/lab/decisions?orderId=" + orderId + "&limit=500"))) {
         var eventId = row.path("event_id").asString(null);
         var target =
             eventId != null
@@ -109,6 +113,7 @@ public class Journey {
         var delivery = json.createObjectNode();
         delivery.put("service", service);
         delivery.put("consumer", row.path("consumer").asString());
+        delivery.put("instance", row.path("instance").asString(null));
         delivery.put("decision", row.path("decision").asString());
         delivery.put("attempt", row.path("attempt").asInt());
         delivery.put("detail", row.path("detail").asString());

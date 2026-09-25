@@ -20,10 +20,13 @@ public class LabActions implements AutoCloseable {
   private final LabServices services;
   private final EventLabSettings settings;
   private final JdbcTemplate jdbc;
+  private final KafkaInspector kafka;
   private final JsonMapper json = JsonMapper.builder().build();
   private KafkaProducer<String, String> producer;
 
-  public LabActions(LabServices services, EventLabSettings settings, JdbcTemplate jdbc) {
+  public LabActions(
+      LabServices services, EventLabSettings settings, JdbcTemplate jdbc, KafkaInspector kafka) {
+    this.kafka = kafka;
     this.services = services;
     this.settings = settings;
     this.jdbc = jdbc;
@@ -46,7 +49,7 @@ public class LabActions implements AutoCloseable {
   private JsonNode perform(String action, JsonNode p) {
     String service = p.path("service").asString("");
     return switch (action) {
-      case "place-order" -> services.post("order-service", "/orders", p.get("order"));
+      case "place-order" -> placeOrder(p.get("order"));
       case "dual-write" ->
           services.post(
               "order-service",
@@ -60,18 +63,7 @@ public class LabActions implements AutoCloseable {
                   + "/"
                   + action.substring("consumer-".length()),
               null);
-      case "consumer-seek" ->
-          services.post(
-              service,
-              "/lab/consumers/"
-                  + p.path("consumer").asString()
-                  + "/seek?topic="
-                  + p.path("topic").asString()
-                  + "&partition="
-                  + p.path("partition").asInt()
-                  + "&offset="
-                  + p.path("offset").asLong(),
-              null);
+      case "consumer-seek" -> seek(p);
       case "crash" -> services.post(service, "/lab/crash", null);
       case "fault-arm" ->
           services.send(
@@ -127,6 +119,50 @@ public class LabActions implements AutoCloseable {
       }
       default -> throw new LabServices.ActionFailed("Unknown action " + action);
     };
+  }
+
+  /** Any live order-service replica can take the order: they share one database. */
+  private JsonNode placeOrder(JsonNode order) {
+    try {
+      return services.post("order-service", "/orders", order);
+    } catch (RuntimeException down) {
+      if (!settings.services().containsKey("order-service-b")) throw down;
+      return services.post("order-service-b", "/orders", order);
+    }
+  }
+
+  /**
+   * Replays a group from an offset. Committed offsets can only move while the group is empty, so
+   * the consumer is stopped on every replica that runs it, the offsets move, and they start again.
+   */
+  private JsonNode seek(JsonNode p) {
+    var group = p.path("group").asString();
+    var consumer = p.path("consumer").asString();
+    var owners = new ArrayList<String>();
+    for (var o : p.path("owners")) owners.add(o.asString());
+    try {
+      for (var owner : owners) services.post(owner, "/lab/consumers/" + consumer + "/stop", null);
+      kafka.awaitEmpty(group);
+      for (var part : p.path("partitions"))
+        kafka.moveOffset(
+            group,
+            part.path("topic").asString(),
+            part.path("partition").asInt(),
+            p.path("offset").asLong());
+      return json.createObjectNode()
+          .put("group", group)
+          .put("partitions", p.path("partitions").size())
+          .put("offset", p.path("offset").asLong());
+    } catch (Exception e) {
+      throw new LabServices.ActionFailed("Replay failed: " + e.getMessage());
+    } finally {
+      for (var owner : owners)
+        try {
+          services.post(owner, "/lab/consumers/" + consumer + "/start", null);
+        } catch (RuntimeException ignored) {
+          // A replica that is down rejoins on its own when it restarts.
+        }
+    }
   }
 
   /** Publishes an already-published record again: same key, value and headers, new offset. */

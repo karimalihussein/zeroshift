@@ -149,6 +149,26 @@ public class KafkaInspector implements AutoCloseable {
     return result;
   }
 
+  /** Moves a group's committed offset. Kafka refuses while the group still has members. */
+  public void moveOffset(String group, String topic, int partition, long offset) throws Exception {
+    admin()
+        .alterConsumerGroupOffsets(
+            group, Map.of(new TopicPartition(topic, partition), new OffsetAndMetadata(offset)))
+        .all()
+        .get(6, TimeUnit.SECONDS);
+  }
+
+  /** Waits until every member has left the group (its consumers were stopped). */
+  public void awaitEmpty(String group) throws Exception {
+    for (int i = 0; i < 40; i++) {
+      var d =
+          admin().describeConsumerGroups(List.of(group)).all().get(4, TimeUnit.SECONDS).get(group);
+      if (d.members().isEmpty()) return;
+      Thread.sleep(250);
+    }
+    throw new IllegalStateException(group + " still has members after its consumers were stopped");
+  }
+
   private Map<TopicPartition, Long> offsets(List<TopicPartition> partitions, OffsetSpec spec)
       throws Exception {
     if (partitions.isEmpty()) return Map.of();
