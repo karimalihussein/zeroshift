@@ -13,7 +13,6 @@ import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.*;
 import org.springframework.http.*;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
@@ -52,7 +51,6 @@ public class OrderController {
   private final SagaStore sagas;
   private final Catalog catalog;
   private final DualWriteDemo dualWrite;
-  private final JdbcTemplate jdbc;
   private final PostgresLease lease;
 
   public OrderController(
@@ -62,7 +60,6 @@ public class OrderController {
       SagaStore sagas,
       Catalog catalog,
       DualWriteDemo dualWrite,
-      JdbcTemplate jdbc,
       PostgresLease lease) {
     this.lease = lease;
     this.placeOrder = placeOrder;
@@ -71,7 +68,6 @@ public class OrderController {
     this.sagas = sagas;
     this.catalog = catalog;
     this.dualWrite = dualWrite;
-    this.jdbc = jdbc;
   }
 
   @PostMapping("/orders")
@@ -136,7 +132,7 @@ public class OrderController {
   @DeleteMapping("/orders/{id}/snapshot")
   @ResponseStatus(HttpStatus.NO_CONTENT)
   public void discardSnapshot(@PathVariable UUID id) {
-    jdbc.update("DELETE FROM order_snapshot WHERE stream_id=?", id);
+    events.discardSnapshot(id);
   }
 
   /** Who currently runs the saga-timeout scanner, and with which fencing token. */

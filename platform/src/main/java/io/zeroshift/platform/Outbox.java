@@ -1,8 +1,11 @@
 package io.zeroshift.platform;
 
+import static io.zeroshift.platform.db.Tables.OUTBOX;
+
 import io.zeroshift.contracts.Envelope;
 import io.zeroshift.contracts.MessageCodec;
-import org.springframework.jdbc.core.JdbcTemplate;
+import org.jooq.DSLContext;
+import org.jooq.JSONB;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 /**
@@ -11,10 +14,10 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
  * consumers absorb through {@link Inbox}).
  */
 public final class Outbox {
-  private final JdbcTemplate jdbc;
+  private final DSLContext db;
 
-  public Outbox(JdbcTemplate jdbc) {
-    this.jdbc = jdbc;
+  public Outbox(DSLContext db) {
+    this.db = db;
   }
 
   public Envelope append(Envelope envelope) {
@@ -22,18 +25,18 @@ public final class Outbox {
     // dual-write problem the outbox exists to prevent.
     if (!TransactionSynchronizationManager.isActualTransactionActive())
       throw new IllegalStateException("Outbox writes must share the state change's transaction");
-    jdbc.update(
-        "INSERT INTO outbox(id,topic,aggregate_type,aggregate_id,type,schema_version,correlation_id,"
-            + "causation_id,traceparent,payload) VALUES(?,?,'Order',?,?,?,?,?,?,?::jsonb)",
-        envelope.eventId(),
-        envelope.topic(),
-        envelope.orderId().toString(),
-        envelope.type(),
-        envelope.schemaVersion(),
-        envelope.correlationId(),
-        envelope.causationId(),
-        Traces.traceparent(),
-        MessageCodec.encode(envelope));
+    db.insertInto(OUTBOX)
+        .set(OUTBOX.ID, envelope.eventId())
+        .set(OUTBOX.TOPIC, envelope.topic())
+        .set(OUTBOX.AGGREGATE_TYPE, "Order") // every message in this lab is about one order
+        .set(OUTBOX.AGGREGATE_ID, envelope.orderId().toString())
+        .set(OUTBOX.TYPE, envelope.type())
+        .set(OUTBOX.SCHEMA_VERSION, envelope.schemaVersion())
+        .set(OUTBOX.CORRELATION_ID, envelope.correlationId())
+        .set(OUTBOX.CAUSATION_ID, envelope.causationId())
+        .set(OUTBOX.TRACEPARENT, Traces.traceparent())
+        .set(OUTBOX.PAYLOAD, JSONB.valueOf(MessageCodec.encode(envelope)))
+        .execute();
     return envelope;
   }
 }

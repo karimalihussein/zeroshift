@@ -7,9 +7,9 @@ import io.zeroshift.platform.Inbox;
 import io.zeroshift.platform.Outbox;
 import java.time.Clock;
 import java.time.Duration;
+import org.jooq.DSLContext;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.*;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.transaction.support.TransactionTemplate;
 
@@ -21,18 +21,18 @@ public class OrderWiring {
   }
 
   @Bean
-  EventStore eventStore(JdbcTemplate jdbc) {
-    return new PostgresEventStore(jdbc);
+  EventStore eventStore(DSLContext db) {
+    return new PostgresEventStore(db);
   }
 
   @Bean
-  SagaStore sagaStore(JdbcTemplate jdbc) {
-    return new PostgresSagaStore(jdbc);
+  SagaStore sagaStore(DSLContext db) {
+    return new PostgresSagaStore(db);
   }
 
   @Bean
-  Catalog catalog(JdbcTemplate jdbc) {
-    return new PostgresCatalog(jdbc);
+  Catalog catalog(DSLContext db) {
+    return new PostgresCatalog(db);
   }
 
   @Bean
@@ -70,8 +70,8 @@ public class OrderWiring {
 
   @Bean
   PostgresLease lease(
-      JdbcTemplate jdbc, @Value("${zeroshift.instance:${HOSTNAME:local}}") String instance) {
-    return new PostgresLease(jdbc, instance);
+      DSLContext db, @Value("${zeroshift.instance:${HOSTNAME:local}}") String instance) {
+    return new PostgresLease(db, instance);
   }
 
   @Bean

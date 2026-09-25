@@ -1,78 +1,67 @@
 package io.zeroshift.order.infrastructure;
 
+import static io.zeroshift.order.db.Tables.SAGA;
+import static io.zeroshift.order.db.Tables.SAGA_TRANSITION;
+
 import io.zeroshift.order.application.ConcurrencyConflict;
 import io.zeroshift.order.application.SagaStore;
+import io.zeroshift.order.db.tables.records.SagaRecord;
 import io.zeroshift.order.domain.Saga;
 import io.zeroshift.order.domain.SagaState;
-import java.sql.*;
+import io.zeroshift.platform.PostgresClock;
 import java.time.Instant;
-import java.util.*;
-import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.jdbc.core.RowMapper;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
+import java.util.Arrays;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.TreeSet;
+import java.util.UUID;
+import org.jooq.DSLContext;
 
 public final class PostgresSagaStore implements SagaStore {
-  private static final RowMapper<Saga> SAGA =
-      (r, n) ->
-          new Saga(
-              r.getObject("order_id", UUID.class),
-              r.getObject("correlation_id", UUID.class),
-              SagaState.valueOf(r.getString("state")),
-              instant(r, "deadline"),
-              new TreeSet<>(Arrays.asList((String[]) r.getArray("pending").getArray())),
-              r.getString("failure_reason"),
-              List.of((String[]) r.getArray("compensations").getArray()),
-              r.getInt("version"),
-              instant(r, "started_at"),
-              instant(r, "updated_at"));
+  private final DSLContext db;
 
-  private final JdbcTemplate jdbc;
-
-  public PostgresSagaStore(JdbcTemplate jdbc) {
-    this.jdbc = jdbc;
-  }
-
-  private static Instant instant(ResultSet r, String column) throws SQLException {
-    var value = r.getTimestamp(column);
-    return value == null ? null : value.toInstant();
+  public PostgresSagaStore(DSLContext db) {
+    this.db = db;
   }
 
   @Override
   public void start(Saga saga) {
-    jdbc.update(
-        "INSERT INTO saga(order_id,correlation_id,state,deadline,version,started_at,updated_at)"
-            + " VALUES(?,?,?,?,1,?,?)",
-        saga.orderId(),
-        saga.correlationId(),
-        saga.state().name(),
-        Timestamp.from(saga.deadline()),
-        Timestamp.from(saga.startedAt()),
-        Timestamp.from(saga.startedAt()));
+    db.insertInto(SAGA)
+        .set(SAGA.ORDER_ID, saga.orderId())
+        .set(SAGA.CORRELATION_ID, saga.correlationId())
+        .set(SAGA.STATE, saga.state().name())
+        .set(SAGA.DEADLINE, utc(saga.deadline()))
+        .set(SAGA.VERSION, 1)
+        .set(SAGA.STARTED_AT, utc(saga.startedAt()))
+        .set(SAGA.UPDATED_AT, utc(saga.startedAt()))
+        .execute();
     transition(saga, null, "PlaceOrder", null, "order placed → AuthorizePayment sent");
   }
 
   @Override
   public Optional<Saga> find(UUID orderId) {
-    return jdbc.query("SELECT * FROM saga WHERE order_id=?", SAGA, orderId).stream().findFirst();
+    return db.selectFrom(SAGA)
+        .where(SAGA.ORDER_ID.eq(orderId))
+        .fetchOptional(PostgresSagaStore::saga);
   }
 
+  /** Optimistic lock: the update matches only if nobody saved since this saga was read. */
   @Override
   public void save(Saga saga, String from, String trigger, UUID triggerEventId, String detail) {
     int saved =
-        jdbc.update(
-            connection -> {
-              var s =
-                  connection.prepareStatement(
-                      "UPDATE saga SET state=?,deadline=?,pending=?,failure_reason=?,compensations=?,"
-                          + "version=version+1,updated_at=clock_timestamp() WHERE order_id=? AND version=?");
-              s.setString(1, saga.state().name());
-              s.setTimestamp(2, saga.deadline() == null ? null : Timestamp.from(saga.deadline()));
-              s.setArray(3, connection.createArrayOf("text", saga.pending().toArray()));
-              s.setString(4, saga.failureReason());
-              s.setArray(5, connection.createArrayOf("text", saga.compensations().toArray()));
-              s.setObject(6, saga.orderId());
-              s.setInt(7, saga.version());
-              return s;
-            });
+        db.update(SAGA)
+            .set(SAGA.STATE, saga.state().name())
+            .set(SAGA.DEADLINE, utc(saga.deadline()))
+            .set(SAGA.PENDING, saga.pending().toArray(String[]::new))
+            .set(SAGA.FAILURE_REASON, saga.failureReason())
+            .set(SAGA.COMPENSATIONS, saga.compensations().toArray(String[]::new))
+            .set(SAGA.VERSION, SAGA.VERSION.plus(1))
+            .set(SAGA.UPDATED_AT, PostgresClock.NOW)
+            .where(SAGA.ORDER_ID.eq(saga.orderId()).and(SAGA.VERSION.eq(saga.version())))
+            .execute();
     if (saved != 1)
       throw new ConcurrencyConflict(
           "Saga " + saga.orderId() + " changed after version " + saga.version() + " was read");
@@ -81,37 +70,74 @@ public final class PostgresSagaStore implements SagaStore {
 
   private void transition(
       Saga saga, String from, String trigger, UUID triggerEventId, String detail) {
-    jdbc.update(
-        "INSERT INTO saga_transition(order_id,from_state,to_state,trigger_type,trigger_event_id,detail)"
-            + " VALUES(?,?,?,?,?,?)",
-        saga.orderId(),
-        from,
-        saga.state().name(),
-        trigger,
-        triggerEventId,
-        detail);
+    db.insertInto(SAGA_TRANSITION)
+        .set(SAGA_TRANSITION.ORDER_ID, saga.orderId())
+        .set(SAGA_TRANSITION.FROM_STATE, from)
+        .set(SAGA_TRANSITION.TO_STATE, saga.state().name())
+        .set(SAGA_TRANSITION.TRIGGER_TYPE, trigger)
+        .set(SAGA_TRANSITION.TRIGGER_EVENT_ID, triggerEventId)
+        .set(SAGA_TRANSITION.DETAIL, detail)
+        .execute();
   }
 
+  /** Locks what it returns; rows another scanner has locked are skipped, not waited for. */
   @Override
   public List<Saga> due(Instant now, int limit) {
-    return jdbc.query(
-        "SELECT * FROM saga WHERE deadline<? AND state IN ('AWAITING_PAYMENT','AWAITING_STOCK')"
-            + " ORDER BY deadline LIMIT ? FOR UPDATE SKIP LOCKED",
-        SAGA,
-        Timestamp.from(now),
-        limit);
+    return db.selectFrom(SAGA)
+        .where(
+            SAGA.DEADLINE
+                .lt(utc(now))
+                .and(
+                    SAGA.STATE.in(
+                        Arrays.stream(SagaState.values())
+                            .filter(SagaState::timesOut)
+                            .map(Enum::name)
+                            .toList())))
+        .orderBy(SAGA.DEADLINE)
+        .limit(limit)
+        .forUpdate()
+        .skipLocked()
+        .fetch(PostgresSagaStore::saga);
   }
 
   @Override
   public List<Saga> recent(int limit) {
-    return jdbc.query("SELECT * FROM saga ORDER BY started_at DESC LIMIT ?", SAGA, limit);
+    return db.selectFrom(SAGA)
+        .orderBy(SAGA.STARTED_AT.desc())
+        .limit(limit)
+        .fetch(PostgresSagaStore::saga);
   }
 
+  /** For the control plane: from_state, to_state, trigger_type, trigger_event_id, detail, at. */
   @Override
   public List<Map<String, Object>> transitions(UUID orderId) {
-    return jdbc.queryForList(
-        "SELECT from_state,to_state,trigger_type,trigger_event_id,detail,at FROM saga_transition"
-            + " WHERE order_id=? ORDER BY id",
-        orderId);
+    var t = SAGA_TRANSITION;
+    return db.select(t.FROM_STATE, t.TO_STATE, t.TRIGGER_TYPE, t.TRIGGER_EVENT_ID, t.DETAIL, t.AT)
+        .from(t)
+        .where(t.ORDER_ID.eq(orderId))
+        .orderBy(t.ID)
+        .fetchMaps();
+  }
+
+  private static Saga saga(SagaRecord r) {
+    return new Saga(
+        r.getOrderId(),
+        r.getCorrelationId(),
+        SagaState.valueOf(r.getState()),
+        instant(r.getDeadline()),
+        new TreeSet<>(Arrays.asList(r.getPending())),
+        r.getFailureReason(),
+        List.of(r.getCompensations()),
+        r.getVersion(),
+        instant(r.getStartedAt()),
+        instant(r.getUpdatedAt()));
+  }
+
+  private static OffsetDateTime utc(Instant instant) {
+    return instant == null ? null : instant.atOffset(ZoneOffset.UTC);
+  }
+
+  private static Instant instant(OffsetDateTime time) {
+    return time == null ? null : time.toInstant();
   }
 }

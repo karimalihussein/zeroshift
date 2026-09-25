@@ -10,16 +10,20 @@ import io.zeroshift.contracts.PaymentEvent.*;
 import io.zeroshift.contracts.ShippingEvent.*;
 import io.zeroshift.order.application.*;
 import io.zeroshift.order.domain.*;
+import io.zeroshift.order.infrastructure.PostgresLease;
+import io.zeroshift.platform.Outbox;
 import io.zeroshift.platform.testing.CommerceStack;
 import java.math.BigDecimal;
 import java.time.Duration;
 import java.util.*;
+import org.jooq.DSLContext;
 import org.junit.jupiter.api.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.test.context.*;
+import org.springframework.transaction.support.TransactionTemplate;
 
 /**
  * The order service against real PostgreSQL, Kafka and Debezium. Participants are played by the
@@ -46,7 +50,17 @@ class OrderServiceIT {
   @Autowired OrderRepository orders;
   @Autowired SagaStore sagas;
   @Autowired JdbcTemplate jdbc;
+  @Autowired DSLContext db;
+  @Autowired EventStore eventStore;
+  @Autowired Outbox outbox;
+  @Autowired TransactionTemplate transactions;
   @Autowired KafkaTemplate<String, String> kafka;
+
+  @Test
+  void generatedJooqClassesMatchTheMigratedSchema(@Autowired org.jooq.DSLContext db) {
+    io.zeroshift.platform.testing.GeneratedSchema.assertMatchesDatabase(
+        db, io.zeroshift.platform.db.Public.PUBLIC, io.zeroshift.order.db.Public.PUBLIC);
+  }
 
   @Test
   @org.junit.jupiter.api.Order(1)
@@ -105,6 +119,20 @@ class OrderServiceIT {
     assertThat(fromSnapshot.replayed()).hasSize(1);
     assertThat(fullReplay.replayed()).hasSize(4);
     assertThat(fromSnapshot.order()).isEqualTo(fullReplay.order());
+
+    // A slower writer saving an older state never moves the snapshot backwards.
+    var older = io.zeroshift.order.domain.Order.empty(id);
+    for (var recorded : fullReplay.replayed().subList(0, 2))
+      older = older.apply((OrderEvent) recorded.envelope().payload());
+    eventStore.saveSnapshot(older);
+    assertThat(eventStore.snapshot(id).orElseThrow().version()).isEqualTo(3);
+
+    // A snapshot is only a cache: discarding it changes nothing but how the order is rebuilt.
+    eventStore.discardSnapshot(id);
+    var withoutSnapshot = orders.load(id, true);
+    assertThat(withoutSnapshot.snapshot()).isNull();
+    assertThat(withoutSnapshot.replayed()).hasSize(4);
+    assertThat(withoutSnapshot.order()).isEqualTo(fullReplay.order());
   }
 
   @Test
@@ -182,8 +210,8 @@ class OrderServiceIT {
   @Test
   @org.junit.jupiter.api.Order(8)
   void aLeaseExcludesOtherReplicasUntilItExpiresThenFencesTheOldHolder() throws Exception {
-    var a = new io.zeroshift.order.infrastructure.PostgresLease(jdbc, "replica-a");
-    var b = new io.zeroshift.order.infrastructure.PostgresLease(jdbc, "replica-b");
+    var a = new PostgresLease(db, "replica-a");
+    var b = new PostgresLease(db, "replica-b");
     var ttl = Duration.ofMillis(800);
 
     long first = a.acquire("test-lease", ttl).orElseThrow();
@@ -197,6 +225,50 @@ class OrderServiceIT {
     // Woken from its stall, a still has token `first`: the fence rejects it, b passes.
     assertThat(a.fence("test-lease", first)).isFalse();
     assertThat(b.fence("test-lease", second)).isTrue();
+  }
+
+  @Test
+  @org.junit.jupiter.api.Order(9)
+  void theEventAndItsOutboxRowCommitOrRollBackTogether() {
+    var id = UUID.randomUUID();
+    var placed =
+        Envelope.of(
+            new OrderEvent.OrderPlaced(
+                id,
+                "atomic",
+                List.of(new OrderLine("SKU-CABLE", 1, new BigDecimal("9.99"))),
+                new BigDecimal("9.99"),
+                "USD"),
+            UUID.randomUUID(),
+            null);
+    // jOOQ joins Spring's transaction: a failure after both writes undoes both.
+    assertThatThrownBy(
+            () ->
+                transactions.executeWithoutResult(
+                    tx -> {
+                      eventStore.append(id, 0, List.of(placed));
+                      outbox.append(placed);
+                      throw new IllegalStateException("failure after both writes");
+                    }))
+        .hasMessage("failure after both writes");
+    assertThat(eventStore.load(id, 0)).isEmpty();
+    assertThat(outboxRows(id)).isZero();
+
+    // An outbox write outside any transaction is refused: it could commit without its change.
+    assertThatThrownBy(() -> outbox.append(placed)).isInstanceOf(IllegalStateException.class);
+
+    transactions.executeWithoutResult(
+        tx -> {
+          eventStore.append(id, 0, List.of(placed));
+          outbox.append(placed);
+        });
+    assertThat(eventStore.load(id, 0)).hasSize(1);
+    assertThat(outboxRows(id)).isOne();
+  }
+
+  private int outboxRows(UUID orderId) {
+    return jdbc.queryForObject(
+        "SELECT COUNT(*) FROM outbox WHERE aggregate_id=?", Integer.class, orderId.toString());
   }
 
   private void reply(UUID orderId, Message payload) {

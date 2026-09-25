@@ -9,11 +9,11 @@ import javax.sql.DataSource;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.common.TopicPartition;
 import org.flywaydb.core.Flyway;
+import org.jooq.DSLContext;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.flyway.autoconfigure.FlywayMigrationInitializer;
 import org.springframework.boot.kafka.autoconfigure.ConcurrentKafkaListenerContainerFactoryConfigurer;
 import org.springframework.context.annotation.*;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.kafka.config.ConcurrentKafkaListenerContainerFactory;
 import org.springframework.kafka.core.ConsumerFactory;
 import org.springframework.kafka.core.KafkaOperations;
@@ -62,28 +62,28 @@ public class PlatformConfiguration {
   public static final class PlatformSchema {}
 
   @Bean
-  Outbox outbox(JdbcTemplate jdbc, PlatformSchema schema) {
-    return new Outbox(jdbc);
+  Outbox outbox(DSLContext db, PlatformSchema schema) {
+    return new Outbox(db);
   }
 
   @Bean
   DecisionLog decisionLog(
-      JdbcTemplate jdbc,
+      DSLContext db,
       PlatformSchema schema,
       MeterRegistry meters,
       @Value("${zeroshift.instance:${HOSTNAME:local}}") String instance) {
-    return new DecisionLog(jdbc, instance, meters);
+    return new DecisionLog(db, instance, meters);
   }
 
   @Bean
-  Faults faults(JdbcTemplate jdbc, TransactionTemplate transactions, PlatformSchema schema) {
-    return new Faults(jdbc, transactions);
+  Faults faults(DSLContext db, TransactionTemplate transactions, PlatformSchema schema) {
+    return new Faults(db, transactions);
   }
 
   @Bean
   Inbox inbox(
-      JdbcTemplate jdbc, TransactionTemplate transactions, DecisionLog decisions, Faults faults) {
-    return new Inbox(jdbc, transactions, decisions, faults);
+      DSLContext db, TransactionTemplate transactions, DecisionLog decisions, Faults faults) {
+    return new Inbox(db, transactions, decisions, faults);
   }
 
   @Bean

@@ -25,6 +25,6 @@ public interface EventStore {
 
   void saveSnapshot(Order state);
 
-  /** Most recent streams first. */
-  List<UUID> recentStreams(int limit);
+  /** Safe at any time: the next load folds the whole history instead. */
+  void discardSnapshot(UUID stream);
 }

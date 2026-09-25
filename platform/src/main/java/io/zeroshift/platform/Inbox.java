@@ -1,13 +1,15 @@
 package io.zeroshift.platform;
 
+import static io.zeroshift.platform.db.Tables.PROCESSED_MESSAGE;
+
 import io.zeroshift.contracts.Envelope;
 import io.zeroshift.contracts.MessageCodec;
 import java.nio.ByteBuffer;
 import java.util.function.Function;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
+import org.jooq.DSLContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.kafka.support.KafkaHeaders;
 import org.springframework.transaction.support.TransactionTemplate;
 
@@ -20,14 +22,14 @@ import org.springframework.transaction.support.TransactionTemplate;
  */
 public final class Inbox {
   private static final Logger log = LoggerFactory.getLogger(Inbox.class);
-  private final JdbcTemplate jdbc;
+  private final DSLContext db;
   private final TransactionTemplate transactions;
   private final DecisionLog decisions;
   private final Faults faults;
 
   public Inbox(
-      JdbcTemplate jdbc, TransactionTemplate transactions, DecisionLog decisions, Faults faults) {
-    this.jdbc = jdbc;
+      DSLContext db, TransactionTemplate transactions, DecisionLog decisions, Faults faults) {
+    this.db = db;
     this.transactions = transactions;
     this.decisions = decisions;
     this.faults = faults;
@@ -43,15 +45,18 @@ public final class Inbox {
     var handled =
         transactions.execute(
             s -> {
+              // The claim. A concurrent delivery of the same event (a rebalance mid-handling)
+              // blocks
+              // here on the primary key until this transaction ends, then finds the row.
               boolean first =
-                  jdbc.update(
-                          "INSERT INTO processed_message(consumer,event_id,topic,kafka_partition,"
-                              + "kafka_offset) VALUES(?,?,?,?,?) ON CONFLICT DO NOTHING",
-                          consumer,
-                          envelope.eventId(),
-                          record.topic(),
-                          record.partition(),
-                          record.offset())
+                  db.insertInto(PROCESSED_MESSAGE)
+                          .set(PROCESSED_MESSAGE.CONSUMER, consumer)
+                          .set(PROCESSED_MESSAGE.EVENT_ID, envelope.eventId())
+                          .set(PROCESSED_MESSAGE.TOPIC, record.topic())
+                          .set(PROCESSED_MESSAGE.KAFKA_PARTITION, record.partition())
+                          .set(PROCESSED_MESSAGE.KAFKA_OFFSET, record.offset())
+                          .onConflictDoNothing()
+                          .execute()
                       == 1;
               var result =
                   first
@@ -81,6 +86,15 @@ public final class Inbox {
               + record.offset()
               + " but crashing before the offset commit");
     return handled;
+  }
+
+  /**
+   * Drops every idempotency record of {@code consumer}, so a replay from offset 0 is applied again
+   * instead of skipped. Only for a consumer whose effects were emptied in the same transaction (a
+   * read-model rebuild): anything else would apply its events twice.
+   */
+  public void forget(String consumer) {
+    db.deleteFrom(PROCESSED_MESSAGE).where(PROCESSED_MESSAGE.CONSUMER.eq(consumer)).execute();
   }
 
   /** Spring Kafka's delivery counter for this record (1 on first delivery). */

@@ -1,10 +1,16 @@
 package io.zeroshift.platform;
 
+import static io.zeroshift.platform.db.Tables.CONSUMER_DECISION;
+import static io.zeroshift.platform.db.Tables.OUTBOX;
+import static org.jooq.impl.DSL.count;
+import static org.jooq.impl.DSL.max;
+
 import java.util.*;
 import org.apache.kafka.common.TopicPartition;
+import org.jooq.DSLContext;
+import org.jooq.impl.DSL;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.kafka.config.KafkaListenerEndpointRegistry;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
@@ -38,17 +44,17 @@ public class LabAdminController {
   private final String service;
   private final KafkaListenerEndpointRegistry registry;
   private final Faults faults;
-  private final JdbcTemplate jdbc;
+  private final DSLContext db;
 
   public LabAdminController(
       @Value("${spring.application.name}") String service,
       KafkaListenerEndpointRegistry registry,
       Faults faults,
-      JdbcTemplate jdbc) {
+      DSLContext db) {
     this.service = service;
     this.registry = registry;
     this.faults = faults;
-    this.jdbc = jdbc;
+    this.db = db;
   }
 
   @GetMapping("/state")
@@ -78,45 +84,52 @@ public class LabAdminController {
   }
 
   private Outbox outbox() {
+    // A system view, not our schema: plain SQL. lag = WAL the connector has not yet confirmed.
     var slot =
-        jdbc.queryForList(
-            "SELECT slot_name,active,pg_wal_lsn_diff(pg_current_wal_lsn(),confirmed_flush_lsn)::bigint AS lag"
-                + " FROM pg_replication_slots WHERE slot_name=current_database() || '_outbox'");
-    var table = jdbc.queryForMap("SELECT COUNT(*) AS rows, MAX(created_at) AS last FROM outbox");
-    if (slot.isEmpty())
-      return new Outbox(
-          null, false, null, ((Number) table.get("rows")).longValue(), table.get("last"));
-    var row = slot.getFirst();
+        db.fetchOptional(
+            "SELECT slot_name, active,"
+                + " pg_wal_lsn_diff(pg_current_wal_lsn(), confirmed_flush_lsn)::bigint AS lag"
+                + " FROM pg_replication_slots WHERE slot_name = current_database() || '_outbox'");
+    var table = db.select(count(), max(OUTBOX.CREATED_AT)).from(OUTBOX).fetchSingle();
     return new Outbox(
-        (String) row.get("slot_name"),
-        (Boolean) row.get("active"),
-        row.get("lag") == null ? null : ((Number) row.get("lag")).longValue(),
-        ((Number) table.get("rows")).longValue(),
-        table.get("last"));
+        slot.map(r -> r.get("slot_name", String.class)).orElse(null),
+        slot.map(r -> r.get("active", Boolean.class)).orElse(false),
+        slot.map(r -> r.get("lag", Long.class)).orElse(null),
+        table.value1(),
+        table.value2());
   }
 
   @GetMapping("/decisions")
   public List<Map<String, Object>> decisions(
       @RequestParam(required = false) String orderId,
       @RequestParam(defaultValue = "100") int limit) {
-    return jdbc.queryForList(
-        "SELECT * FROM consumer_decision WHERE (?::text IS NULL OR order_id=?) ORDER BY id DESC LIMIT ?",
-        orderId,
-        orderId,
-        Math.min(limit, 500));
+    return db.selectFrom(CONSUMER_DECISION)
+        .where(orderId == null ? DSL.noCondition() : CONSUMER_DECISION.ORDER_ID.eq(orderId))
+        .orderBy(CONSUMER_DECISION.ID.desc())
+        .limit(Math.min(limit, 500))
+        .fetchMaps();
   }
 
   @GetMapping("/outbox")
   public List<Map<String, Object>> outbox(
       @RequestParam(required = false) String orderId,
       @RequestParam(defaultValue = "100") int limit) {
-    return jdbc.queryForList(
-        "SELECT id,topic,aggregate_id,type,schema_version,correlation_id,causation_id,traceparent,"
-            + "payload::text AS payload,created_at FROM outbox WHERE (?::text IS NULL OR aggregate_id=?)"
-            + " ORDER BY created_at DESC LIMIT ?",
-        orderId,
-        orderId,
-        Math.min(limit, 500));
+    return db.select(
+            OUTBOX.ID,
+            OUTBOX.TOPIC,
+            OUTBOX.AGGREGATE_ID,
+            OUTBOX.TYPE,
+            OUTBOX.SCHEMA_VERSION,
+            OUTBOX.CORRELATION_ID,
+            OUTBOX.CAUSATION_ID,
+            OUTBOX.TRACEPARENT,
+            OUTBOX.PAYLOAD.cast(String.class).as("payload"),
+            OUTBOX.CREATED_AT)
+        .from(OUTBOX)
+        .where(orderId == null ? DSL.noCondition() : OUTBOX.AGGREGATE_ID.eq(orderId))
+        .orderBy(OUTBOX.CREATED_AT.desc())
+        .limit(Math.min(limit, 500))
+        .fetchMaps();
   }
 
   @PostMapping("/consumers/{id}/{action}")
