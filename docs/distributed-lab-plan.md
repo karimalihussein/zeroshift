@@ -126,4 +126,7 @@ against the full Compose stack. Deviations from the plan above:
   (`flyway_platform_history`), apart from each service's own migrations.
 - **Metrics:** Micrometer (scraped by Prometheus) rather than the agent's metrics exporter; the
   agent sends traces and logs only. OpenSearch is an optional overlay, Loki the default.
-- **Memory:** the whole stack runs in about 7.5 GB (Docker VM limit here: 9.7 GB).
+- **Persistence:** the event-driven services use jOOQ classes generated from the Flyway-built
+  schema ([ADR 015](decisions/015-jooq-persistence.md)); the migration lab stays on JDBC.
+- **Memory:** the whole stack runs in about 8 GB (Docker VM limit here: 9.7 GB); Tempo needs
+  ~900 MB of headroom once it holds an hour of traces.

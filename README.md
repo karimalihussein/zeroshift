@@ -69,6 +69,7 @@ OpenTelemetry agent in every JVM ─► collector ─► Tempo · Loki;  Prometh
 | Distributed lock with fencing | PostgreSQL lease with a fencing token checked inside the guarded transaction | [013](docs/decisions/013-lease-with-fencing-tokens.md) |
 | Optimistic concurrency | Event-stream version, saga version and stock row version; *Concurrent reservations* | [011](docs/decisions/011-event-sourcing-and-cqrs.md) |
 | Observability | One trace per order across services and Kafka hops; logs linked by trace id | [014](docs/decisions/014-observability.md) |
+| Typed persistence | Flyway → PostgreSQL → generated jOOQ classes; no hand-built SQL strings | [015](docs/decisions/015-jooq-persistence.md) |
 
 The **/events** page follows one order end to end (outbox → Kafka partition and offset → each consumer's decision → saga transition), shows topics, consumer groups and their members per replica, lag, the DLQ, connectors, the scanner lease, and has a lever for every failure. [docs/event-lab-drills.md](docs/event-lab-drills.md) walks through each drill.
 
@@ -87,7 +88,7 @@ OpenSearch is optional, for full-text log search (about 1.5 GB more; OpenSearch 
 docker compose -f docker-compose.yml -f docker-compose.override.yml -f docker-compose.opensearch.yml up -d
 ```
 
-The service images are built from the packaged jars (no hot reload): after changing a service, `docker compose up -d --build <service>`. Each service keeps its own Flyway history (`flyway_schema_history`) apart from the shared platform tables (outbox, inbox, decisions, faults), which are versioned in `flyway_platform_history`.
+The service images are built from the packaged jars (no hot reload): after changing a service, `docker compose up -d --build <service>`. Each service keeps its own Flyway history (`flyway_schema_history`) apart from the shared platform tables (outbox, inbox, decisions, faults), which are versioned in `flyway_platform_history`. Persistence uses jOOQ classes generated from what those migrations build ([ADR 015](docs/decisions/015-jooq-persistence.md)): after adding a migration, run `mvn -Pjooq-codegen -DskipTests process-test-classes` and commit `src/generated/java`. The ITs fail if the generated classes and the migrated schema disagree.
 
 ## Migration lab architecture
 
