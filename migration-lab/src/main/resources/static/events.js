@@ -97,7 +97,7 @@ const COMPENSATION = new Set(['RefundPayment', 'ReleaseStock', 'PaymentRefunded'
 const NEGATIVE = new Set(['PaymentDeclined', 'StockRejected', 'ShipmentFailed']);
 const decisionTone = d => ({ PROCESSED: 'good', DUPLICATE_SKIPPED: 'info', IGNORED: '', RETRY_SCHEDULED: 'warn', DEAD_LETTERED: 'bad' })[d] || '';
 const decisionLabel = d => ({ PROCESSED: 'processed', DUPLICATE_SKIPPED: 'duplicate skipped', IGNORED: 'ignored', RETRY_SCHEDULED: 'retry', DEAD_LETTERED: 'dead-lettered' })[d] || d.toLowerCase();
-const sagaState = s => ({ COMPLETED: 'done', CANCELLED: 'failed', COMPENSATING: 'retrying' })[s] || 'waiting';
+const sagaState = s => ({ COMPLETED: 'done', CANCELLED: 'failed', COMPENSATING: 'compensated' })[s] || 'waiting';
 const laneOf = m => {
   const producer = m.producer || '';
   if (producer.startsWith('payment')) return 1;
@@ -458,7 +458,7 @@ function renderGraph() {
       ...LANES.map((lane, i) => h('div', { class: 'lane-head', style: `grid-column:${i + 1};grid-row:1` }, icon(lane.icon), lane.label)),
       h('svg', { class: 'edges', 'aria-hidden': 'true' }),
       ...(nodes.length ? nodes : [h('p', { class: 'empty', style: 'grid-column:1 / -1;grid-row:2' }, journey.order?.error ? `No such order: ${journey.order.error}` : 'No messages yet: the order’s transaction has not committed.')]));
-    graph.replaceChildren(h('p', { class: 'graph-legend' }, 'Each message is a node in the lane of the service that produced it, linked to the message that caused it. Its three steps: committed to the ', h('b', {}, 'outbox'), ', read from the WAL by Debezium onto ', h('b', {}, 'Kafka'), ', then handled by a ', h('b', {}, 'consumer'), '. Dashed amber links are compensation.'), lanes);
+    graph.replaceChildren(h('p', { class: 'graph-legend' }, 'Each message is a node in the lane of the service that produced it, linked to the message that caused it. Its three steps: committed to the ', h('b', {}, 'outbox'), ', read from the WAL by Debezium onto ', h('b', {}, 'Kafka'), ', then handled by a ', h('b', {}, 'consumer'), '. Dashed violet links are compensation.'), lanes);
     graph.dataset.edges = JSON.stringify(g.edges);
     requestAnimationFrame(drawEdges);
   });
@@ -501,9 +501,10 @@ function renderOrderHead() {
   const orders = recentOrders();
   const o = journey?.order;
   const writeOk = ok(o);
-  renderIf('order-select', [orders.map(x => [x.saga.orderId, x.saga.state, x.order.customerId]), selected], () => {
+  const own = writeOk ? `${o.order.customerId} · ${(o.saga?.state || o.order.status).replaceAll('_', ' ').toLowerCase()}` : null;
+  renderIf('order-select', [orders.map(x => [x.saga.orderId, x.saga.state, x.order.customerId]), selected, own], () => {
     const options = orders.map(({ saga, order }) => h('option', { value: saga.orderId, selected: saga.orderId === selected || null }, `${short(saga.orderId)} · ${order.customerId} · ${saga.state.replaceAll('_', ' ').toLowerCase()}`));
-    if (selected && !orders.some(x => x.saga.orderId === selected)) options.unshift(h('option', { value: selected, selected: true }, `${short(selected)} (older order)`));
+    if (selected && !orders.some(x => x.saga.orderId === selected)) options.unshift(h('option', { value: selected, selected: true }, `${short(selected)} · ${own || 'older order'}`));
     el('order-select').replaceChildren(h('option', { value: '', selected: !selected || null }, selected ? 'Stop following' : 'Follow an order…'), ...options);
   });
   const read = journey?.readModel;
@@ -607,7 +608,7 @@ function orderInspector() {
       saga?.failureReason ? h('p', { class: `callout ${saga.compensations.length ? 'warn' : 'bad'}` }, `${saga.failureReason}${saga.compensations.length ? `. Compensated: ${saga.compensations.join(', ')}.` : '.'}`) : null,
       writeOk ? section('Write model (event-sourced)', kv([['Status', o.order.status], ['Version', `v${o.order.version} · rebuilt from ${o.rebuiltFrom}`], ['Items', o.order.lines.map(l => `${l.quantity}× ${l.sku}`).join(', ')], ['Total', `$${o.order.total} ${o.order.currency}`]])) : null,
       section('Read model (CQRS)', ok(read) ? kv([['Status', read.status], ['Consistency', writeOk && read.status === o.order.status ? 'in sync with the write model' : 'behind: catching up through Kafka'], ['Events applied', read.events_applied], ['Last', `${read.last_event_type} at ${read.last_offset}`]]) : empty('Not projected yet: waiting for order.events, or never published.')),
-      saga ? section('Saga', timeline((o.transitions || []).map(t => [sagaState(t.to_state) === 'done' ? 'done' : t.to_state === 'CANCELLED' ? (saga.compensations.length ? 'compensated' : 'failed') : t.to_state === 'COMPENSATING' ? 'retrying' : 'waiting', `${t.from_state ? `${t.from_state} → ` : ''}${t.to_state}`, `${t.trigger_type}: ${t.detail}`, t.at])),
+      saga ? section('Saga', timeline((o.transitions || []).map(t => [sagaState(t.to_state) === 'done' ? 'done' : t.to_state === 'CANCELLED' ? (saga.compensations.length ? 'compensated' : 'failed') : t.to_state === 'COMPENSATING' ? 'compensated' : 'waiting', `${t.from_state ? `${t.from_state} → ` : ''}${t.to_state}`, `${t.trigger_type}: ${t.detail}`, t.at])),
         saga.deadline ? h('p', { class: 'callout' }, `Step deadline ${time(saga.deadline)}: the lease-holding replica compensates if no reply arrives by then.`) : null) : null,
       calls.length ? section('Payment gateway attempts', timeline(calls.slice().reverse().map(c => [c.outcome === 'CHARGED' ? 'done' : c.outcome === 'DECLINED' ? 'failed' : 'retrying', c.outcome, `${c.latency_ms} ms · breaker ${c.breaker_state} · ${c.detail}`, c.at]))) : null,
       fold ? section('Aggregate rebuilt event by event', timeline(fold.map(step => ['done', `v${step.version} ${step.type}`, `status after: ${step.stateAfter.status}`, null]))) : null,
@@ -692,12 +693,12 @@ function renderOrdersTab(s) {
   if (!s.orders.length) return empty('No orders yet. Send one from the composer above.');
   const read = new Map((Array.isArray(s.readModel) ? s.readModel : []).map(r => [r.order_id, r]));
   return [intro('Sagas, newest first. The write model is the event-sourced order; the read model is its CQRS projection, caught up through Kafka. Click a row to follow it.'),
-    h('div', { class: 'table-wrap' }, h('table', { class: 'data-table' }, h('thead', {}, h('tr', {}, ...['Order', 'Customer', 'Items', 'Total', 'Saga', 'Write model', 'Read model'].map(t => h('th', { class: `${t === 'Total' ? 'num' : ''} ${['Items', 'Write model'].includes(t) ? 'hide-sm' : ''}` }, t)))),
+    h('div', { class: 'table-wrap' }, h('table', { class: 'data-table' }, h('thead', {}, h('tr', {}, ...['Order', 'Customer', 'Items', 'Total', 'Saga', 'Write model', 'Read model'].map(t => h('th', { class: `${t === 'Total' ? 'num' : ''} ${['Order', 'Items', 'Write model'].includes(t) ? 'hide-sm' : ''}` }, t)))),
       h('tbody', {}, ...s.orders.map(({ saga, order }) => {
         const projected = read.get(saga.orderId);
         const inSync = projected && projected.status === order.status;
         return h('tr', { class: `selectable ${selected === saga.orderId ? 'selected' : ''}`, onclick: () => { follow(saga.orderId); window.scrollTo({ top: 0, behavior: 'smooth' }); } },
-          h('td', { class: 'mono' }, short(saga.orderId)), h('td', {}, order.customerId), h('td', { class: 'hide-sm' }, order.lines.map(l => `${l.quantity}× ${l.sku.replace('SKU-', '').toLowerCase()}`).join(', ')), h('td', { class: 'num' }, `$${order.total}`),
+          h('td', { class: 'mono hide-sm' }, short(saga.orderId)), h('td', {}, order.customerId), h('td', { class: 'hide-sm' }, order.lines.map(l => `${l.quantity}× ${l.sku.replace('SKU-', '').toLowerCase()}`).join(', ')), h('td', { class: 'num' }, `$${order.total}`),
           h('td', {}, chip(saga.state.replaceAll('_', ' ').toLowerCase(), `s-${saga.state === 'CANCELLED' && saga.compensations.length ? 'compensated' : sagaState(saga.state)}`)), h('td', { class: 'hide-sm' }, order.status.toLowerCase()),
           h('td', {}, projected ? chip(inSync ? 'in sync' : `behind · ${projected.status.toLowerCase()}`, inSync ? 'good' : 'warn') : chip('not projected yet', 'warn')));
       }))))];
