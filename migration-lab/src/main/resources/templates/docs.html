@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ZeroShift docs</title>
+  <link rel="stylesheet" th:href="@{/docs.css}">
+  <script defer th:src="@{/docs.js}"></script>
+</head>
+<body>
+  <div id="docs-app">
+    <header class="docs-header">
+      <button class="nav-toggle" type="button" aria-expanded="false" aria-controls="docs-nav">Menu</button>
+      <a class="brand" href="/docs/overview">
+        <span class="brand-mark" aria-hidden="true"><span></span><span></span><span></span></span>
+        <span><strong>ZeroShift</strong><small>Developer docs</small></span>
+      </a>
+      <nav class="lab-nav" aria-label="Labs">
+        <a href="/">Migration</a>
+        <a href="/events">Event-driven</a>
+        <a href="/docs/overview" aria-current="page">Docs</a>
+      </nav>
+      <form class="docs-search" role="search">
+        <label class="sr" for="docs-query">Search documentation</label>
+        <input id="docs-query" type="search" placeholder="Search docs" autocomplete="off" spellcheck="false">
+        <kbd>/</kbd>
+        <div id="docs-results" class="search-results" hidden></div>
+      </form>
+      <span id="docs-version" class="version">Lab</span>
+      <button id="theme" class="theme" type="button" aria-pressed="false">Dark</button>
+    </header>
+    <div class="docs-frame">
+      <aside id="docs-nav" class="docs-nav" aria-label="Documentation"></aside>
+      <main id="docs-main" tabindex="-1">
+        <p id="docs-status" class="status-line">Loading the catalog…</p>
+        <article id="docs-content" hidden></article>
+      </main>
+      <aside id="docs-toc" class="docs-toc" aria-label="On this page" hidden>
+        <p>On this page</p>
+        <nav id="docs-toc-nav"></nav>
+      </aside>
+    </div>
+  </div>
+</body>
+</html>
