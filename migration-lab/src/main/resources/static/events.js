@@ -9,6 +9,8 @@ const seconds = value => time(value).slice(0, 8);
 const duration = ms => ms >= 86_400_000 ? `${Math.round(ms / 86_400_000)} d` : ms >= 3_600_000 ? `${Math.round(ms / 3_600_000)} h` : ms >= 60_000 ? `${Math.round(ms / 60_000)} min` : `${Math.round(ms / 1000)} s`;
 const since = (from, to) => from && to ? Math.max(0, new Date(to) - new Date(from)) : null;
 const short = id => id ? String(id).slice(0, 8) : '—';
+/** A message type that may wrap, but only between its words: PaymentAuthorized → Payment·Authorized. */
+const camel = text => String(text).split(/(?=[A-Z][a-z])/).flatMap((part, i) => i ? [document.createElement('wbr'), part] : [part]);
 const ok = node => node && !node.error;
 const isUuid = value => /^[0-9a-f]{8}-[0-9a-f-]{27}$/.test(value || '');
 const grafana = document.body.dataset.grafana;
@@ -438,15 +440,17 @@ function renderGraph() {
         settled ? (settled.decision === 'DEAD_LETTERED' ? 'bad' : 'on') : deliveries.length ? 'retry' : m.kafka?.length ? 'wait' : ''
       ];
       const selectedNode = focus?.kind === 'message' && focus.id === n.id;
+      const cause = n.projection ? m.type : (journey.messages || []).find(x => x.eventId === m.causationId)?.type;
       const title = n.projection ? (m.type || 'event').replace(/^Order/, '') || 'event' : m.type || 'unknown';
       return h('button', {
         type: 'button', class: `node s-${n.state} ${n.projection ? 'proj-node' : ''} ${selectedNode ? 'is-selected' : ''} ${fresh.has(n.id) && seen.size > fresh.size ? 'is-new' : ''}`,
         style: `grid-column:${n.lane + 1};grid-row:${n.row + 2}`, 'data-node': n.id, 'data-lane': LANES[n.lane].label,
         'aria-label': `${n.projection ? 'Projection of ' : ''}${m.type}: ${STATE_LABEL[n.state]}`, onclick: () => inspect({ kind: 'message', id: n.id })
       },
-        h('span', { class: 'node-top' }, h('span', { class: 'node-dot' }, icon(STATE_ICON[n.state])), h('span', { class: 'node-type' }, n.projection ? `order_view ← ${title}` : title)),
+        h('span', { class: 'node-top' }, h('span', { class: 'node-dot' }, icon(STATE_ICON[n.state])), h('span', { class: 'node-type' }, n.projection ? ['order_view ← ', ...camel(title)] : camel(title))),
         h('span', { class: 'node-where' }, n.projection ? (settled ? `${decisionLabel(settled.decision)} · ${seconds(settled.at)}` : 'not consumed yet') : `${kindOf(m)} · ${k ? `${k.topic} p${k.partition}@${k.offset}` : m.outboxAt ? `${m.topic} · in outbox` : m.topic || ''}`),
-        pips.length ? h('span', { class: 'pips', title: 'outbox · Kafka · consumer' }, ...pips.map(p => h('i', { class: p }))) : null,
+        pips.length ? h('span', { class: 'steps' }, ...['outbox', 'kafka', 'consumer'].map((label, i) => h('span', { class: `step ${pips[i]}` }, h('i'), label))) : null,
+        cause ? h('span', { class: 'node-cause' }, `caused by ${cause}`) : null,
         (tags => tags.length ? h('span', { class: 'node-tags' }, ...tags) : null)(nodeTags(m, n.projection)));
     });
     const lanes = h('div', { class: 'lanes', style: `grid-template-rows:auto repeat(${Math.max(1, g.rows)}, auto)` },
@@ -454,7 +458,7 @@ function renderGraph() {
       ...LANES.map((lane, i) => h('div', { class: 'lane-head', style: `grid-column:${i + 1};grid-row:1` }, icon(lane.icon), lane.label)),
       h('svg', { class: 'edges', 'aria-hidden': 'true' }),
       ...(nodes.length ? nodes : [h('p', { class: 'empty', style: 'grid-column:1 / -1;grid-row:2' }, journey.order?.error ? `No such order: ${journey.order.error}` : 'No messages yet: the order’s transaction has not committed.')]));
-    graph.replaceChildren(lanes);
+    graph.replaceChildren(h('p', { class: 'graph-legend' }, 'Each message is a node in the lane of the service that produced it, linked to the message that caused it. Its three steps: committed to the ', h('b', {}, 'outbox'), ', read from the WAL by Debezium onto ', h('b', {}, 'Kafka'), ', then handled by a ', h('b', {}, 'consumer'), '. Dashed amber links are compensation.'), lanes);
     graph.dataset.edges = JSON.stringify(g.edges);
     requestAnimationFrame(drawEdges);
   });
@@ -570,8 +574,8 @@ function messageInspector(m, projection) {
   const first = k[0];
   return [
     h('div', { class: 'insp-head' },
-      h('small', {}, projection ? 'Projection into order_view (CQRS read side)' : `${kindOf(m)} · produced by ${m.producer || 'no producer (ghost)'}`),
-      h('h2', {}, projection ? `order_view ← ${m.type}` : m.type || 'unknown'),
+      h('h2', {}, projection ? ['order_view ← ', ...camel(m.type)] : camel(m.type || 'unknown')),
+      h('p', { class: 'insp-meta' }, projection ? 'Projection into order_view, the CQRS read side' : `${kindOf(m)} · produced by ${m.producer || 'no producer (ghost)'}`),
       h('div', { class: 'chips' }, chip(STATE_LABEL[st], `s-${st}`), m.schemaVersion ? chip(`schema v${m.schemaVersion}`) : null, first ? chip(`${first.topic} · p${first.partition}@${first.offset}`) : null)),
     h('div', { class: 'insp-body' },
       st === 'failed' && !projection && !m.outboxAt ? h('p', { class: 'callout bad' }, 'This record reached Kafka without a committed outbox row: the dual-write anti-pattern. Consumers acted on an order that does not exist.') : null,
@@ -597,7 +601,7 @@ function orderInspector() {
   const traceId = journey.messages?.find(m => m.traceparent)?.traceparent.split('-')[1];
   const calls = Array.isArray(journey.gatewayCalls) ? journey.gatewayCalls : [];
   return [
-    h('div', { class: 'insp-head' }, h('small', {}, 'Followed order'), h('h2', {}, writeOk ? `${o.order.customerId} · $${o.order.total}` : `Order ${short(selected)}`), idRow('order id', selected)),
+    h('div', { class: 'insp-head' }, h('h2', {}, writeOk ? `${o.order.customerId} · $${o.order.total}` : `Order ${short(selected)}`), h('p', { class: 'insp-meta' }, 'The order you are following'), idRow('order id', selected)),
     h('div', { class: 'insp-body' },
       !writeOk ? h('p', { class: 'callout bad' }, 'Not in the event store: a lost or ghost order. Its messages, if any, are shown in the graph.') : null,
       saga?.failureReason ? h('p', { class: `callout ${saga.compensations.length ? 'warn' : 'bad'}` }, `${saga.failureReason}${saga.compensations.length ? `. Compensated: ${saga.compensations.join(', ')}.` : '.'}`) : null,
@@ -647,7 +651,7 @@ function stageInspector(id) {
   if (id === 'debezium' && ok(src.connectors)) body.push(section('Connectors', timeline(Object.entries(src.connectors).map(([n, c]) => [c.status.connector.state === 'RUNNING' ? 'done' : c.status.connector.state === 'PAUSED' ? 'waiting' : 'failed', n, `tasks: ${c.status.tasks.map(t => t.state).join(', ') || 'none'}`, null]))));
   if (id === 'consumers' && Array.isArray(src.groups)) body.push(section('Consumer groups', timeline(src.groups.map(g => [g.totalLag ? 'waiting' : g.state === 'STABLE' ? 'done' : 'retrying', g.groupId, `${g.state.toLowerCase()} · ${g.members.length} members · lag ${g.totalLag}`, null]))));
   body.push(section('System now', kv([['State', STATE_LABEL[src.system.state]], ['Detail', src.system.detail]])));
-  return [h('div', { class: 'insp-head' }, h('small', {}, src.order ? `Stage for order ${short(selected)}` : 'Stage, system-wide'), h('h2', {}, name), h('div', { class: 'chips' }, chip(STATE_LABEL[current.state], `s-${current.state}`), chip(current.detail))), h('div', { class: 'insp-body' }, ...body)];
+  return [h('div', { class: 'insp-head' }, h('h2', {}, name), h('p', { class: 'insp-meta' }, src.order ? `This stage for order ${short(selected)}` : 'This stage across the whole system'), h('div', { class: 'chips' }, chip(STATE_LABEL[current.state], `s-${current.state}`), chip(current.detail))), h('div', { class: 'insp-body' }, ...body)];
 }
 
 // ---- System tabs ----------------------------------------------------------------------------------------
@@ -688,13 +692,13 @@ function renderOrdersTab(s) {
   if (!s.orders.length) return empty('No orders yet. Send one from the composer above.');
   const read = new Map((Array.isArray(s.readModel) ? s.readModel : []).map(r => [r.order_id, r]));
   return [intro('Sagas, newest first. The write model is the event-sourced order; the read model is its CQRS projection, caught up through Kafka. Click a row to follow it.'),
-    h('div', { class: 'table-wrap' }, h('table', { class: 'data-table' }, h('thead', {}, h('tr', {}, ...['Order', 'Customer', 'Items', 'Total', 'Saga', 'Write model', 'Read model'].map(t => h('th', { class: t === 'Total' ? 'num' : '' }, t)))),
+    h('div', { class: 'table-wrap' }, h('table', { class: 'data-table' }, h('thead', {}, h('tr', {}, ...['Order', 'Customer', 'Items', 'Total', 'Saga', 'Write model', 'Read model'].map(t => h('th', { class: `${t === 'Total' ? 'num' : ''} ${['Items', 'Write model'].includes(t) ? 'hide-sm' : ''}` }, t)))),
       h('tbody', {}, ...s.orders.map(({ saga, order }) => {
         const projected = read.get(saga.orderId);
         const inSync = projected && projected.status === order.status;
         return h('tr', { class: `selectable ${selected === saga.orderId ? 'selected' : ''}`, onclick: () => { follow(saga.orderId); window.scrollTo({ top: 0, behavior: 'smooth' }); } },
-          h('td', { class: 'mono' }, short(saga.orderId)), h('td', {}, order.customerId), h('td', {}, order.lines.map(l => `${l.quantity}× ${l.sku.replace('SKU-', '').toLowerCase()}`).join(', ')), h('td', { class: 'num' }, `$${order.total}`),
-          h('td', {}, chip(saga.state.replaceAll('_', ' ').toLowerCase(), `s-${saga.state === 'CANCELLED' && saga.compensations.length ? 'compensated' : sagaState(saga.state)}`)), h('td', {}, order.status.toLowerCase()),
+          h('td', { class: 'mono' }, short(saga.orderId)), h('td', {}, order.customerId), h('td', { class: 'hide-sm' }, order.lines.map(l => `${l.quantity}× ${l.sku.replace('SKU-', '').toLowerCase()}`).join(', ')), h('td', { class: 'num' }, `$${order.total}`),
+          h('td', {}, chip(saga.state.replaceAll('_', ' ').toLowerCase(), `s-${saga.state === 'CANCELLED' && saga.compensations.length ? 'compensated' : sagaState(saga.state)}`)), h('td', { class: 'hide-sm' }, order.status.toLowerCase()),
           h('td', {}, projected ? chip(inSync ? 'in sync' : `behind · ${projected.status.toLowerCase()}`, inSync ? 'good' : 'warn') : chip('not projected yet', 'warn')));
       }))))];
 }

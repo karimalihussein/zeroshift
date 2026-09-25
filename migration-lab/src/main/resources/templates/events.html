@@ -14,8 +14,8 @@
   THESIS: One order is one causal graph. Every message it produced is a node linked to the message that
   caused it, laid out in service lanes, each node carrying its own outbox → Debezium → Kafka → consumer
   proof. Refuses the stacked dashboard of equal panels.
-  OWN-WORLD: ZeroShift control plane: cool grey canvas, white panels, ink #172033, one blue for reached
-  and selected; green done, amber waiting/retrying/compensating, red failed. System sans, mono only for
+  OWN-WORLD: ZeroShift control plane: cool grey canvas, white panels, ink #172033, blue for selected and
+  waiting; green done, amber retrying, violet compensated, red failed. System sans, mono only for
   ids, topics and offsets.
   STORY: Send an order (random or hand-edited), watch its messages arrive lane by lane from real
   backend state, click any node or stage to inspect payload, headers, offsets and decisions.
