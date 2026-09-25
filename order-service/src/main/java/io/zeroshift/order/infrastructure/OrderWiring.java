@@ -54,13 +54,24 @@ public class OrderWiring {
   @Bean
   PlaceOrder placeOrder(
       Catalog catalog,
+      IdempotencyKeys keys,
       OrderRepository orders,
       SagaStore sagas,
       Outbox outbox,
       OrderSaga saga,
       TransactionTemplate transactions,
       Clock clock) {
-    return new PlaceOrder(catalog, orders, sagas, outbox, saga, transactions, clock);
+    return new PlaceOrder(catalog, keys, orders, sagas, outbox, saga, transactions, clock);
+  }
+
+  @Bean
+  IdempotencyKeys idempotencyKeys(DSLContext db) {
+    return new PostgresIdempotencyKeys(db);
+  }
+
+  @Bean
+  OperatorRefund operatorRefund(SagaStore sagas, Outbox outbox, TransactionTemplate transactions) {
+    return new OperatorRefund(sagas, outbox, transactions);
   }
 
   @Bean

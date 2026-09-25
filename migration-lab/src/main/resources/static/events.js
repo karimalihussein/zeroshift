@@ -26,6 +26,9 @@ let fold = null;
 let focus = null; // { kind: 'message' | 'stage', id }
 let busy = false;
 let activeTab = readPref('events.tab', 'orders');
+let labs = null; // /api/events/labs: recorded experiment runs and the tracking lab
+let activeLab = readPref('events.lab', 'idempotency');
+let messageTarget = 'message';
 let seen = new Set();
 const openGroups = new Set();
 const lastRender = new Map();
@@ -127,9 +130,11 @@ function messageState(m, projection = false) {
 }
 
 // ---- Actions -------------------------------------------------------------------------------------
-async function act(action, body = {}, pending) {
+/** Every lever: a real action. {@code where} is the message line its outcome is shown in. */
+async function act(action, body = {}, pending, where = 'message') {
   if (busy) return;
   busy = true;
+  messageTarget = where;
   showMessage(pending || `${action}…`);
   lastRender.clear();
   try {
@@ -147,7 +152,7 @@ async function act(action, body = {}, pending) {
   }
 }
 function showMessage(text, error = false) {
-  const message = el('message');
+  const message = el(messageTarget) || el('message');
   message.textContent = text;
   message.classList.toggle('error', error);
 }
@@ -821,6 +826,190 @@ function renderActivityTab(s) {
     h('div', { class: 'feed' }, ...(Array.isArray(s.actions) && s.actions.length ? s.actions.map(a => h('div', { class: 'feed-row' }, h('time', {}, seconds(a.at)), chip(a.action, a.ok ? '' : 'bad'), h('p', {}, a.target, h('small', {}, a.outcome)))) : [empty('No actions yet.')]))];
 }
 
+
+// ---- Experiments: learning labs on the real system ------------------------------------------------
+/** A lab lever: the same real actions as everywhere else, with messages shown inside the lab. */
+function labAct(action, body, pending) {
+  return act(action, body, pending, 'lab-message');
+}
+/** Runs a scenario as a visible sequence of real actions; stops at the first that fails. */
+async function scenarioSteps(steps, done) {
+  try {
+    for (const [action, body, pending] of steps) await labAct(action, body, pending);
+    if (done) showMessage(done);
+  } catch { /* the failing step's message is shown */ }
+}
+const labOrder = () => randomDraft();
+const steps = list => h('ol', { class: 'lab-steps' }, ...list.map(([name, text, actions]) =>
+  h('li', { class: 'lab-step' }, h('span', { class: 'step-name' }, name), h('div', { class: 'step-body' }, h('p', {}, text), actions?.length ? h('div', { class: 'buttons' }, ...actions) : null))));
+const labButton = (label, onclick, tone = '', title) => h('button', { type: 'button', class: `small-button ${tone}`, disabled: busy, title, onclick }, label);
+const evidence = (title, ...content) => h('section', { class: 'evidence' }, h('h3', {}, title), ...content);
+
+const LABS = [
+  { id: 'idempotency', label: 'Client retries', status: idempotencyStatus, render: renderIdempotencyLab },
+  { id: 'ordering', label: 'Ordering & partitions', status: orderingStatus, render: renderOrderingLab },
+  { id: 'ryw', label: 'Read your writes', status: rywStatus, render: renderRywLab }
+];
+
+function renderLabs() {
+  renderIf('lab-tabs', [LABS.map(l => l.status()), activeLab], () => el('lab-tabs').replaceChildren(...LABS.map(l => {
+    const [text, tone] = l.status();
+    return h('button', { type: 'button', role: 'tab', id: `lab-tab-${l.id}`, 'aria-selected': String(l.id === activeLab), 'aria-controls': 'lab-panel',
+      onclick: () => { activeLab = l.id; writePref('events.lab', l.id); renderAll(); } }, l.label, h('span', { class: `count ${tone}` }, text));
+  })));
+  const lab = LABS.find(l => l.id === activeLab) || LABS[0];
+  el('lab-panel').setAttribute('aria-labelledby', `lab-tab-${lab.id}`);
+  renderIf('lab-panel', [lab.id, labs, busy, lab.id === 'ryw' ? projectionState() : null, lab.id === 'ordering' ? state?.groups?.find?.(g => g.groupId === 'carrier-tracking') : null], () => {
+    const message = el('lab-message')?.textContent || '';
+    const messageError = el('lab-message')?.classList.contains('error');
+    el('lab-panel').replaceChildren(...[lab.render()].flat(), h('p', { id: 'lab-message', class: `composer-message ${messageError ? 'error' : ''}`, role: 'status', 'aria-live': 'polite' }, message));
+  });
+}
+
+// Lab 1: an order request whose answer is lost, retried by a client with or without an Idempotency-Key.
+function idempotencyStatus() {
+  const run = labs?.idempotency?.[0];
+  const orders = labs?.idempotencyOrders?.length ?? 0;
+  if (!run) return ['not run', ''];
+  return orders > 1 ? [`${orders} orders from 1 request`, 'bad'] : orders === 1 ? ['1 request, 1 order', 'good'] : ['running…', 'warn'];
+}
+function renderIdempotencyLab() {
+  const run = labs?.idempotency?.[0];
+  const r = run?.result;
+  const orders = labs?.idempotencyOrders || [];
+  const retry = (withKey, slowAnswers) => labAct('exp-idempotency', { withKey, slowAnswers, order: labOrder() },
+    `Client sends the order${withKey ? ' with an Idempotency-Key' : ''}; order-service will hold ${slowAnswers > 1 ? 'every' : 'its first'} answer 2.5 s…`)
+    .then(res => showMessage(res.clientSawOrder ? `The client saw one order (${short(res.clientSawOrder)}). Now look at what really exists →` : 'Every attempt timed out: the client believes the order failed. Now look at what really exists →'), () => {});
+  const known = r?.clientSawOrder;
+  const keep = known || orders.at(-1)?.orderId; // the order the client knows, or the first one created
+  return h('div', { class: 'lab-grid' },
+    steps([
+      ['Learn', 'A client that times out cannot tell a lost request from a lost answer. Retrying is the right reflex, but without idempotency the server treats the retry as a new order.'],
+      ['Trigger', 'order-service commits the order, then holds its answer 2.5 s. The client gives up after 1 s and retries.', [labButton('Send with a retrying client', () => retry(false, 1), 'danger-soft')]],
+      ['Observe', 'Left: what the client saw, attempt by attempt. Right: what exists for that one request: orders, sagas and card charges.'],
+      ['Break', 'Make every answer slow: the client gives up believing the order failed, while each attempt created one.', [labButton('Every answer slow', () => retry(false, 3), 'danger-soft')]],
+      ['Understand', 'The first attempt did succeed; only its answer was late. Each retry was a new request with a new order id, so payment-service, idempotent per order, charged each one.'],
+      ['Fix', 'Send an Idempotency-Key. order-service claims it in the same transaction as the order; a retry finds it and gets the first order back, even when every answer is slow.',
+        [labButton('Retry with an Idempotency-Key', () => retry(true, 1)), labButton('Key, every answer slow', () => retry(true, 3))]],
+      ['Recover', 'Duplicates that already happened are refunded with a real RefundPayment command. Once shipped, the saga cannot undo the order: prevention beats cure.']
+    ]),
+    h('div', { class: 'lab-evidence' },
+      !r ? evidence('Evidence', empty('Run the trigger to see the client’s attempts and what they created.')) : [
+        evidence(`What the client saw · ${run.mode}`,
+          h('p', { class: 'evidence-note' }, `Client timeout ${r.clientTimeoutMs} ms · server answer delayed ${r.serverDelayMs} ms${r.idempotencyKey ? ` · key ${r.idempotencyKey.slice(0, 14)}…` : ' · no key'}`),
+          timeline(r.attempts.map(a => [a.orderId ? 'done' : 'failed', `Attempt ${a.attempt}: ${a.outcome}`, `${a.ms} ms${a.orderId ? ` · order ${short(a.orderId)}` : ''}`, a.at]))),
+        evidence('What really exists for that request',
+          h('div', { class: 'big-facts' }, h('div', {}, h('strong', {}, '1'), 'request'), h('div', { class: orders.length > 1 ? 'bad' : '' }, h('strong', {}, orders.length), orders.length === 1 ? 'order' : 'orders'),
+            h('div', { class: orders.reduce((n, o) => n + o.charges, 0) > 1 ? 'bad' : '' }, h('strong', {}, orders.reduce((n, o) => n + o.charges, 0)), 'charges'), h('div', {}, h('strong', {}, orders.filter(o => o.refunded).length), 'refunded')),
+          orders.length ? h('table', { class: 'data-table' }, h('tbody', {}, ...orders.map(o => h('tr', {},
+            h('td', { class: 'mono' }, short(o.orderId)), h('td', {}, `$${o.total}`), h('td', {}, chip(o.saga.replaceAll('_', ' ').toLowerCase(), `s-${sagaState(o.saga)}`)),
+            h('td', {}, o.orderId === known ? chip('the client knows this one', 'info') : o.orderId === keep ? chip('first order', '') : chip('duplicate', 'bad')),
+            h('td', {}, `${o.charges} charge${o.charges === 1 ? '' : 's'}`, o.refunded ? chip('refunded', 's-compensated') : null),
+            h('td', { class: 'buttons' }, button('Follow', () => { follow(o.orderId); window.scrollTo({ top: 0, behavior: 'smooth' }); }),
+              o.orderId !== keep && !o.refunded ? button('Refund duplicate', () => labAct('refund', { orderId: o.orderId, reason: 'duplicate created by a client retry' }, 'Sending RefundPayment…').then(() => showMessage('RefundPayment is on its way through the outbox and Kafka; payment-service refunds it once. Follow the order to watch it.'), () => {}), { class: 'danger-soft' }) : null)))))
+            : empty('Looking up the orders…')),
+        labs.idempotency.length > 1 ? evidence('Earlier runs', h('div', { class: 'feed' }, ...labs.idempotency.slice(1).map(x => h('div', { class: 'feed-row' }, h('time', {}, seconds(x.at)), chip(x.mode), h('p', {}, x.summary))))) : null]));
+}
+
+// Lab 2: carrier scans keyed right or wrong, a partition count that changes, and a guard that holds.
+function orderingStatus() {
+  const t = labs?.tracking;
+  if (!ok(t)) return ['shipping down', 'bad'];
+  const regressions = t.parcels.reduce((n, p) => n + p.regressions, 0);
+  const wrong = t.parcels.filter(p => p.last_seq < 4 && t.scans.some(sc => sc.tracking_number === p.tracking_number && sc.seq === 4)).length;
+  if (!t.parcels.length) return ['not run', ''];
+  const lag = state?.groups?.find?.(g => g.groupId === 'carrier-tracking')?.totalLag ?? 0;
+  if (lag) return [`catching up · lag ${lag}`, 'warn'];
+  return wrong ? [`${wrong} wrong status`, 'bad'] : regressions ? [`${regressions} regressions`, 'warn'] : ['in order', 'good'];
+}
+function renderOrderingLab() {
+  const t = labs?.tracking;
+  if (!ok(t)) return empty(`shipping-service is unreachable: ${t?.error || ''}`);
+  const group = state?.groups?.find?.(g => g.groupId === 'carrier-tracking');
+  const partitions = t.partitions;
+  const old = [...Array(partitions).keys()].join(',');
+  const slowOn = p => labAct('fault-arm', { service: 'shipping-service', name: 'carrier-slow', mode: `${p}:700` }, `Slowing partition ${p} (700 ms per scan)…`);
+  const wrongKey = () => scenarioSteps([
+    ['tracking-guard', { on: false }, 'Turning the sequence guard off…'], ['fault-arm', { service: 'shipping-service', name: 'carrier-slow', mode: '0:700' }, 'Slowing partition 0…'],
+    ['carrier-scans', { keying: 'scan', parcels: 4 }, 'The carrier scans 4 parcels, keying each scan by its own id…']], 'Scans of one parcel went to different partitions. Partition 0 is slow, so later scans overtake earlier ones: watch the parcels’ statuses go backwards.');
+  const repartition = () => scenarioSteps([
+    ['tracking-guard', { on: false }, 'Turning the sequence guard off…'], ['consumer-pause', { service: 'shipping-service', consumer: 'carrier-tracking' }, 'Pausing the tracking consumer: scans stay in flight…'],
+    ['carrier-scans', { keying: 'tracking', parcels: 6, fromSeq: 1, toSeq: 2 }, 'Scans 1–2, correctly keyed by tracking number…'],
+    ['carrier-partitions', { count: partitions + 3 }, `Adding partitions: ${partitions} → ${partitions + 3}…`],
+    ['carrier-scans', { keying: 'tracking', parcels: 6, fromSeq: 3, toSeq: 4 }, 'Scans 3–4, same keys, more partitions…'],
+    ['fault-arm', { service: 'shipping-service', name: 'carrier-slow', mode: `${old}:600` }, 'The old partitions are behind (600 ms per scan)…'],
+    ['consumer-resume', { service: 'shipping-service', consumer: 'carrier-tracking' }, 'Resuming the consumer…']], 'Same key, different partition: parcels whose key now hashes to a new partition get scans 3–4 before 1–2.');
+  const hotKey = () => scenarioSteps([['carrier-scans', { keying: 'hub', parcels: 6 }, 'Every scan keyed by its hub…']], 'All scans on one partition: order is safe, but one consumer does all the work while the others idle.');
+  const byPartition = new Map();
+  for (const sc of t.scans) byPartition.set(sc.kafka_partition, (byPartition.get(sc.kafka_partition) || 0) + 1);
+  const most = Math.max(1, ...byPartition.values());
+  return h('div', { class: 'lab-grid' },
+    steps([
+      ['Learn', 'Kafka keeps order only within a partition, and a key always maps to the same partition only while the partition count stays the same. A parcel’s scans must share a key to arrive in order.'],
+      ['Trigger', 'The carrier keys each scan by its own id (a real bug class), and partition 0 is slow.', [labButton('Scans keyed by scan id', wrongKey, 'danger-soft')]],
+      ['Observe', 'Each scan’s partition and offset, the order it was handled in, and what it did to the parcel’s status.'],
+      ['Break', 'Correct keys still break when partitions are added in flight: the key hashes somewhere new. Or pick one hot key: ordered, but no parallelism.', [labButton(`Add partitions in flight (${partitions} → ${partitions + 3})`, repartition, 'danger-soft'), labButton('One hot key', hotKey)]],
+      ['Understand', 'Two consumer threads worked two partitions; nothing in Kafka orders records across partitions. Last-write-wins then lets an older scan overwrite a newer status.'],
+      ['Fix', 'Key by tracking number, and make the projection refuse scans older than the one it applied: correct whatever order they arrive in.',
+        [labButton('Scans keyed by tracking number', () => slowOn(0).then(() => labAct('carrier-scans', { keying: 'tracking', parcels: 4 }, 'Keying by tracking number…')).catch(() => {})), labButton(t.guard ? 'Turn sequence guard off' : 'Turn sequence guard on', () => labAct('tracking-guard', { on: !t.guard }))]],
+      ['Recover', 'Replay the topic into an empty projection (with the guard on it comes out right), then recreate the topic with 3 partitions: partitions can never be removed.',
+        [labButton('Replay tracking', () => labAct('tracking-replay', {}, 'Rewinding carrier-tracking to offset 0…')), labButton('Clear slow partition', () => labAct('fault-clear', { service: 'shipping-service', name: 'carrier-slow' })), labButton('Recreate topic (3 partitions)', () => confirm('Delete shipping.carrier-scans and recreate it with 3 partitions? Its scans and the tracking projection are lost.') && labAct('carrier-reset', {}, 'Recreating the topic…'), 'danger-soft')]]
+    ]),
+    h('div', { class: 'lab-evidence' },
+      evidence('Now', h('div', { class: 'chips' }, chip(`${partitions} partitions`), chip(t.guard ? 'sequence guard on' : 'sequence guard off', t.guard ? 'good' : 'warn'), t.slow ? chip(`slow partition ${t.slow.replace(':', ' · ')} ms`, 'warn') : chip('no slow partition'),
+        group ? chip(`carrier-tracking lag ${number(group.totalLag)}`, group.totalLag ? 'warn' : 'good') : null)),
+      evidence('Parcels (tracking projection)', t.parcels.length ? h('table', { class: 'data-table' }, h('thead', {}, h('tr', {}, ...['Parcel', 'Status', 'Last scan', 'Regressions', 'Refused'].map(x => h('th', {}, x)))),
+        h('tbody', {}, ...t.parcels.map(p => { const delivered = t.scans.some(sc => sc.tracking_number === p.tracking_number && sc.seq === 4);
+          return h('tr', {}, h('td', { class: 'mono' }, p.tracking_number), h('td', {}, chip(p.status.replaceAll('_', ' ').toLowerCase(), p.status === 'DELIVERED' ? 'good' : delivered ? 'bad' : 'info'), delivered && p.status !== 'DELIVERED' ? h('small', { class: 'muted' }, ' but it was delivered') : null),
+            h('td', {}, p.last_seq), h('td', {}, p.regressions ? chip(p.regressions, 'bad') : '0'), h('td', {}, p.stale_skipped ? chip(p.stale_skipped, 'good') : '0')); })))
+        : empty('No parcels tracked yet. Shipped orders are the parcels; run the trigger.')),
+      evidence('Scans per partition', h('div', { class: 'partition-bars' }, ...[...Array(partitions).keys()].map(p => h('div', { class: 'pbar' }, h('span', {}, `p${p}`), h('i', { style: `width:${(byPartition.get(p) || 0) / most * 100}%` }), h('b', {}, byPartition.get(p) || 0))))),
+      evidence('Scans in the order they were handled', t.scans.length ? h('div', { class: 'feed scan-feed' }, ...t.scans.slice(0, 24).map(sc => h('div', { class: 'feed-row' }, h('time', {}, seconds(sc.at)),
+        chip(sc.outcome.replace('_', ' ').toLowerCase(), sc.outcome === 'APPLIED' ? 'good' : sc.outcome === 'REGRESSED' ? 'bad' : 's-compensated'),
+        h('p', {}, `${sc.tracking_number} · scan ${sc.seq} ${sc.status.replaceAll('_', ' ').toLowerCase()}`, h('small', {}, `p${sc.kafka_partition}@${sc.kafka_offset} · key ${String(sc.record_key).slice(0, 16)}`))))) : empty('No scans handled yet.'))));
+}
+
+// Lab 3: write, then read at once: stale, refused, or waited for.
+function projectionState() {
+  const svc = state?.services?.['order-query-service'];
+  const consumer = ok(svc) ? svc.consumers.find(c => c.groupId === 'order-projection') : null;
+  return { paused: !!consumer?.pauseRequested, consumer: consumer?.id, lag: state?.groups?.find?.(g => g.groupId === 'order-projection')?.totalLag ?? null };
+}
+function rywStatus() {
+  const run = labs?.['read-your-writes']?.[0];
+  if (!run) return ['not run', ''];
+  const status = run.result.read.status;
+  return status === 404 ? ['stale read', 'bad'] : status === 409 ? ['refused stale', 'warn'] : ['read your write', 'good'];
+}
+function renderRywLab() {
+  const runs = labs?.['read-your-writes'] || [];
+  const p = projectionState();
+  const read = mode => labAct('exp-ryw', { mode, order: labOrder() }, mode === 'token' ? 'Writing, then reading with the version as a consistency token…' : mode === 'write-model' ? 'Writing, then reading from the write model…' : 'Writing, then reading the read model at once…')
+    .then(res => showMessage(res.verdict), () => {});
+  const pause = p.consumer ? h('button', { type: 'button', class: 'small-button danger-soft', disabled: busy || p.paused,
+    onclick: () => labAct('consumer-pause', { service: 'order-query-service', consumer: p.consumer }, 'Pausing the projection: the read model stops following order.events…') }, 'Pause projection') : null;
+  const resume = p.consumer ? h('button', { type: 'button', class: 'small-button', disabled: busy || !p.paused,
+    onclick: () => labAct('consumer-resume', { service: 'order-query-service', consumer: p.consumer }, 'Resuming the projection: its backlog drains…') }, 'Resume projection') : null;
+  return h('div', { class: 'lab-grid' },
+    steps([
+      ['Learn', 'CQRS reads come from a projection that follows the writes through the outbox, Debezium and Kafka. Right after a write, the read side may not have it yet.'],
+      ['Trigger', 'Place an order and immediately read it back from the read model, as a UI would after “Order placed”.', [labButton('Write, then read at once', () => read('naive'))]],
+      ['Observe', 'The write’s version (the order’s event count), how long the read took, and what it returned.'],
+      ['Break', 'Pause the projection: now the read model cannot catch up, and every fresh order is “not found” to the user who just placed it.', [pause]],
+      ['Understand', 'The read model is eventually consistent. Without knowing which write to wait for, the read side can only answer with what it has, even when that is nothing.'],
+      ['Fix', 'Send the write’s version back as a consistency token: the read side waits until it has applied that version, or says honestly that it has not (409), never serving stale data as current. Or read from the write model.',
+        [labButton('Read with the consistency token', () => read('token')), labButton('Read from the write model', () => read('write-model'))]],
+      ['Recover', 'Resume the projection: its backlog drains, and token reads succeed after a short wait.', [resume]]
+    ]),
+    h('div', { class: 'lab-evidence' },
+      evidence('Now', h('div', { class: 'chips' }, chip(p.paused ? 'projection paused' : 'projection running', p.paused ? 'bad' : 'good'), p.lag !== null ? chip(`order-projection lag ${number(p.lag)}`, p.lag ? 'warn' : 'good') : null)),
+      evidence('Write, then read', runs.length ? h('table', { class: 'data-table' }, h('thead', {}, h('tr', {}, ...['At', 'Read', 'Write', 'Read result', ''].map(x => h('th', {}, x)))),
+        h('tbody', {}, ...runs.map(run => { const r = run.result;
+          return h('tr', {}, h('td', { class: 'mono' }, seconds(run.at)), h('td', {}, ({ naive: 'read model', token: 'token', 'write-model': 'write model' })[r.mode] || r.mode), h('td', {}, `v${r.write.version} · ${r.write.ms} ms`),
+            h('td', {}, chip(`${r.read.status}`, r.read.status === 200 ? 'good' : r.read.status === 409 ? 'warn' : 'bad'), ` ${r.read.ms} ms${r.read.waitedMs ? ` (waited ${r.read.waitedMs})` : ''}`), h('td', {}, h('small', {}, r.verdict))); })))
+        : empty('No runs yet. Start with the trigger.'))));
+}
+
 // ---- Following an order -------------------------------------------------------------------------------
 function follow(orderId) {
   selected = orderId || null;
@@ -857,6 +1046,7 @@ function renderAll() {
   renderOrderHead();
   renderGraph();
   renderInspector();
+  renderLabs();
   renderTabs();
 }
 async function refresh() {
@@ -868,7 +1058,7 @@ async function refresh() {
     el('connection').classList.remove('disconnected');
     if (!draft.items.length && Array.isArray(state.catalog)) regenerate();
     else renderComposer();
-    await refreshJourney();
+    await Promise.all([refreshJourney(), fetch('/api/events/labs').then(r => r.ok ? r.json() : null).then(v => { labs = v; }).catch(() => {})]);
     renderAll();
   } catch {
     el('connection').replaceChildren(h('i'), ' Disconnected');

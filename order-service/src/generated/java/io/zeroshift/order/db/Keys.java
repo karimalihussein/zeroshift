@@ -5,12 +5,14 @@ package io.zeroshift.order.db;
 
 
 import io.zeroshift.order.db.tables.EventStore;
+import io.zeroshift.order.db.tables.IdempotencyKey;
 import io.zeroshift.order.db.tables.Lease;
 import io.zeroshift.order.db.tables.OrderSnapshot;
 import io.zeroshift.order.db.tables.Product;
 import io.zeroshift.order.db.tables.Saga;
 import io.zeroshift.order.db.tables.SagaTransition;
 import io.zeroshift.order.db.tables.records.EventStoreRecord;
+import io.zeroshift.order.db.tables.records.IdempotencyKeyRecord;
 import io.zeroshift.order.db.tables.records.LeaseRecord;
 import io.zeroshift.order.db.tables.records.OrderSnapshotRecord;
 import io.zeroshift.order.db.tables.records.ProductRecord;
@@ -39,6 +41,7 @@ public class Keys {
     public static final UniqueKey<EventStoreRecord> EVENT_STORE_EVENT_ID_KEY = Internal.createUniqueKey(EventStore.EVENT_STORE, DSL.name("event_store_event_id_key"), new TableField[] { EventStore.EVENT_STORE.EVENT_ID }, true);
     public static final UniqueKey<EventStoreRecord> EVENT_STORE_PKEY = Internal.createUniqueKey(EventStore.EVENT_STORE, DSL.name("event_store_pkey"), new TableField[] { EventStore.EVENT_STORE.GLOBAL_POSITION }, true);
     public static final UniqueKey<EventStoreRecord> EVENT_STORE_STREAM_ID_VERSION_KEY = Internal.createUniqueKey(EventStore.EVENT_STORE, DSL.name("event_store_stream_id_version_key"), new TableField[] { EventStore.EVENT_STORE.STREAM_ID, EventStore.EVENT_STORE.VERSION }, true);
+    public static final UniqueKey<IdempotencyKeyRecord> IDEMPOTENCY_KEY_PKEY = Internal.createUniqueKey(IdempotencyKey.IDEMPOTENCY_KEY, DSL.name("idempotency_key_pkey"), new TableField[] { IdempotencyKey.IDEMPOTENCY_KEY.KEY }, true);
     public static final UniqueKey<LeaseRecord> LEASE_PKEY = Internal.createUniqueKey(Lease.LEASE, DSL.name("lease_pkey"), new TableField[] { Lease.LEASE.NAME }, true);
     public static final UniqueKey<OrderSnapshotRecord> ORDER_SNAPSHOT_PKEY = Internal.createUniqueKey(OrderSnapshot.ORDER_SNAPSHOT, DSL.name("order_snapshot_pkey"), new TableField[] { OrderSnapshot.ORDER_SNAPSHOT.STREAM_ID }, true);
     public static final UniqueKey<ProductRecord> PRODUCT_PKEY = Internal.createUniqueKey(Product.PRODUCT, DSL.name("product_pkey"), new TableField[] { Product.PRODUCT.SKU }, true);

@@ -119,6 +119,60 @@ class OrderQueryIT {
     assertThat(status(unknown)).isNull();
   }
 
+  @org.springframework.boot.test.web.server.LocalServerPort int port;
+
+  @Test
+  void aConsistencyTokenReadWaitsForTheProjectionInsteadOfServingAStaleAnswer() throws Exception {
+    var id = UUID.randomUUID();
+    var placed =
+        Envelope.of(
+            new OrderPlaced(
+                id,
+                "cust-token",
+                List.of(new OrderLine("SKU-CABLE", 1, new BigDecimal("9.99"))),
+                new BigDecimal("9.99"),
+                "USD"),
+            UUID.randomUUID(),
+            null);
+    send(kafka, placed);
+    await().atMost(WAIT).until(() -> "PLACED".equals(status(id)));
+    var http = java.net.http.HttpClient.newHttpClient();
+    java.util.function.Function<String, java.net.http.HttpResponse<String>> get =
+        query -> {
+          try {
+            return http.send(
+                java.net.http.HttpRequest.newBuilder(
+                        java.net.URI.create("http://localhost:" + port + "/orders/" + id + query))
+                    .build(),
+                java.net.http.HttpResponse.BodyHandlers.ofString());
+          } catch (Exception e) {
+            throw new IllegalStateException(e);
+          }
+        };
+
+    // The write side is at version 2 but the projection has applied 1: the token read says so.
+    var behind = get.apply("?minVersion=2&waitMs=300");
+    assertThat(behind.statusCode()).isEqualTo(409);
+    assertThat(behind.headers().firstValue("X-Projected-Version")).hasValue("1");
+    assertThat(behind.body()).contains("\"requiredVersion\":2", "\"projectedVersion\":1");
+
+    // A token read waiting for version 2 returns as soon as the projection gets there.
+    var waiting =
+        java.util.concurrent.CompletableFuture.supplyAsync(
+            () -> get.apply("?minVersion=2&waitMs=5000"));
+    Thread.sleep(300);
+    send(kafka, placed.reply(new OrderPaymentAuthorized(id, UUID.randomUUID())));
+    var answered = waiting.get(10, java.util.concurrent.TimeUnit.SECONDS);
+    assertThat(answered.statusCode()).isEqualTo(200);
+    assertThat(answered.body()).contains("\"status\":\"PAID\"", "\"events_applied\":2");
+    assertThat(Long.parseLong(answered.headers().firstValue("X-Waited-Ms").orElseThrow()))
+        .isGreaterThan(0);
+
+    // A token that is already satisfied answers at once.
+    assertThat(get.apply("?minVersion=1&waitMs=5000").headers().firstValue("X-Waited-Ms"))
+        .hasValueSatisfying(ms -> assertThat(Long.parseLong(ms)).isLessThan(100));
+  }
+
   private String status(UUID id) {
     return jdbc
         .queryForList("SELECT status FROM order_view WHERE order_id=?", String.class, id)

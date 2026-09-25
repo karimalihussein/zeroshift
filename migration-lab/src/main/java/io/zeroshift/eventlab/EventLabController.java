@@ -15,14 +15,17 @@ public class EventLabController {
   private final LabActions actions;
   private final EventLabSettings settings;
   private final LabServices services;
+  private final Experiments experiments;
 
   public EventLabController(
       LabOverview overview,
       Journey journey,
       LabActions actions,
       EventLabSettings settings,
-      LabServices services) {
+      LabServices services,
+      Experiments experiments) {
     this.services = services;
+    this.experiments = experiments;
     this.overview = overview;
     this.journey = journey;
     this.actions = actions;
@@ -39,6 +42,15 @@ public class EventLabController {
   @ResponseBody
   public JsonNode state() throws InterruptedException {
     return overview.snapshot();
+  }
+
+  /** The learning labs' own state: recorded experiment runs, and the carrier tracking lab. */
+  @GetMapping("/api/events/labs")
+  @ResponseBody
+  public JsonNode labs() {
+    var result = experiments.view();
+    result.set("tracking", services.tryGet("shipping-service", "/lab/tracking"));
+    return result;
   }
 
   @GetMapping("/api/events/orders/{id}")

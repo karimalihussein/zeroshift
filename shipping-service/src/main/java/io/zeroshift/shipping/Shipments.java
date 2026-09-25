@@ -12,6 +12,8 @@ import org.jooq.DSLContext;
 public final class Shipments {
   public record Shipment(boolean scheduled, String trackingNumber, String reason) {}
 
+  public record Shipped(java.util.UUID orderId, String trackingNumber) {}
+
   private final DSLContext db;
 
   public Shipments(DSLContext db) {
@@ -40,5 +42,15 @@ public final class Shipments {
         .set(SHIPMENT.STATUS, "FAILED")
         .set(SHIPMENT.REASON, reason)
         .execute();
+  }
+
+  /** The newest scheduled shipments: the parcels the carrier lab scans. */
+  public java.util.List<Shipped> recentScheduled(int limit) {
+    return db.select(SHIPMENT.ORDER_ID, SHIPMENT.TRACKING_NUMBER)
+        .from(SHIPMENT)
+        .where(SHIPMENT.STATUS.eq("SCHEDULED"))
+        .orderBy(SHIPMENT.CREATED_AT.desc())
+        .limit(limit)
+        .fetch(r -> new Shipped(r.value1(), r.value2()));
   }
 }

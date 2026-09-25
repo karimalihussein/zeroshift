@@ -4,8 +4,14 @@
 package io.zeroshift.shipping.db;
 
 
+import io.zeroshift.shipping.db.tables.LabSetting;
 import io.zeroshift.shipping.db.tables.Shipment;
+import io.zeroshift.shipping.db.tables.Tracking;
+import io.zeroshift.shipping.db.tables.TrackingScan;
+import io.zeroshift.shipping.db.tables.records.LabSettingRecord;
 import io.zeroshift.shipping.db.tables.records.ShipmentRecord;
+import io.zeroshift.shipping.db.tables.records.TrackingRecord;
+import io.zeroshift.shipping.db.tables.records.TrackingScanRecord;
 
 import org.jooq.TableField;
 import org.jooq.UniqueKey;
@@ -24,5 +30,8 @@ public class Keys {
     // UNIQUE and PRIMARY KEY definitions
     // -------------------------------------------------------------------------
 
+    public static final UniqueKey<LabSettingRecord> LAB_SETTING_PKEY = Internal.createUniqueKey(LabSetting.LAB_SETTING, DSL.name("lab_setting_pkey"), new TableField[] { LabSetting.LAB_SETTING.NAME }, true);
     public static final UniqueKey<ShipmentRecord> SHIPMENT_PKEY = Internal.createUniqueKey(Shipment.SHIPMENT, DSL.name("shipment_pkey"), new TableField[] { Shipment.SHIPMENT.ORDER_ID }, true);
+    public static final UniqueKey<TrackingRecord> TRACKING_PKEY = Internal.createUniqueKey(Tracking.TRACKING, DSL.name("tracking_pkey"), new TableField[] { Tracking.TRACKING.TRACKING_NUMBER }, true);
+    public static final UniqueKey<TrackingScanRecord> TRACKING_SCAN_PKEY = Internal.createUniqueKey(TrackingScan.TRACKING_SCAN, DSL.name("tracking_scan_pkey"), new TableField[] { TrackingScan.TRACKING_SCAN.ID }, true);
 }

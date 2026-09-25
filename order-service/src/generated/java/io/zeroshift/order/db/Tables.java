@@ -5,6 +5,7 @@ package io.zeroshift.order.db;
 
 
 import io.zeroshift.order.db.tables.EventStore;
+import io.zeroshift.order.db.tables.IdempotencyKey;
 import io.zeroshift.order.db.tables.Lease;
 import io.zeroshift.order.db.tables.OrderSnapshot;
 import io.zeroshift.order.db.tables.Product;
@@ -22,6 +23,11 @@ public class Tables {
      * The table <code>public.event_store</code>.
      */
     public static final EventStore EVENT_STORE = EventStore.EVENT_STORE;
+
+    /**
+     * The table <code>public.idempotency_key</code>.
+     */
+    public static final IdempotencyKey IDEMPOTENCY_KEY = IdempotencyKey.IDEMPOTENCY_KEY;
 
     /**
      * The table <code>public.lease</code>.

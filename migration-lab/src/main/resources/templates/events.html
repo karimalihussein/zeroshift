@@ -79,6 +79,17 @@
     <aside id="inspector" class="inspector" aria-label="Inspector" aria-live="polite"></aside>
   </section>
 
+  <section class="labs" aria-labelledby="labs-title">
+    <div class="labs-head">
+      <div>
+        <h2 id="labs-title">Experiments</h2>
+        <p>Each lab breaks one guarantee on the running system, shows why, then fixes and recovers it. Every number here is read back from the services, Kafka or the databases.</p>
+      </div>
+      <div id="lab-tabs" class="lab-tabs" role="tablist" aria-label="Experiments"></div>
+    </div>
+    <div id="lab-panel" class="lab-panel" role="tabpanel"></div>
+  </section>
+
   <section class="system" aria-label="System state">
     <div id="tabs" class="tabs" role="tablist" aria-label="System views"></div>
     <div id="tab-panel" class="tab-panel" role="tabpanel"></div>

@@ -28,7 +28,8 @@ public final class Contracts {
           InventoryCommand.class, Topics.INVENTORY_COMMANDS,
           InventoryEvent.class, Topics.INVENTORY_EVENTS,
           ShippingCommand.class, Topics.SHIPPING_COMMANDS,
-          ShippingEvent.class, Topics.SHIPPING_EVENTS);
+          ShippingEvent.class, Topics.SHIPPING_EVENTS,
+          CarrierEvent.class, Topics.CARRIER_SCANS);
 
   /** Upcasters keyed by the version they read: entry n turns a vn payload into v(n+1). */
   private static final Map<Class<? extends Message>, Map<Integer, UnaryOperator<ObjectNode>>>

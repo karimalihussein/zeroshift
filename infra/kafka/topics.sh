@@ -22,7 +22,9 @@ for service in payment inventory shipping; do
   create "$service.events" 3 retention.ms=604800000
 done
 # Dead letters are kept for inspection and redrive; one partition keeps them in arrival order.
-for topic in order.events payment.commands payment.events inventory.commands inventory.events shipping.commands shipping.events; do
+# The carrier's scans: the ordering lab adds partitions to it and recreates it, so it is its own topic.
+create shipping.carrier-scans 3 retention.ms=86400000
+for topic in order.events payment.commands payment.events inventory.commands inventory.events shipping.commands shipping.events shipping.carrier-scans; do
   create "$topic.dlt" 1 retention.ms=-1
 done
 # Deliberately short retention, to watch old segments get deleted and offsets become unreachable.

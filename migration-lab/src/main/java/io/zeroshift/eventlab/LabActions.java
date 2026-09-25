@@ -21,12 +21,18 @@ public class LabActions implements AutoCloseable {
   private final EventLabSettings settings;
   private final JdbcTemplate jdbc;
   private final KafkaInspector kafka;
+  private final Experiments experiments;
   private final JsonMapper json = JsonMapper.builder().build();
   private KafkaProducer<String, String> producer;
 
   public LabActions(
-      LabServices services, EventLabSettings settings, JdbcTemplate jdbc, KafkaInspector kafka) {
+      LabServices services,
+      EventLabSettings settings,
+      JdbcTemplate jdbc,
+      KafkaInspector kafka,
+      Experiments experiments) {
     this.kafka = kafka;
+    this.experiments = experiments;
     this.services = services;
     this.settings = settings;
     this.jdbc = jdbc;
@@ -65,6 +71,53 @@ public class LabActions implements AutoCloseable {
               null);
       case "consumer-seek" -> seek(p);
       case "crash" -> services.post(service, "/lab/crash", null);
+      // ---- Learning labs ------------------------------------------------------------------------
+      case "exp-idempotency" ->
+          experiments.clientRetry(
+              p.path("order"), p.path("withKey").asBoolean(), p.path("slowAnswers").asInt(1));
+      case "exp-ryw" -> {
+        try {
+          yield experiments.readYourWrites(p.path("order"), p.path("mode").asString("naive"));
+        } catch (LabServices.ActionFailed e) {
+          throw e;
+        } catch (Exception e) {
+          throw new LabServices.ActionFailed("Read-your-writes run failed: " + e.getMessage());
+        }
+      }
+      case "refund" ->
+          services.post(
+              "order-service",
+              "/orders/"
+                  + p.path("orderId").asString()
+                  + "/refund?reason="
+                  + java.net.URLEncoder.encode(
+                      p.path("reason").asString("operator refund"),
+                      java.nio.charset.StandardCharsets.UTF_8),
+              null);
+      case "carrier-scans" ->
+          services.post(
+              "shipping-service",
+              "/lab/carrier/scans?keying="
+                  + p.path("keying").asString("tracking")
+                  + "&parcels="
+                  + p.path("parcels").asInt(4)
+                  + "&fromSeq="
+                  + p.path("fromSeq").asInt(1)
+                  + "&toSeq="
+                  + p.path("toSeq").asInt(4),
+              null);
+      case "carrier-partitions" ->
+          services.post(
+              "shipping-service",
+              "/lab/carrier/partitions?count=" + p.path("count").asInt(6),
+              null);
+      case "carrier-reset" -> services.post("shipping-service", "/lab/carrier/reset", null);
+      case "tracking-replay" -> services.post("shipping-service", "/lab/tracking/replay", null);
+      case "tracking-guard" ->
+          services.send(
+              url("shipping-service") + "/lab/tracking/guard?on=" + p.path("on").asBoolean(),
+              "PUT",
+              null);
       case "fault-arm" ->
           services.send(
               url(service)

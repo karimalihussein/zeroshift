@@ -74,7 +74,8 @@ public final class CommerceStack {
               Topics.INVENTORY_COMMANDS,
               Topics.INVENTORY_EVENTS,
               Topics.SHIPPING_COMMANDS,
-              Topics.SHIPPING_EVENTS)) {
+              Topics.SHIPPING_EVENTS,
+              Topics.CARRIER_SCANS)) {
         topics.add(new NewTopic(topic, 3, (short) 1));
         topics.add(new NewTopic(Topics.deadLetter(topic), 1, (short) 1));
       }

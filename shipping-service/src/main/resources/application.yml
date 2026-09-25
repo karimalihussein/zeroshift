@@ -14,6 +14,12 @@ spring:
         # rebalances (and redelivers its uncommitted records) quickly enough to watch.
         session.timeout.ms: 10000
         heartbeat.interval.ms: 3000
+        # The ordering lab adds partitions to shipping.carrier-scans live: notice them in seconds,
+        # not Kafka's default 5 minutes.
+        metadata.max.age.ms: 3000
+    producer:
+      properties:
+        metadata.max.age.ms: 1000
     listener:
       ack-mode: record
 server:

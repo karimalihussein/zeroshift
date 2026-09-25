@@ -266,6 +266,51 @@ class OrderServiceIT {
     assertThat(outboxRows(id)).isOne();
   }
 
+  @Test
+  @org.junit.jupiter.api.Order(10)
+  void aRetryWithTheSameIdempotencyKeyGetsTheFirstAnswerInsteadOfASecondOrder() throws Exception {
+    var customer = "retry-" + UUID.randomUUID();
+    // Without a key, a client retry is a second order: the failure the key exists to prevent.
+    var first = placeOrder.place(customer, ITEMS, null);
+    var retry = placeOrder.place(customer, ITEMS, null);
+    assertThat(retry.orderId()).isNotEqualTo(first.orderId());
+
+    var key = "key-" + UUID.randomUUID();
+    var original = placeOrder.place(customer, ITEMS, key);
+    var replayed = placeOrder.place(customer, ITEMS, key);
+    assertThat(original.replayed()).isFalse();
+    assertThat(original.version()).isEqualTo(1);
+    assertThat(replayed.replayed()).isTrue();
+    assertThat(replayed.orderId()).isEqualTo(original.orderId());
+    assertThat(replayed.eventId()).isEqualTo(original.eventId());
+    // Exactly one order and one AuthorizePayment behind the key.
+    assertThat(outboxRows(original.orderId())).isEqualTo(2);
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT COUNT(*) FROM idempotency_key WHERE key=?", Integer.class, key))
+        .isOne();
+
+    // The same key for a different order is refused, never answered with the first order.
+    assertThatThrownBy(
+            () -> placeOrder.place(customer, List.of(new PlaceOrder.Item("SKU-MOUSE", 7)), key))
+        .isInstanceOf(PlaceOrder.IdempotencyConflict.class);
+
+    // Two requests with one key at once: the loser waits on the key, then gets the winner's order.
+    var concurrentKey = "key-" + UUID.randomUUID();
+    try (var pool = java.util.concurrent.Executors.newFixedThreadPool(4)) {
+      var answers =
+          pool.invokeAll(
+              java.util.Collections.nCopies(
+                  4,
+                  (java.util.concurrent.Callable<PlaceOrder.Placed>)
+                      () -> placeOrder.place(customer, ITEMS, concurrentKey)));
+      var ids = new HashSet<UUID>();
+      for (var answer : answers) ids.add(answer.get().orderId());
+      assertThat(ids).hasSize(1);
+      assertThat(answers.stream().filter(a -> !a.resultNow().replayed())).hasSize(1);
+    }
+  }
+
   private int outboxRows(UUID orderId) {
     return jdbc.queryForObject(
         "SELECT COUNT(*) FROM outbox WHERE aggregate_id=?", Integer.class, orderId.toString());

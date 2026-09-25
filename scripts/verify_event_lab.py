@@ -312,9 +312,135 @@ def drill_observability():
         ok(f'Prometheus: {expr} ({len(r)} series)')
 
 
+# ---- Phase 1 learning labs: each drill reproduces the failure, then the fix and the recovery ------
+def labs():
+    return call(f'{LAB}/api/events/labs')
+
+
+def lab_order():
+    return {'customerId': f'Drill {int(time.time()) % 100000}', 'items': [{'sku': 'SKU-CABLE', 'quantity': 1}]}
+
+
+def drill_lab_idempotency():
+    """A timed-out client that retries: two orders without a key, one with a key."""
+    def run(with_key, slow):
+        r = act('exp-idempotency', withKey=with_key, slowAnswers=slow, order=lab_order())
+        orders = wait_for(lambda: (v := labs()) and v['idempotency'][0]['result']['customerId'] == r['customerId']
+                          and len(v.get('idempotencyOrders', [])) >= min(slow + 1 if not with_key else 1, 3) and v['idempotencyOrders'], 'the run\'s orders', 30)
+        time.sleep(4)  # let payment-service charge every order the run created
+        return r, labs()['idempotencyOrders']
+    r, orders = run(False, 1)
+    assert r['attempts'][0]['outcome'].startswith('timed out') and r['clientSawOrder'], r
+    assert len(orders) == 2 and sum(o['charges'] for o in orders) == 2, orders
+    ok(f'no key: attempt 1 timed out after {r["clientTimeoutMs"]} ms, the retry created a 2nd order: 2 orders, 2 charges')
+    r, orders = run(True, 1)
+    assert len(orders) == 1 and orders[0]['orderId'] == r['clientSawOrder'] and r['attempts'][-1].get('replayed'), (r, orders)
+    ok('with Idempotency-Key: the retry was answered with the first order: 1 order, 1 charge')
+    r, orders = run(True, 3)
+    assert r['clientSawOrder'] is None and len(orders) == 1, (r, orders)
+    ok('with a key and every answer slow: the client saw only timeouts, still exactly 1 order')
+    duplicate = run(False, 1)[1][0]['orderId']
+    act('refund', orderId=duplicate, reason='drill: duplicate from a client retry')
+    wait_for(lambda: next(o for o in labs()['idempotencyOrders'] if o['orderId'] == duplicate)['refunded'], 'the duplicate to be refunded', 30)
+    ok('recovery: RefundPayment refunded the duplicate through the outbox and Kafka')
+
+
+def tracking():
+    return labs()['tracking']
+
+
+def settle_tracking(timeout=60):
+    """No lag (never-committed partitions count from their earliest offset), and no scan handled
+    for a while: a recreated topic or new partition has no commits yet, so lag alone can be 0 early."""
+    handled = lambda: sum(p['scans_applied'] + p['stale_skipped'] for p in tracking()['parcels'])
+    wait_for(lambda: (g := group('carrier-tracking')) and g['totalLag'] == 0 and g, 'carrier-tracking to drain', timeout)
+    last = -1
+    while (now := handled()) != last:
+        last = now
+        time.sleep(2)
+    return tracking()
+
+
+def drill_lab_ordering():
+    """Scans keyed per scan land on different partitions; a slow partition then reorders them."""
+    act('fault-clear', service='shipping-service', name='carrier-slow')
+    act('carrier-reset')
+    act('tracking-guard', on=False)
+    act('fault-arm', service='shipping-service', name='carrier-slow', mode='0:500')
+    for attempt in range(3):  # random keys may all miss the slow partition; retry the trip
+        act('carrier-scans', keying='scan', parcels=4)
+        t = settle_tracking()
+        if sum(p['regressions'] for p in t['parcels']):
+            break
+    regressed = [p for p in t['parcels'] if p['regressions']]
+    assert regressed, t['parcels']
+    ok(f'keyed by scan id with partition 0 slow: {len(regressed)} of {len(t["parcels"])} parcels went backwards '
+       f'({", ".join(p["tracking_number"] + " → " + p["status"] for p in regressed[:2])})')
+    act('carrier-scans', keying='tracking', parcels=4)
+    t = settle_tracking()
+    assert all(p['regressions'] == 0 and p['status'] == 'DELIVERED' for p in t['parcels']), t['parcels']
+    ok('keyed by tracking number, same slow partition: 0 regressions, every parcel DELIVERED')
+    act('carrier-scans', keying='scan', parcels=4)
+    settle_tracking()
+    act('tracking-guard', on=True)
+    act('tracking-replay')
+    t = settle_tracking(90)
+    assert all(p['status'] == 'DELIVERED' and p['regressions'] == 0 for p in t['parcels']), t['parcels']
+    ok(f'recovery: guard on + replay: every parcel DELIVERED, {sum(p["stale_skipped"] for p in t["parcels"])} stale scans refused')
+    act('fault-clear', service='shipping-service', name='carrier-slow')
+    act('tracking-guard', on=False)
+
+
+def drill_lab_repartition():
+    """Correct keys still break when partitions are added while scans are in flight."""
+    act('fault-clear', service='shipping-service', name='carrier-slow')
+    act('carrier-reset')
+    act('tracking-guard', on=False)
+    act('consumer-pause', service='shipping-service', consumer='carrier-tracking')
+    first = act('carrier-scans', keying='tracking', parcels=6, fromSeq=1, toSeq=2)['produced']
+    act('carrier-partitions', count=6)
+    time.sleep(3)
+    second = act('carrier-scans', keying='tracking', parcels=6, fromSeq=3, toSeq=4)['produced']
+    before = {r['trackingNumber']: r['partition'] for r in first}
+    moved = sorted({r['trackingNumber'] for r in second if before[r['trackingNumber']] != r['partition']})
+    assert moved, 'no key moved partition: add more parcels'
+    act('fault-arm', service='shipping-service', name='carrier-slow', mode='0,1,2:600')
+    act('consumer-resume', service='shipping-service', consumer='carrier-tracking')
+    t = settle_tracking(90)
+    wrong = [p for p in t['parcels'] if p['tracking_number'] in moved and p['status'] != 'DELIVERED']
+    assert wrong, (moved, t['parcels'])
+    ok(f'3 → 6 partitions in flight: {len(moved)} parcels changed partition, {len(wrong)} ended in the wrong status')
+    act('fault-clear', service='shipping-service', name='carrier-slow')
+    act('carrier-reset')
+    assert tracking()['partitions'] == 3
+    ok('recovery: topic recreated with 3 partitions (partitions can only be added, never removed)')
+
+
+def drill_lab_read_your_writes():
+    """A fresh write read back from the read model: stale, refused honestly, or waited for."""
+    consumer = next(c for c in call(f'{QUERY}/lab/state')['consumers'] if c['groupId'] == 'order-projection')['id']
+    act('consumer-pause', service='order-query-service', consumer=consumer)
+    try:
+        naive = act('exp-ryw', mode='naive', order=lab_order())
+        assert naive['read']['status'] == 404, naive
+        ok(f'projection paused, naive read: 404, the user\'s own order "not found" ({naive["read"]["ms"]} ms)')
+        token = act('exp-ryw', mode='token', order=lab_order())
+        assert token['read']['status'] == 409 and token['read']['projectedVersion'] == 0, token
+        ok(f'token read: 409 after {token["read"]["waitedMs"]} ms: read model at v0 < write v{token["write"]["version"]}, not served stale')
+        write_model = act('exp-ryw', mode='write-model', order=lab_order())
+        assert write_model['read']['status'] == 200, write_model
+        ok('write-model read: 200, always consistent')
+    finally:
+        act('consumer-resume', service='order-query-service', consumer=consumer)
+    token = act('exp-ryw', mode='token', order=lab_order())
+    assert token['read']['status'] == 200 and token['read']['orderStatus'], token
+    ok(f'recovered: token read 200 ({token["read"]["orderStatus"]}) after waiting {token["read"].get("waitedMs", 0)} ms')
+
+
 DRILLS = {name[len('drill_'):]: fn for name, fn in globals().items() if name.startswith('drill_')}
 ORDER = ['health', 'happy', 'replicas', 'duplicate', 'replay', 'compensation', 'poison', 'observability',
-         'failover', 'lease', 'fencing', 'crash_after_commit', 'timeout', 'breaker']
+         'failover', 'lease', 'fencing', 'crash_after_commit', 'timeout', 'breaker',
+         'lab_idempotency', 'lab_ordering', 'lab_repartition', 'lab_read_your_writes']
 
 if __name__ == '__main__':
     chosen = sys.argv[1:] or ORDER

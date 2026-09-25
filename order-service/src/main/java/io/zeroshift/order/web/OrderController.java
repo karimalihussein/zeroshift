@@ -8,6 +8,7 @@ import io.zeroshift.order.domain.Saga;
 import io.zeroshift.order.infrastructure.DualWriteDemo;
 import io.zeroshift.order.infrastructure.PostgresLease;
 import io.zeroshift.order.infrastructure.SagaTimeouts;
+import io.zeroshift.platform.Faults;
 import io.zeroshift.platform.Traces;
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -19,8 +20,20 @@ import org.springframework.web.bind.annotation.*;
 public class OrderController {
   public record PlaceRequest(String customerId, List<PlaceOrder.Item> items) {}
 
+  /**
+   * {@code version}: read-your-writes token; {@code replayed}: answered from an Idempotency-Key.
+   */
   public record Accepted(
-      UUID orderId, UUID correlationId, UUID eventId, BigDecimal total, String traceId) {}
+      UUID orderId,
+      UUID correlationId,
+      UUID eventId,
+      BigDecimal total,
+      long version,
+      boolean replayed,
+      String traceId) {}
+
+  /** Operator fault: the next responses are held this many ms after the order has committed. */
+  public static final String SLOW_RESPONSE = "slow-response";
 
   public record EventView(
       long position,
@@ -52,6 +65,8 @@ public class OrderController {
   private final Catalog catalog;
   private final DualWriteDemo dualWrite;
   private final PostgresLease lease;
+  private final Faults faults;
+  private final OperatorRefund refunds;
 
   public OrderController(
       PlaceOrder placeOrder,
@@ -60,8 +75,12 @@ public class OrderController {
       SagaStore sagas,
       Catalog catalog,
       DualWriteDemo dualWrite,
-      PostgresLease lease) {
+      PostgresLease lease,
+      Faults faults,
+      OperatorRefund refunds) {
     this.lease = lease;
+    this.faults = faults;
+    this.refunds = refunds;
     this.placeOrder = placeOrder;
     this.orders = orders;
     this.events = events;
@@ -70,17 +89,39 @@ public class OrderController {
     this.dualWrite = dualWrite;
   }
 
+  /**
+   * Places an order. With an Idempotency-Key header, a retried request gets the first request's
+   * answer (header Idempotent-Replayed: true) instead of creating a second order.
+   */
   @PostMapping("/orders")
-  public ResponseEntity<Accepted> place(@RequestBody PlaceRequest request) {
-    var placed = placeOrder.place(request.customerId(), request.items());
+  public ResponseEntity<Accepted> place(
+      @RequestBody PlaceRequest request,
+      @RequestHeader(name = "Idempotency-Key", required = false) String idempotencyKey)
+      throws InterruptedException {
+    var placed = placeOrder.place(request.customerId(), request.items(), idempotencyKey);
+    // The lab's client-timeout fault: the order is already committed; only the answer is late.
+    var slow = faults.trigger(SLOW_RESPONSE);
+    if (slow.isPresent()) Thread.sleep(Long.parseLong(slow.get()));
     return ResponseEntity.status(HttpStatus.ACCEPTED)
+        .header("Idempotent-Replayed", String.valueOf(placed.replayed()))
         .body(
             new Accepted(
                 placed.orderId(),
                 placed.correlationId(),
                 placed.eventId(),
                 placed.total(),
+                placed.version(),
+                placed.replayed(),
                 Traces.traceId()));
+  }
+
+  /** Recovery: refund an order's payment through a real RefundPayment command. */
+  @PostMapping("/orders/{id}/refund")
+  @ResponseStatus(HttpStatus.ACCEPTED)
+  public Map<String, Object> refund(
+      @PathVariable UUID id, @RequestParam(defaultValue = "operator refund") String reason) {
+    var command = refunds.refund(id, reason);
+    return Map.of("orderId", id, "command", command.type(), "eventId", command.eventId());
   }
 
   /** The anti-pattern, on purpose. See {@link DualWriteDemo}. */
@@ -91,9 +132,14 @@ public class OrderController {
   }
 
   @GetMapping("/orders")
-  public List<Summary> recent(@RequestParam(defaultValue = "20") int limit) {
-    return sagas.recent(Math.min(limit, 100)).stream()
+  public List<Summary> recent(
+      @RequestParam(defaultValue = "20") int limit,
+      @RequestParam(required = false) String customerId) {
+    // A lab-sized filter: the newest 100 sagas, narrowed to one customer when asked.
+    return sagas.recent(customerId == null ? Math.min(limit, 100) : 100).stream()
         .map(s -> new Summary(s, orders.load(s.orderId())))
+        .filter(o -> customerId == null || customerId.equals(o.order().customerId()))
+        .limit(Math.min(limit, 100))
         .toList();
   }
 
@@ -161,6 +207,11 @@ public class OrderController {
         e.causationId(),
         recorded.recordedAt(),
         e.payload());
+  }
+
+  @ExceptionHandler(PlaceOrder.IdempotencyConflict.class)
+  ProblemDetail keyReused(PlaceOrder.IdempotencyConflict e) {
+    return ProblemDetail.forStatusAndDetail(HttpStatus.UNPROCESSABLE_CONTENT, e.getMessage());
   }
 
   @ExceptionHandler(OrderRuleViolation.class)

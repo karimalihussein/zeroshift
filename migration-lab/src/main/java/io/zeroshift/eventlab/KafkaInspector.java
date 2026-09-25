@@ -112,18 +112,22 @@ public class KafkaInspector implements AutoCloseable {
       partitions.addAll(committed.keySet());
       partitions.addAll(assigned);
       var latest = offsets(List.copyOf(partitions), OffsetSpec.latest());
+      var earliest = offsets(List.copyOf(partitions), OffsetSpec.earliest());
       var views =
           partitions.stream()
               .map(
                   tp -> {
                     OffsetAndMetadata c = committed.get(tp);
                     long end = latest.getOrDefault(tp, 0L);
+                    // Never committed (a new group, a recreated topic, an added partition): every
+                    // lab consumer starts from the earliest offset, so all of it is still to read.
+                    long position = c == null ? earliest.getOrDefault(tp, 0L) : c.offset();
                     return new GroupPartition(
                         tp.topic(),
                         tp.partition(),
                         c == null ? null : c.offset(),
                         end,
-                        c == null ? null : Math.max(0, end - c.offset()));
+                        Math.max(0, end - position));
                   })
               .toList();
       var d = descriptions.get(id);

@@ -170,6 +170,14 @@ public final class ReadModels {
         .formatJSON(JSON);
   }
 
+  /** How many of the order's events the projection has applied: its read-side version. */
+  public Optional<Integer> projectedVersion(UUID orderId) {
+    return db.select(ORDER_VIEW.EVENTS_APPLIED)
+        .from(ORDER_VIEW)
+        .where(ORDER_VIEW.ORDER_ID.eq(orderId))
+        .fetchOptional(ORDER_VIEW.EVENTS_APPLIED);
+  }
+
   public Optional<String> orderJson(UUID orderId) {
     return db.selectFrom(ORDER_VIEW)
         .where(ORDER_VIEW.ORDER_ID.eq(orderId))

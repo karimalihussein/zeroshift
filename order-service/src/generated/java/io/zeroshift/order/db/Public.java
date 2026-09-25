@@ -5,6 +5,7 @@ package io.zeroshift.order.db;
 
 
 import io.zeroshift.order.db.tables.EventStore;
+import io.zeroshift.order.db.tables.IdempotencyKey;
 import io.zeroshift.order.db.tables.Lease;
 import io.zeroshift.order.db.tables.OrderSnapshot;
 import io.zeroshift.order.db.tables.Product;
@@ -37,6 +38,11 @@ public class Public extends SchemaImpl {
      * The table <code>public.event_store</code>.
      */
     public final EventStore EVENT_STORE = EventStore.EVENT_STORE;
+
+    /**
+     * The table <code>public.idempotency_key</code>.
+     */
+    public final IdempotencyKey IDEMPOTENCY_KEY = IdempotencyKey.IDEMPOTENCY_KEY;
 
     /**
      * The table <code>public.lease</code>.
@@ -80,6 +86,7 @@ public class Public extends SchemaImpl {
     public final List<Table<?>> getTables() {
         return Arrays.asList(
             EventStore.EVENT_STORE,
+            IdempotencyKey.IDEMPOTENCY_KEY,
             Lease.LEASE,
             OrderSnapshot.ORDER_SNAPSHOT,
             Product.PRODUCT,

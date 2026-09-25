@@ -28,7 +28,8 @@ class MigrationChecksumTest {
           "V5__completed_rows.sql", -980669993,
           "V6__reverse_sync.sql", -80843725,
           "V7__cutover_cdc_pending.sql", 987926328,
-          "V8__event_lab.sql", -1482969811);
+          "V8__event_lab.sql", -1482969811,
+          "V9__lab_runs.sql", -762184773);
 
   @Test
   void releasedMigrationsAreNeverEdited() throws IOException {

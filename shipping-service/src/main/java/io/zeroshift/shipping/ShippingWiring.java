@@ -14,6 +14,16 @@ public class ShippingWiring {
   public static final String CONSUMER = "shipping-service";
 
   @Bean
+  Tracking tracking(DSLContext db) {
+    return new Tracking(db);
+  }
+
+  @Bean
+  CarrierLab.Scans carrierScans(Inbox inbox, Tracking tracking, Faults faults) {
+    return new CarrierLab.Scans(inbox, tracking, faults);
+  }
+
+  @Bean
   Shipments shipments(DSLContext db) {
     return new Shipments(db);
   }

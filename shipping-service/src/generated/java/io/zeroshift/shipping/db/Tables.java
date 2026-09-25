@@ -4,7 +4,10 @@
 package io.zeroshift.shipping.db;
 
 
+import io.zeroshift.shipping.db.tables.LabSetting;
 import io.zeroshift.shipping.db.tables.Shipment;
+import io.zeroshift.shipping.db.tables.Tracking;
+import io.zeroshift.shipping.db.tables.TrackingScan;
 
 
 /**
@@ -14,7 +17,22 @@ import io.zeroshift.shipping.db.tables.Shipment;
 public class Tables {
 
     /**
+     * The table <code>public.lab_setting</code>.
+     */
+    public static final LabSetting LAB_SETTING = LabSetting.LAB_SETTING;
+
+    /**
      * The table <code>public.shipment</code>.
      */
     public static final Shipment SHIPMENT = Shipment.SHIPMENT;
+
+    /**
+     * The table <code>public.tracking</code>.
+     */
+    public static final Tracking TRACKING = Tracking.TRACKING;
+
+    /**
+     * The table <code>public.tracking_scan</code>.
+     */
+    public static final TrackingScan TRACKING_SCAN = TrackingScan.TRACKING_SCAN;
 }
