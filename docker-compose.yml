@@ -254,7 +254,9 @@ services:
       - ./infra/observability/tempo.yml:/etc/tempo.yml:ro
       - tempo-data:/var/tempo
     ports: ['127.0.0.1:${TEMPO_PORT:-3200}:3200']
-    mem_limit: 400m
+    # Tempo holds recent traces and its write-ahead log in memory; near a hard limit its Go GC
+    # thrashes and queries time out, so leave headroom.
+    mem_limit: 900m
   loki:
     image: grafana/loki:3.5.5
     volumes: [loki-data:/loki]

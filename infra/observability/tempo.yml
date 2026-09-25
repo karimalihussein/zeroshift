@@ -7,6 +7,9 @@ distributor:
     otlp:
       protocols:
         grpc: {endpoint: 0.0.0.0:4317}
+# Cut blocks every few minutes instead of every 30: less trace data held in memory at once.
+ingester:
+  max_block_duration: 5m
 compactor:
   compaction: {block_retention: 48h}
 metrics_generator:
