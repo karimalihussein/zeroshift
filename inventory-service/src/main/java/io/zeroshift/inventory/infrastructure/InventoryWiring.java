@@ -5,16 +5,13 @@ import io.zeroshift.inventory.application.InventoryHandler;
 import io.zeroshift.platform.Faults;
 import io.zeroshift.platform.Inbox;
 import io.zeroshift.platform.Outbox;
-import java.util.List;
-import java.util.Map;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.jooq.DSLContext;
 import org.springframework.context.annotation.*;
 import org.springframework.kafka.annotation.KafkaListener;
-import org.springframework.web.bind.annotation.*;
 
 @Configuration(proxyBeanMethods = false)
-@Import(InventoryWiring.StockController.class)
+@Import(StockController.class)
 public class InventoryWiring {
   public static final String CONSUMER = "inventory-service";
 
@@ -45,20 +42,6 @@ public class InventoryWiring {
     @KafkaListener(id = CONSUMER, topics = Topics.INVENTORY_COMMANDS, concurrency = "3")
     public void onCommand(ConsumerRecord<String, String> record) {
       inbox.deliver(CONSUMER, record, handler::handle);
-    }
-  }
-
-  @RestController
-  public static class StockController {
-    private final PostgresStock stock;
-
-    public StockController(PostgresStock stock) {
-      this.stock = stock;
-    }
-
-    @GetMapping("/stock")
-    public List<Map<String, Object>> levels() {
-      return stock.levels();
     }
   }
 }

@@ -15,6 +15,11 @@ public class QueryWiring {
   }
 
   @Bean
+  ReadYourWrites readYourWrites(ReadModels readModels) {
+    return new ReadYourWrites(readModels);
+  }
+
+  @Bean
   OrderProjection orderProjection(ReadModels readModels) {
     return new OrderProjection(readModels);
   }

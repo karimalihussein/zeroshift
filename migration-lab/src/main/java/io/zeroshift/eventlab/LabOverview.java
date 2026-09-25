@@ -44,7 +44,7 @@ public class LabOverview {
     for (var row : rows)
       if (!seen.contains(UUID.fromString(row.path("id").asString()))) {
         count++;
-        oldest = row.path("created_at").asString();
+        oldest = row.path("createdAt").asString();
       }
     return pending.put("count", count).put("oldest", oldest);
   }
@@ -53,12 +53,17 @@ public class LabOverview {
     var tasks = new LinkedHashMap<String, Callable<Object>>();
     for (var service : services.names())
       tasks.put("service:" + service, () -> services.get(service, "/lab/state"));
-    tasks.put("orders", () -> services.tryGetAnyReplica("order-service", "/orders?limit=25"));
-    tasks.put("catalog", () -> services.tryGetAnyReplica("order-service", "/catalog"));
+    tasks.put(
+        "orders",
+        () -> LabServices.data(services.tryGetAnyReplica("order-service", "/orders?limit=25")));
+    tasks.put(
+        "catalog", () -> LabServices.data(services.tryGetAnyReplica("order-service", "/catalog")));
     tasks.put("gateway", () -> services.get("payment-service", "/lab/gateway"));
-    tasks.put("stock", () -> services.get("inventory-service", "/stock"));
+    tasks.put("stock", () -> LabServices.data(services.get("inventory-service", "/stock")));
     tasks.put("projection", () -> services.get("order-query-service", "/lab/projection"));
-    tasks.put("readModel", () -> services.get("order-query-service", "/orders?limit=25"));
+    tasks.put(
+        "readModel",
+        () -> LabServices.data(services.get("order-query-service", "/orders?limit=25")));
     tasks.put("connectors", () -> services.connect("/connectors?expand=status"));
     tasks.put("topics", kafka::topics);
     tasks.put("groups", kafka::groups);
@@ -67,9 +72,10 @@ public class LabOverview {
       if (LabServices.isReplica(service)) continue;
       tasks.put(
           "decisions:" + service,
-          () -> services.tryGetAnyReplica(service, "/lab/decisions?limit=40"));
+          () -> LabServices.data(services.tryGetAnyReplica(service, "/lab/decisions?limit=40")));
       tasks.put(
-          "outbox:" + service, () -> services.tryGetAnyReplica(service, "/lab/outbox?limit=200"));
+          "outbox:" + service,
+          () -> LabServices.data(services.tryGetAnyReplica(service, "/lab/outbox?limit=200")));
     }
     tasks.put("lease", () -> services.tryGetAnyReplica("order-service", "/lab/lease"));
     var futures = new LinkedHashMap<String, Future<Object>>();

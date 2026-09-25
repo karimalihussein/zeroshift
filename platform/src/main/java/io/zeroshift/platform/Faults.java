@@ -2,8 +2,8 @@ package io.zeroshift.platform;
 
 import static io.zeroshift.platform.db.Tables.LAB_FAULT;
 
+import java.time.OffsetDateTime;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import org.jooq.DSLContext;
 import org.springframework.transaction.TransactionDefinition;
@@ -69,8 +69,12 @@ public final class Faults {
         });
   }
 
-  /** For the control plane: name, mode, remaining, armed_at. */
-  public List<Map<String, Object>> armed() {
-    return db.selectFrom(LAB_FAULT).orderBy(LAB_FAULT.NAME).fetchMaps();
+  /** An armed fault; {@code remaining} null means armed until cleared. */
+  public record Fault(String name, String mode, Integer remaining, OffsetDateTime armedAt) {}
+
+  public List<Fault> armed() {
+    return db.selectFrom(LAB_FAULT)
+        .orderBy(LAB_FAULT.NAME)
+        .fetch(r -> new Fault(r.getName(), r.getMode(), r.getRemaining(), r.getArmedAt()));
   }
 }

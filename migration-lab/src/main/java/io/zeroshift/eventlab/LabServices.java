@@ -1,5 +1,6 @@
 package io.zeroshift.eventlab;
 
+import io.zeroshift.platform.web.RequestIdPropagation;
 import java.net.http.HttpClient;
 import java.time.Duration;
 import org.springframework.http.client.JdkClientHttpRequestFactory;
@@ -33,7 +34,11 @@ public class LabServices {
         new JdkClientHttpRequestFactory(
             HttpClient.newBuilder().connectTimeout(Duration.ofMillis(800)).build());
     factory.setReadTimeout(Duration.ofSeconds(4));
-    http = RestClient.builder().requestFactory(factory).build();
+    http =
+        RestClient.builder()
+            .requestFactory(factory)
+            .requestInterceptor(new RequestIdPropagation())
+            .build();
   }
 
   public Iterable<String> names() {
@@ -67,6 +72,14 @@ public class LabServices {
     return answer.has("error") && settings.services().containsKey(replica)
         ? tryGet(replica, path)
         : answer;
+  }
+
+  /**
+   * A service's list answer is {@code {"data": [...], "meta": {...}}}; this is its items, so the
+   * dashboard keeps plain arrays. Anything else (an {"error": ...} when down) passes through.
+   */
+  public static JsonNode data(JsonNode answer) {
+    return answer != null && answer.path("data").isArray() ? answer.get("data") : answer;
   }
 
   public static boolean isReplica(String service) {

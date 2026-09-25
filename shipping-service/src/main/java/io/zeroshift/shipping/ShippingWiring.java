@@ -8,6 +8,10 @@ import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.jooq.DSLContext;
 import org.springframework.context.annotation.*;
 import org.springframework.kafka.annotation.KafkaListener;
+import org.springframework.kafka.config.KafkaListenerEndpointRegistry;
+import org.springframework.kafka.core.KafkaAdmin;
+import org.springframework.kafka.core.KafkaTemplate;
+import org.springframework.transaction.support.TransactionTemplate;
 
 @Configuration(proxyBeanMethods = false)
 public class ShippingWiring {
@@ -19,8 +23,22 @@ public class ShippingWiring {
   }
 
   @Bean
-  CarrierLab.Scans carrierScans(Inbox inbox, Tracking tracking, Faults faults) {
-    return new CarrierLab.Scans(inbox, tracking, faults);
+  Carrier.Scans carrierScans(Inbox inbox, Tracking tracking, Faults faults) {
+    return new Carrier.Scans(inbox, tracking, faults);
+  }
+
+  @Bean
+  Carrier carrier(
+      Shipments shipments,
+      Tracking tracking,
+      Inbox inbox,
+      Faults faults,
+      KafkaTemplate<String, String> kafka,
+      KafkaAdmin kafkaAdmin,
+      KafkaListenerEndpointRegistry registry,
+      TransactionTemplate transactions) {
+    return new Carrier(
+        shipments, tracking, inbox, faults, kafka, kafkaAdmin, registry, transactions);
   }
 
   @Bean

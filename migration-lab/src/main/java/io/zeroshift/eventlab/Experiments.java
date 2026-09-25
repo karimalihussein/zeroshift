@@ -1,5 +1,7 @@
 package io.zeroshift.eventlab;
 
+import io.zeroshift.platform.web.ApiHeaders;
+import io.zeroshift.platform.web.RequestContext;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -73,11 +75,11 @@ public class Experiments {
       long started = System.nanoTime();
       try {
         var request =
-            HttpRequest.newBuilder(URI.create(url("order-service") + "/orders"))
+            request(url("order-service") + "/orders")
                 .timeout(Duration.ofMillis(CLIENT_TIMEOUT_MS))
                 .header("Content-Type", "application/json")
                 .POST(HttpRequest.BodyPublishers.ofString(body.toString()));
-        if (key != null) request.header("Idempotency-Key", key);
+        if (key != null) request.header(ApiHeaders.IDEMPOTENCY_KEY, key);
         var response = http.send(request.build(), HttpResponse.BodyHandlers.ofString());
         attempt.put("ms", elapsed(started));
         attempt.put("status", response.statusCode());
@@ -131,7 +133,7 @@ public class Experiments {
     long started = System.nanoTime();
     var write =
         http.send(
-            HttpRequest.newBuilder(URI.create(url("order-service") + "/orders"))
+            request(url("order-service") + "/orders")
                 .timeout(Duration.ofSeconds(5))
                 .header("Content-Type", "application/json")
                 .POST(HttpRequest.BodyPublishers.ofString(order.toString()))
@@ -162,7 +164,7 @@ public class Experiments {
     long readStarted = System.nanoTime();
     var read =
         http.send(
-            HttpRequest.newBuilder(URI.create(readUrl)).timeout(Duration.ofSeconds(5)).build(),
+            request(readUrl).timeout(Duration.ofSeconds(5)).build(),
             HttpResponse.BodyHandlers.ofString());
     var r = result.putObject("read");
     r.put(
@@ -172,14 +174,23 @@ public class Experiments {
             .replace(url("order-service"), "order-service"));
     r.put("status", read.statusCode());
     r.put("ms", elapsed(readStarted));
-    read.headers().firstValue("X-Waited-Ms").ifPresent(ms -> r.put("waitedMs", Long.parseLong(ms)));
+    JsonNode body = read.body().isBlank() ? json.createObjectNode() : json.readTree(read.body());
+    // A token read says how long it waited: in headers when served, in the error's context when
+    // the read model is still behind (409 READ_MODEL_BEHIND).
     read.headers()
-        .firstValue("X-Projected-Version")
-        .ifPresent(v -> r.put("projectedVersion", Long.parseLong(v)));
-    JsonNode answer = read.body().isBlank() ? json.createObjectNode() : json.readTree(read.body());
-    if (mode.equals("write-model")) answer = answer.path("order");
-    r.put("orderStatus", answer.path("status").asString(null));
-    r.put("detail", answer.path("error").asString(answer.path("detail").asString(null)));
+        .firstValue(ApiHeaders.WAITED_MS)
+        .map(Long::parseLong)
+        .or(() -> number(body.path("context").path("waitedMs")))
+        .ifPresent(ms -> r.put("waitedMs", ms));
+    read.headers()
+        .firstValue(ApiHeaders.PROJECTED_VERSION)
+        .map(Long::parseLong)
+        .or(() -> number(body.path("context").path("projectedVersion")))
+        .ifPresent(v -> r.put("projectedVersion", v));
+    var answer = mode.equals("write-model") ? body.path("order") : body;
+    r.put("orderStatus", read.statusCode() == 200 ? answer.path("status").asString(null) : null);
+    r.put("code", body.path("code").asString(null));
+    r.put("detail", body.path("detail").asString(null));
     var verdict =
         read.statusCode() == 200
             ? "Read your write: "
@@ -225,10 +236,11 @@ public class Experiments {
   private ArrayNode ordersOf(String customerId) {
     var orders = json.createArrayNode();
     var found =
-        services.tryGetAnyReplica(
-            "order-service",
-            // RestClient encodes the URI template itself: pass the raw value.
-            "/orders?limit=10&customerId=" + customerId);
+        LabServices.data(
+            services.tryGetAnyReplica(
+                "order-service",
+                // RestClient encodes the URI template itself: pass the raw value.
+                "/orders?limit=10&customerId=" + customerId));
     if (!found.isArray()) return orders;
     for (var summary : found) {
       var row = orders.addObject();
@@ -237,12 +249,15 @@ public class Experiments {
       row.put("total", summary.path("order").path("total").decimalValue());
       row.put("status", summary.path("order").path("status").asString());
       row.put("saga", summary.path("saga").path("state").asString());
-      var calls = services.tryGet("payment-service", "/lab/gateway/calls?orderId=" + orderId);
+      var calls =
+          LabServices.data(
+              services.tryGet("payment-service", "/lab/gateway/calls?orderId=" + orderId));
       int charged = 0;
       if (calls.isArray())
         for (var call : calls) if ("CHARGED".equals(call.path("outcome").asString())) charged++;
       row.put("charges", charged);
-      var decisions = services.tryGet("payment-service", "/lab/decisions?orderId=" + orderId);
+      var decisions =
+          LabServices.data(services.tryGet("payment-service", "/lab/decisions?orderId=" + orderId));
       boolean refunded = false;
       if (decisions.isArray())
         for (var d : decisions)
@@ -252,6 +267,18 @@ public class Experiments {
       row.put("refunded", refunded);
     }
     return orders;
+  }
+
+  /** An outbound request that carries the operator action's request id, for the logs. */
+  private static HttpRequest.Builder request(String url) {
+    var builder = HttpRequest.newBuilder(URI.create(url));
+    var requestId = RequestContext.requestId();
+    if (requestId != null) builder.header(ApiHeaders.REQUEST_ID, requestId);
+    return builder;
+  }
+
+  private static java.util.Optional<Long> number(JsonNode node) {
+    return node.isNumber() ? java.util.Optional.of(node.asLong()) : java.util.Optional.empty();
   }
 
   private void record(String lab, String mode, String summary, ObjectNode result) {

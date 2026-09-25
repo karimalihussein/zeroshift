@@ -82,7 +82,7 @@ def group(group_id):
 
 
 def decisions(base, order_id):
-    return call(f'{base}/lab/decisions?orderId={order_id}&limit=500')
+    return call(f'{base}/lab/decisions?orderId={order_id}&limit=500')['data']
 
 
 def metric(base, name):
@@ -114,7 +114,7 @@ def drill_happy():
     status = done['order']['status']
     read = wait_for(lambda: (r := try_call(f"{QUERY}/orders/{placed['orderId']}")) and r['status'] == status and r,
                     f'read model to catch up to {status}')
-    ok(f"order {placed['orderId'][:8]} COMPLETED; read model agrees after {read['events_applied']} events")
+    ok(f"order {placed['orderId'][:8]} COMPLETED; read model agrees after {read['eventsApplied']} events")
     return placed
 
 
@@ -191,7 +191,7 @@ def drill_duplicate():
     message = next(m for m in journey['messages'] if m.get('type') == 'PaymentAuthorized' and m.get('kafka'))
     k = message['kafka'][0]
     act('duplicate', topic=k['topic'], partition=k['partition'], offset=k['offset'])
-    wait_for(lambda: any(d['event_id'] == message['eventId'] and d['decision'] == 'DUPLICATE_SKIPPED'
+    wait_for(lambda: any(d['eventId'] == message['eventId'] and d['decision'] == 'DUPLICATE_SKIPPED'
                          for d in decisions(ORDER_A, placed['orderId'])), 'DUPLICATE_SKIPPED', 30)
     assert order(placed['orderId'])['saga']['state'] == 'COMPLETED'
     ok(f"re-published {k['topic']}@{k['offset']} (same event id): order-saga recorded DUPLICATE_SKIPPED, saga unchanged")
@@ -212,7 +212,7 @@ def drill_replay():
     skipped = [d for d in decisions(QUERY, placed['orderId']) if d['decision'] == 'DUPLICATE_SKIPPED']
     after = call(f"{QUERY}/orders/{placed['orderId']}")
     assert skipped, 'no duplicates recorded for the replayed order'
-    assert after['events_applied'] == before['events_applied'] and after['status'] == before['status'], (before, after)
+    assert after['eventsApplied'] == before['eventsApplied'] and after['status'] == before['status'], (before, after)
     ok(f"replayed and drained; {len(skipped)} of this order's events skipped as duplicates, read model unchanged")
     assert drained
 
@@ -352,7 +352,7 @@ def tracking():
 def settle_tracking(timeout=60):
     """No lag (never-committed partitions count from their earliest offset), and no scan handled
     for a while: a recreated topic or new partition has no commits yet, so lag alone can be 0 early."""
-    handled = lambda: sum(p['scans_applied'] + p['stale_skipped'] for p in tracking()['parcels'])
+    handled = lambda: sum(p['scansApplied'] + p['staleSkipped'] for p in tracking()['parcels'])
     wait_for(lambda: (g := group('carrier-tracking')) and g['totalLag'] == 0 and g, 'carrier-tracking to drain', timeout)
     last = -1
     while (now := handled()) != last:
@@ -375,7 +375,7 @@ def drill_lab_ordering():
     regressed = [p for p in t['parcels'] if p['regressions']]
     assert regressed, t['parcels']
     ok(f'keyed by scan id with partition 0 slow: {len(regressed)} of {len(t["parcels"])} parcels went backwards '
-       f'({", ".join(p["tracking_number"] + " → " + p["status"] for p in regressed[:2])})')
+       f'({", ".join(p["trackingNumber"] + " → " + p["status"] for p in regressed[:2])})')
     act('carrier-scans', keying='tracking', parcels=4)
     t = settle_tracking()
     assert all(p['regressions'] == 0 and p['status'] == 'DELIVERED' for p in t['parcels']), t['parcels']
@@ -386,7 +386,7 @@ def drill_lab_ordering():
     act('tracking-replay')
     t = settle_tracking(90)
     assert all(p['status'] == 'DELIVERED' and p['regressions'] == 0 for p in t['parcels']), t['parcels']
-    ok(f'recovery: guard on + replay: every parcel DELIVERED, {sum(p["stale_skipped"] for p in t["parcels"])} stale scans refused')
+    ok(f'recovery: guard on + replay: every parcel DELIVERED, {sum(p["staleSkipped"] for p in t["parcels"])} stale scans refused')
     act('fault-clear', service='shipping-service', name='carrier-slow')
     act('tracking-guard', on=False)
 
@@ -407,7 +407,7 @@ def drill_lab_repartition():
     act('fault-arm', service='shipping-service', name='carrier-slow', mode='0,1,2:600')
     act('consumer-resume', service='shipping-service', consumer='carrier-tracking')
     t = settle_tracking(90)
-    wrong = [p for p in t['parcels'] if p['tracking_number'] in moved and p['status'] != 'DELIVERED']
+    wrong = [p for p in t['parcels'] if p['trackingNumber'] in moved and p['status'] != 'DELIVERED']
     assert wrong, (moved, t['parcels'])
     ok(f'3 → 6 partitions in flight: {len(moved)} parcels changed partition, {len(wrong)} ended in the wrong status')
     act('fault-clear', service='shipping-service', name='carrier-slow')

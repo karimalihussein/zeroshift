@@ -3,11 +3,19 @@ package io.zeroshift.order.application;
 import io.zeroshift.order.domain.Saga;
 import java.time.Instant;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
 public interface SagaStore {
+  /** One durable step of a saga's history. */
+  record Transition(
+      String fromState,
+      String toState,
+      String triggerType,
+      UUID triggerEventId,
+      String detail,
+      Instant at) {}
+
   void start(Saga saga);
 
   Optional<Saga> find(UUID orderId);
@@ -23,5 +31,5 @@ public interface SagaStore {
 
   List<Saga> recent(int limit);
 
-  List<Map<String, Object>> transitions(UUID orderId);
+  List<Transition> transitions(UUID orderId);
 }

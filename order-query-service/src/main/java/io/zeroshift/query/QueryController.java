@@ -1,78 +1,86 @@
 package io.zeroshift.query;
 
+import io.zeroshift.platform.web.ApiException;
+import io.zeroshift.platform.web.ApiHeaders;
+import io.zeroshift.platform.web.ApiResponse;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
+import java.time.Duration;
+import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
-import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
-import org.springframework.web.server.ResponseStatusException;
 
 /** The query API: reads only, straight from the read models. */
 @RestController
 public class QueryController {
+  public static final String ORDER_NOT_PROJECTED = "ORDER_NOT_PROJECTED";
+  public static final String READ_MODEL_BEHIND = "READ_MODEL_BEHIND";
+
   private final ReadModels readModels;
+  private final ReadYourWrites readYourWrites;
   private final ProjectionRebuild rebuild;
 
-  public QueryController(ReadModels readModels, ProjectionRebuild rebuild) {
+  public QueryController(
+      ReadModels readModels, ReadYourWrites readYourWrites, ProjectionRebuild rebuild) {
     this.readModels = readModels;
+    this.readYourWrites = readYourWrites;
     this.rebuild = rebuild;
   }
 
-  @GetMapping(value = "/orders", produces = MediaType.APPLICATION_JSON_VALUE)
-  public String orders(@RequestParam(defaultValue = "50") int limit) {
-    return readModels.recentOrdersJson(Math.min(limit, 500));
+  @GetMapping("/orders")
+  public ApiResponse<List<ReadModels.OrderView>> orders(
+      @RequestParam(defaultValue = "50") @Min(1) @Max(500) int limit) {
+    return ApiResponse.page(readModels.recentOrders(limit), limit);
   }
-
-  /** Longest a read-your-writes request may wait for the projection. */
-  static final long MAX_WAIT_MS = 5000;
 
   /**
-   * One order from the read model. Without {@code minVersion} this is a plain eventually consistent
-   * read: right after a write it may be missing or stale. With the version the write returned (a
-   * consistency token), the read waits until the projection has applied at least that many of the
-   * order's events, up to {@code waitMs}; if it is still behind it answers 409 with both versions
-   * rather than serve a stale answer as if it were current.
+   * One order. Without {@code minVersion} this is a plain eventually consistent read: right after a
+   * write it may be missing or stale. With the version the write returned (a consistency token), it
+   * waits up to {@code waitMs} for the projection; still behind, it answers 409 {@code
+   * READ_MODEL_BEHIND} with both versions rather than a stale answer.
    */
-  @GetMapping(value = "/orders/{id}", produces = MediaType.APPLICATION_JSON_VALUE)
-  public ResponseEntity<String> order(
+  @GetMapping("/orders/{id}")
+  public ResponseEntity<ReadModels.OrderView> order(
       @PathVariable UUID id,
-      @RequestParam(required = false) Integer minVersion,
-      @RequestParam(defaultValue = "0") long waitMs)
+      @RequestParam(required = false) @Min(1) Integer minVersion,
+      @RequestParam(defaultValue = "0") @Min(0) @Max(5000) long waitMs)
       throws InterruptedException {
-    if (minVersion != null) {
-      long started = System.nanoTime();
-      long deadline = started + Math.min(Math.max(waitMs, 0), MAX_WAIT_MS) * 1_000_000;
-      var projected = readModels.projectedVersion(id);
-      while (projected.orElse(0) < minVersion && System.nanoTime() < deadline) {
-        Thread.sleep(25);
-        projected = readModels.projectedVersion(id);
-      }
-      long waited = (System.nanoTime() - started) / 1_000_000;
-      if (projected.orElse(0) < minVersion)
-        return ResponseEntity.status(HttpStatus.CONFLICT)
-            .header("X-Projected-Version", String.valueOf(projected.orElse(0)))
-            .header("X-Waited-Ms", String.valueOf(waited))
-            .contentType(MediaType.APPLICATION_JSON)
-            .body(
-                "{\"error\":\"not yet projected\",\"requiredVersion\":%d,\"projectedVersion\":%d,\"waitedMs\":%d}"
-                    .formatted(minVersion, projected.orElse(0), waited));
-      return ResponseEntity.ok()
-          .header("X-Projected-Version", String.valueOf(projected.get()))
-          .header("X-Waited-Ms", String.valueOf(waited))
-          .body(readModels.orderJson(id).orElseThrow());
-    }
-    return ResponseEntity.ok(
-        readModels
-            .orderJson(id)
-            .orElseThrow(
-                () ->
-                    new ResponseStatusException(
-                        HttpStatus.NOT_FOUND, "Not projected (yet): " + id)));
+    if (minVersion == null)
+      return ResponseEntity.ok(
+          readModels
+              .order(id)
+              .orElseThrow(
+                  () ->
+                      new ApiException(
+                          HttpStatus.NOT_FOUND,
+                          ORDER_NOT_PROJECTED,
+                          "Not projected (yet): " + id)));
+    var result = readYourWrites.await(id, minVersion, Duration.ofMillis(waitMs));
+    if (!result.satisfied())
+      throw new ApiException(
+          HttpStatus.CONFLICT,
+          READ_MODEL_BEHIND,
+          "The read model has applied version "
+              + result.projectedVersion()
+              + " of this order, not "
+              + minVersion
+              + " yet",
+          Map.of(
+              "requiredVersion", result.requiredVersion(),
+              "projectedVersion", result.projectedVersion(),
+              "waitedMs", result.waitedMs()));
+    return ResponseEntity.ok()
+        .header(ApiHeaders.PROJECTED_VERSION, String.valueOf(result.projectedVersion()))
+        .header(ApiHeaders.WAITED_MS, String.valueOf(result.waitedMs()))
+        .body(result.order().orElseThrow());
   }
 
-  @GetMapping(value = "/customers", produces = MediaType.APPLICATION_JSON_VALUE)
-  public String customers() {
-    return readModels.customersJson();
+  @GetMapping("/customers")
+  public ApiResponse<List<ReadModels.CustomerView>> customers() {
+    return ApiResponse.list(readModels.customers());
   }
 
   @GetMapping("/lab/projection")

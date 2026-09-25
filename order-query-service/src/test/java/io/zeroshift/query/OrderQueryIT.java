@@ -153,8 +153,10 @@ class OrderQueryIT {
     // The write side is at version 2 but the projection has applied 1: the token read says so.
     var behind = get.apply("?minVersion=2&waitMs=300");
     assertThat(behind.statusCode()).isEqualTo(409);
-    assertThat(behind.headers().firstValue("X-Projected-Version")).hasValue("1");
-    assertThat(behind.body()).contains("\"requiredVersion\":2", "\"projectedVersion\":1");
+    assertThat(behind.headers().firstValue("Content-Type")).hasValue("application/problem+json");
+    assertThat(behind.body())
+        .contains(
+            "\"code\":\"READ_MODEL_BEHIND\"", "\"requiredVersion\":2", "\"projectedVersion\":1");
 
     // A token read waiting for version 2 returns as soon as the projection gets there.
     var waiting =
@@ -164,13 +166,40 @@ class OrderQueryIT {
     send(kafka, placed.reply(new OrderPaymentAuthorized(id, UUID.randomUUID())));
     var answered = waiting.get(10, java.util.concurrent.TimeUnit.SECONDS);
     assertThat(answered.statusCode()).isEqualTo(200);
-    assertThat(answered.body()).contains("\"status\":\"PAID\"", "\"events_applied\":2");
+    assertThat(answered.body()).contains("\"status\":\"PAID\"", "\"eventsApplied\":2");
     assertThat(Long.parseLong(answered.headers().firstValue("X-Waited-Ms").orElseThrow()))
         .isGreaterThan(0);
 
     // A token that is already satisfied answers at once.
     assertThat(get.apply("?minVersion=1&waitMs=5000").headers().firstValue("X-Waited-Ms"))
         .hasValueSatisfying(ms -> assertThat(Long.parseLong(ms)).isLessThan(100));
+  }
+
+  @Test
+  void theQueryApiUsesTheSharedContract() throws Exception {
+    var http = java.net.http.HttpClient.newHttpClient();
+    java.util.function.Function<String, java.net.http.HttpResponse<String>> get =
+        path -> {
+          try {
+            return http.send(
+                java.net.http.HttpRequest.newBuilder(
+                        java.net.URI.create("http://localhost:" + port + path))
+                    .header("X-Request-Id", "it-query-1")
+                    .build(),
+                java.net.http.HttpResponse.BodyHandlers.ofString());
+          } catch (Exception e) {
+            throw new IllegalStateException(e);
+          }
+        };
+    var missing = get.apply("/orders/" + UUID.randomUUID());
+    assertThat(missing.statusCode()).isEqualTo(404);
+    assertThat(missing.body())
+        .contains("\"code\":\"ORDER_NOT_PROJECTED\"", "\"requestId\":\"it-query-1\"");
+    assertThat(get.apply("/orders?limit=0").body()).contains("\"code\":\"VALIDATION_FAILED\"");
+    assertThat(get.apply("/orders?limit=5").body())
+        .startsWith("{\"data\":[")
+        .contains("\"meta\":{");
+    assertThat(get.apply("/customers").statusCode()).isEqualTo(200);
   }
 
   private String status(UUID id) {

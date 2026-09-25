@@ -175,9 +175,11 @@ class DashboardControllerTest {
             mock(RollbackService.class));
 
     assertThatThrownBy(() -> controller.action("start", null)).isSameAs(failure);
-    var response = new ApiExceptionHandler().invalid(failure);
+    var response =
+        new LabApiErrors()
+            .invalid(failure, new org.springframework.mock.web.MockHttpServletRequest());
     assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
-    assertThat(response.getBody().getDetail()).isEqualTo(failure.getMessage());
+    assertThat(response.getBody().detail()).isEqualTo(failure.getMessage());
   }
 
   private static MigrationState idleState() {

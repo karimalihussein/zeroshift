@@ -8,7 +8,6 @@ import io.zeroshift.contracts.MessageCodec;
 import io.zeroshift.inventory.application.Stock;
 import io.zeroshift.platform.PostgresClock;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import org.jooq.DSLContext;
@@ -76,17 +75,21 @@ public final class PostgresStock implements Stock {
         .execute();
   }
 
-  /** For the control plane: sku, name, on_hand, reserved, available, version. */
-  public List<Map<String, Object>> levels() {
-    return db.select(
-            STOCK.SKU,
-            STOCK.NAME,
-            STOCK.ON_HAND,
-            STOCK.RESERVED,
-            STOCK.ON_HAND.minus(STOCK.RESERVED).as("available"),
-            STOCK.VERSION)
-        .from(STOCK)
+  public record Level(
+      String sku, String name, int onHand, int reserved, int available, int version) {}
+
+  /** For the control plane, by sku. */
+  public List<Level> levels() {
+    return db.selectFrom(STOCK)
         .orderBy(STOCK.SKU)
-        .fetchMaps();
+        .fetch(
+            r ->
+                new Level(
+                    r.getSku(),
+                    r.getName(),
+                    r.getOnHand(),
+                    r.getReserved(),
+                    r.getOnHand() - r.getReserved(),
+                    r.getVersion()));
   }
 }

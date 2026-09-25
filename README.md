@@ -70,6 +70,7 @@ OpenTelemetry agent in every JVM ─► collector ─► Tempo · Loki;  Prometh
 | Optimistic concurrency | Event-stream version, saga version and stock row version; *Concurrent reservations* | [011](docs/decisions/011-event-sourcing-and-cqrs.md) |
 | Observability | One trace per order across services and Kafka hops; logs linked by trace id | [014](docs/decisions/014-observability.md) |
 | Typed persistence | Flyway → PostgreSQL → generated jOOQ classes; no hand-built SQL strings | [015](docs/decisions/015-jooq-persistence.md) |
+| HTTP API conventions | Typed records; lists as `{data, meta}`; errors as `application/problem+json` with a stable `code`, request id and trace id; one shared `platform-web` module | [016](docs/decisions/016-http-api-conventions.md) |
 | API-edge idempotency | *Experiments → Client retries*: a timed-out client's retry doubles the order; an `Idempotency-Key` makes it one | [labs](docs/labs.md) |
 | Ordering and partitioning | *Experiments → Ordering*: wrong keys, adding partitions in flight, hot keys; a sequence guard and replay recover | [labs](docs/labs.md) |
 | Read-your-writes | *Experiments → Read your writes*: your own order "not found" on the read model; a consistency token fixes it | [labs](docs/labs.md) |
@@ -123,7 +124,7 @@ All Java packages are under `src/main/java/io/zeroshift/`.
 
 - [How consistency is kept](docs/consistency.md): transaction boundaries, the change window, crash recovery and the fence
 - [Live Data Changes](docs/live-changes.md): the interactive CDC experiment and its API
-- [Design decisions](docs/decisions/): change capture, snapshot boundary, batching, checkpointing, cutover, rollback; outbox, idempotency, saga, event sourcing, retries, lease and fencing, observability
+- [Design decisions](docs/decisions/): change capture, snapshot boundary, batching, checkpointing, cutover, rollback; outbox, idempotency, saga, event sourcing, retries, lease and fencing, observability, jOOQ, HTTP API conventions
 - [Event lab failure drills](docs/event-lab-drills.md): what each drill breaks and what to watch
 - [Experiments](docs/labs.md): the learning labs (Learn → Trigger → Observe → Break → Understand → Fix → Recover)
 - [Explaining the migration](docs/interview-notes.md): a talk track and common follow-up questions

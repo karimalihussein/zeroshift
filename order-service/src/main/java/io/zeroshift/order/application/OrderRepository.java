@@ -38,6 +38,21 @@ public final class OrderRepository {
     return new Loaded(order, snapshot, replayed);
   }
 
+  /** One step of a fold: the aggregate right after one more event. */
+  public record Step(long version, String type, Order stateAfter) {}
+
+  /** Every intermediate state: the aggregate rebuilt one event at a time, no snapshot. */
+  public List<Step> fold(UUID id) {
+    var steps = new ArrayList<Step>();
+    var order = Order.empty(id);
+    for (var recorded : events.load(id, 0)) {
+      order = order.apply((OrderEvent) recorded.envelope().payload());
+      steps.add(new Step(recorded.version(), recorded.envelope().type(), order));
+    }
+    if (steps.isEmpty()) throw new OrderNotFound(id);
+    return steps;
+  }
+
   public Order load(UUID id) {
     return load(id, true).order();
   }

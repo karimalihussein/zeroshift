@@ -1,19 +1,21 @@
 package io.zeroshift.platform;
 
-import static io.zeroshift.platform.db.Tables.CONSUMER_DECISION;
-import static io.zeroshift.platform.db.Tables.OUTBOX;
-import static org.jooq.impl.DSL.count;
-import static org.jooq.impl.DSL.max;
-
-import java.util.*;
+import io.zeroshift.platform.web.ApiException;
+import io.zeroshift.platform.web.ApiResponse;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
+import java.util.Arrays;
+import java.util.Comparator;
+import java.util.List;
+import java.util.Objects;
 import org.apache.kafka.common.TopicPartition;
-import org.jooq.DSLContext;
-import org.jooq.impl.DSL;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.kafka.config.KafkaListenerEndpointRegistry;
+import org.springframework.kafka.listener.MessageListenerContainer;
 import org.springframework.web.bind.annotation.*;
-import org.springframework.web.server.ResponseStatusException;
 
 /**
  * The control plane's view into, and levers on, one service. Everything returned is read from the
@@ -22,6 +24,9 @@ import org.springframework.web.server.ResponseStatusException;
 @RestController
 @RequestMapping("/lab")
 public class LabAdminController {
+  public static final String UNKNOWN_CONSUMER = "UNKNOWN_CONSUMER";
+  public static final String UNKNOWN_CONSUMER_ACTION = "UNKNOWN_CONSUMER_ACTION";
+
   public record Consumer(
       String id,
       String groupId,
@@ -31,129 +36,90 @@ public class LabAdminController {
       boolean paused,
       List<String> assignedPartitions) {}
 
-  /**
-   * The service's side of change data capture. {@code lagBytes} is WAL the connector has not yet
-   * confirmed: outbox inserts committed here but not yet on Kafka (plus unrelated WAL traffic).
-   */
-  public record Outbox(
-      String slot, boolean slotActive, Long lagBytes, long rows, Object lastInsertAt) {}
-
   public record State(
-      String service, List<Consumer> consumers, List<Map<String, Object>> faults, Outbox outbox) {}
+      String service, List<Consumer> consumers, List<Faults.Fault> faults, Outbox.Status outbox) {}
+
+  /** What an operator may do to one consumer. Stopping leaves the group; pausing does not. */
+  enum ConsumerAction {
+    PAUSE,
+    RESUME,
+    STOP,
+    START
+  }
 
   private final String service;
   private final KafkaListenerEndpointRegistry registry;
   private final Faults faults;
-  private final DSLContext db;
+  private final DecisionLog decisions;
+  private final Outbox outbox;
 
   public LabAdminController(
       @Value("${spring.application.name}") String service,
       KafkaListenerEndpointRegistry registry,
       Faults faults,
-      DSLContext db) {
+      DecisionLog decisions,
+      Outbox outbox) {
     this.service = service;
     this.registry = registry;
     this.faults = faults;
-    this.db = db;
+    this.decisions = decisions;
+    this.outbox = outbox;
   }
 
   @GetMapping("/state")
   public State state() {
     var consumers =
         registry.getListenerContainers().stream()
-            .map(
-                c ->
-                    new Consumer(
-                        c.getListenerId(),
-                        c.getGroupId(),
-                        Arrays.asList(
-                            Objects.requireNonNullElse(
-                                c.getContainerProperties().getTopics(), new String[0])),
-                        c.isRunning(),
-                        c.isPauseRequested(),
-                        c.isContainerPaused(),
-                        Objects.requireNonNullElse(
-                                c.getAssignedPartitions(), List.<TopicPartition>of())
-                            .stream()
-                            .map(TopicPartition::toString)
-                            .sorted()
-                            .toList()))
+            .map(LabAdminController::consumer)
             .sorted(Comparator.comparing(Consumer::id))
             .toList();
-    return new State(service, consumers, faults.armed(), outbox());
-  }
-
-  private Outbox outbox() {
-    // A system view, not our schema: plain SQL. lag = WAL the connector has not yet confirmed.
-    var slot =
-        db.fetchOptional(
-            "SELECT slot_name, active,"
-                + " pg_wal_lsn_diff(pg_current_wal_lsn(), confirmed_flush_lsn)::bigint AS lag"
-                + " FROM pg_replication_slots WHERE slot_name = current_database() || '_outbox'");
-    var table = db.select(count(), max(OUTBOX.CREATED_AT)).from(OUTBOX).fetchSingle();
-    return new Outbox(
-        slot.map(r -> r.get("slot_name", String.class)).orElse(null),
-        slot.map(r -> r.get("active", Boolean.class)).orElse(false),
-        slot.map(r -> r.get("lag", Long.class)).orElse(null),
-        table.value1(),
-        table.value2());
+    return new State(service, consumers, faults.armed(), outbox.status());
   }
 
   @GetMapping("/decisions")
-  public List<Map<String, Object>> decisions(
+  public ApiResponse<List<DecisionLog.Recorded>> decisions(
       @RequestParam(required = false) String orderId,
-      @RequestParam(defaultValue = "100") int limit) {
-    return db.selectFrom(CONSUMER_DECISION)
-        .where(orderId == null ? DSL.noCondition() : CONSUMER_DECISION.ORDER_ID.eq(orderId))
-        .orderBy(CONSUMER_DECISION.ID.desc())
-        .limit(Math.min(limit, 500))
-        .fetchMaps();
+      @RequestParam(defaultValue = "100") @Min(1) @Max(500) int limit) {
+    return ApiResponse.page(decisions.recent(orderId, limit), limit);
   }
 
   @GetMapping("/outbox")
-  public List<Map<String, Object>> outbox(
+  public ApiResponse<List<Outbox.Row>> outbox(
       @RequestParam(required = false) String orderId,
-      @RequestParam(defaultValue = "100") int limit) {
-    return db.select(
-            OUTBOX.ID,
-            OUTBOX.TOPIC,
-            OUTBOX.AGGREGATE_ID,
-            OUTBOX.TYPE,
-            OUTBOX.SCHEMA_VERSION,
-            OUTBOX.CORRELATION_ID,
-            OUTBOX.CAUSATION_ID,
-            OUTBOX.TRACEPARENT,
-            OUTBOX.PAYLOAD.cast(String.class).as("payload"),
-            OUTBOX.CREATED_AT)
-        .from(OUTBOX)
-        .where(orderId == null ? DSL.noCondition() : OUTBOX.AGGREGATE_ID.eq(orderId))
-        .orderBy(OUTBOX.CREATED_AT.desc())
-        .limit(Math.min(limit, 500))
-        .fetchMaps();
+      @RequestParam(defaultValue = "100") @Min(1) @Max(500) int limit) {
+    return ApiResponse.page(outbox.recent(orderId, limit), limit);
   }
 
   @PostMapping("/consumers/{id}/{action}")
   public State consumer(@PathVariable String id, @PathVariable String action) {
     var container = registry.getListenerContainer(id);
     if (container == null)
-      throw new ResponseStatusException(HttpStatus.NOT_FOUND, "No consumer " + id);
-    switch (action) {
-      case "pause" -> container.pause();
-      case "resume" -> container.resume();
-      // Stopping leaves the consumer group (pausing does not): needed before offsets can move.
-      case "stop" -> container.stop();
-      case "start" -> container.start();
-      default ->
-          throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "pause, resume, stop or start");
+      throw new ApiException(HttpStatus.NOT_FOUND, UNKNOWN_CONSUMER, "No consumer " + id);
+    var parsed =
+        Arrays.stream(ConsumerAction.values())
+            .filter(a -> a.name().equalsIgnoreCase(action))
+            .findFirst()
+            .orElseThrow(
+                () ->
+                    new ApiException(
+                        HttpStatus.BAD_REQUEST,
+                        UNKNOWN_CONSUMER_ACTION,
+                        "Consumer actions are pause, resume, stop and start"));
+    switch (parsed) {
+      case PAUSE -> container.pause();
+      case RESUME -> container.resume();
+      case STOP -> container.stop();
+      case START -> container.start();
     }
     return state();
   }
 
+  /** Arms a fault; without {@code times} it stays armed until cleared. */
   @PutMapping("/faults/{name}")
   public State arm(
-      @PathVariable String name,
-      @RequestParam String mode,
-      @RequestParam(required = false) Integer times) {
+      @PathVariable @Size(max = 60) String name,
+      @RequestParam @NotBlank @Size(max = 100) String mode,
+      @RequestParam(required = false) @Min(1) @Max(1000) Integer times) {
     faults.arm(name, mode, times);
     return state();
   }
@@ -178,5 +144,20 @@ public class LabAdminController {
               }
               Crash.now("operator requested a crash of " + service);
             });
+  }
+
+  private static Consumer consumer(MessageListenerContainer c) {
+    return new Consumer(
+        c.getListenerId(),
+        c.getGroupId(),
+        Arrays.asList(
+            Objects.requireNonNullElse(c.getContainerProperties().getTopics(), new String[0])),
+        c.isRunning(),
+        c.isPauseRequested(),
+        c.isContainerPaused(),
+        Objects.requireNonNullElse(c.getAssignedPartitions(), List.<TopicPartition>of()).stream()
+            .map(TopicPartition::toString)
+            .sorted()
+            .toList());
   }
 }

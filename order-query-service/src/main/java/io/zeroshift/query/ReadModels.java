@@ -19,8 +19,8 @@ import java.util.UUID;
 import java.util.function.UnaryOperator;
 import org.jooq.DSLContext;
 import org.jooq.JSONB;
-import org.jooq.JSONFormat;
 import org.jooq.UpdateSetMoreStep;
+import tools.jackson.core.type.TypeReference;
 
 /**
  * The read side's two tables, written only by {@link OrderProjection} and read by the query API.
@@ -35,9 +35,7 @@ public final class ReadModels {
 
   public record Stats(int orders, int customers, OffsetDateTime lastProjectedAt) {}
 
-  // Column names become the JSON keys (snake_case); jsonb and arrays stay real JSON values.
-  private static final JSONFormat JSON =
-      new JSONFormat().header(false).recordFormat(JSONFormat.RecordFormat.OBJECT);
+  private static final TypeReference<List<OrderLine>> LINES = new TypeReference<>() {};
 
   private final DSLContext db;
 
@@ -160,14 +158,49 @@ public final class ReadModels {
     db.truncate(CUSTOMER_SUMMARY).execute();
   }
 
-  // ---- Reads, as JSON -------------------------------------------------------------------------
+  // ---- Reads -----------------------------------------------------------------------------------
 
-  public String recentOrdersJson(int limit) {
+  /** One order as the read side knows it; {@code eventsApplied} is its read-side version. */
+  public record OrderView(
+      UUID orderId,
+      String customerId,
+      String status,
+      BigDecimal total,
+      String currency,
+      int itemCount,
+      List<OrderLine> lines,
+      UUID paymentId,
+      UUID reservationId,
+      String trackingNumber,
+      String cancelReason,
+      List<String> compensations,
+      int eventsApplied,
+      String lastEventType,
+      UUID lastEventId,
+      String lastOffset,
+      OffsetDateTime placedAt,
+      OffsetDateTime projectedAt) {}
+
+  public record CustomerView(
+      String customerId,
+      int ordersPlaced,
+      int ordersShipped,
+      int ordersCancelled,
+      BigDecimal shippedValue,
+      OffsetDateTime updatedAt) {}
+
+  /** Newest first, at most {@code limit + 1} (the extra one tells a page there is more). */
+  public List<OrderView> recentOrders(int limit) {
     return db.selectFrom(ORDER_VIEW)
         .orderBy(ORDER_VIEW.PLACED_AT.desc())
-        .limit(limit)
-        .fetch()
-        .formatJSON(JSON);
+        .limit(limit + 1)
+        .fetch(ReadModels::view);
+  }
+
+  public Optional<OrderView> order(UUID orderId) {
+    return db.selectFrom(ORDER_VIEW)
+        .where(ORDER_VIEW.ORDER_ID.eq(orderId))
+        .fetchOptional(ReadModels::view);
   }
 
   /** How many of the order's events the projection has applied: its read-side version. */
@@ -178,18 +211,40 @@ public final class ReadModels {
         .fetchOptional(ORDER_VIEW.EVENTS_APPLIED);
   }
 
-  public Optional<String> orderJson(UUID orderId) {
-    return db.selectFrom(ORDER_VIEW)
-        .where(ORDER_VIEW.ORDER_ID.eq(orderId))
-        .fetchOptional()
-        .map(r -> r.formatJSON(JSON));
-  }
-
-  public String customersJson() {
+  public List<CustomerView> customers() {
     return db.selectFrom(CUSTOMER_SUMMARY)
         .orderBy(CUSTOMER_SUMMARY.SHIPPED_VALUE.desc(), CUSTOMER_SUMMARY.CUSTOMER_ID)
-        .fetch()
-        .formatJSON(JSON);
+        .fetch(
+            r ->
+                new CustomerView(
+                    r.getCustomerId(),
+                    r.getOrdersPlaced(),
+                    r.getOrdersShipped(),
+                    r.getOrdersCancelled(),
+                    r.getShippedValue(),
+                    r.getUpdatedAt()));
+  }
+
+  private static OrderView view(OrderViewRecord r) {
+    return new OrderView(
+        r.getOrderId(),
+        r.getCustomerId(),
+        r.getStatus(),
+        r.getTotal(),
+        r.getCurrency(),
+        r.getItemCount(),
+        MessageCodec.json().readValue(r.getLines().data(), LINES),
+        r.getPaymentId(),
+        r.getReservationId(),
+        r.getTrackingNumber(),
+        r.getCancelReason(),
+        List.of(r.getCompensations()),
+        r.getEventsApplied(),
+        r.getLastEventType(),
+        r.getLastEventId(),
+        r.getLastOffset(),
+        r.getPlacedAt(),
+        r.getProjectedAt());
   }
 
   public Stats stats() {

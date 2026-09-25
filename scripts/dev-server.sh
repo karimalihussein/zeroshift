@@ -30,6 +30,15 @@ migration_signature() {
 # target/ is a persistent volume and resource copying never deletes, so a renamed or removed
 # migration would otherwise stay on the classpath.
 rm -rf "target/classes/db/migration"
+# migration-lab depends on platform-web (the shared HTTP conventions). Its sources are mounted
+# read-only, so install it, and the parent pom, from a scratch copy into the container's Maven
+# repository. A change to platform-web needs `docker compose restart app`.
+rm -rf /tmp/platform-web-build && mkdir -p /tmp/platform-web-build
+cp ../pom.xml /tmp/platform-web-build/pom.xml
+cp -R ../platform-web /tmp/platform-web-build/platform-web
+rm -rf /tmp/platform-web-build/platform-web/target
+mvn -B -q -N -f /tmp/platform-web-build/pom.xml install
+mvn -B -q -f /tmp/platform-web-build/platform-web/pom.xml -DskipTests install
 mvn -B spring-boot:run -Dspring-boot.run.profiles=dev &
 app=$!
 trap 'kill "$app" 2>/dev/null; wait "$app"; exit 143' INT TERM

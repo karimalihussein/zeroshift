@@ -3,7 +3,6 @@ package io.zeroshift.order.application;
 import io.zeroshift.contracts.Envelope;
 import io.zeroshift.contracts.PaymentCommand.RefundPayment;
 import io.zeroshift.platform.Outbox;
-import java.util.NoSuchElementException;
 import java.util.UUID;
 import org.springframework.transaction.support.TransactionOperations;
 
@@ -28,10 +27,7 @@ public final class OperatorRefund {
   public Envelope refund(UUID orderId, String reason) {
     return transactions.execute(
         tx -> {
-          var saga =
-              sagas
-                  .find(orderId)
-                  .orElseThrow(() -> new NoSuchElementException("No order " + orderId));
+          var saga = sagas.find(orderId).orElseThrow(() -> new OrderNotFound(orderId));
           return outbox.append(
               Envelope.of(new RefundPayment(orderId, reason), saga.correlationId(), null));
         });

@@ -59,6 +59,11 @@ public class PaymentWiring {
   }
 
   @Bean
+  GatewaySimulator gatewaySimulator(URI gatewayUri) {
+    return new GatewaySimulator(gatewayUri);
+  }
+
+  @Bean
   GatewayCalls gatewayCalls(DSLContext db, TransactionTemplate transactions) {
     return new GatewayCalls(db, transactions);
   }

@@ -6,6 +6,7 @@
   <name>ZeroShift</name><description>Hands-on labs: a real SQL Server to PostgreSQL migration and an event-driven order system</description>
   <modules>
     <module>contracts</module>
+    <module>platform-web</module>
     <module>platform</module>
     <module>order-service</module>
     <module>payment-service</module>

@@ -42,24 +42,26 @@ public class Journey {
     result.set("readModel", services.tryGet("order-query-service", "/orders/" + orderId));
     result.set(
         "gatewayCalls",
-        services.tryGet("payment-service", "/lab/gateway/calls?orderId=" + orderId));
+        LabServices.data(
+            services.tryGet("payment-service", "/lab/gateway/calls?orderId=" + orderId)));
 
     var messages = new LinkedHashMap<String, ObjectNode>();
     for (var service : PRODUCERS)
       for (var row :
           array(
-              services.tryGetAnyReplica(
-                  service, "/lab/outbox?orderId=" + orderId + "&limit=200"))) {
+              LabServices.data(
+                  services.tryGetAnyReplica(
+                      service, "/lab/outbox?orderId=" + orderId + "&limit=200")))) {
         var m = message(messages, row.path("id").asString());
         m.put("producer", service);
         m.put("type", row.path("type").asString());
         m.put("topic", row.path("topic").asString());
-        m.put("schemaVersion", row.path("schema_version").asInt());
-        m.put("correlationId", row.path("correlation_id").asString(null));
-        m.put("causationId", row.path("causation_id").asString(null));
+        m.put("schemaVersion", row.path("schemaVersion").asInt());
+        m.put("correlationId", row.path("correlationId").asString(null));
+        m.put("causationId", row.path("causationId").asString(null));
         m.put("traceparent", row.path("traceparent").asString(null));
-        m.put("outboxAt", row.path("created_at").asString());
-        m.set("envelope", parse(row.path("payload").asString()));
+        m.put("outboxAt", row.path("createdAt").asString());
+        m.set("envelope", row.path("payload"));
       }
 
     var tapped =
@@ -99,17 +101,18 @@ public class Journey {
     for (var service : CONSUMERS)
       for (var row :
           array(
-              services.tryGetAnyReplica(
-                  service, "/lab/decisions?orderId=" + orderId + "&limit=500"))) {
-        var eventId = row.path("event_id").asString(null);
+              LabServices.data(
+                  services.tryGetAnyReplica(
+                      service, "/lab/decisions?orderId=" + orderId + "&limit=500")))) {
+        var eventId = row.path("eventId").asString(null);
         var target =
             eventId != null
                 ? message(messages, eventId)
                 : byPosition.get(
                     position(
                         row.path("topic").asString(),
-                        row.path("kafka_partition").asInt(),
-                        row.path("kafka_offset").asLong()));
+                        row.path("partition").asInt(),
+                        row.path("offset").asLong()));
         var delivery = json.createObjectNode();
         delivery.put("service", service);
         delivery.put("consumer", row.path("consumer").asString());
@@ -118,17 +121,17 @@ public class Journey {
         delivery.put("attempt", row.path("attempt").asInt());
         delivery.put("detail", row.path("detail").asString());
         delivery.put("topic", row.path("topic").asString());
-        delivery.put("partition", row.path("kafka_partition").asInt());
-        delivery.put("offset", row.path("kafka_offset").asLong());
-        delivery.put("traceId", row.path("trace_id").asString(null));
+        delivery.put("partition", row.path("partition").asInt());
+        delivery.put("offset", row.path("offset").asLong());
+        delivery.put("traceId", row.path("traceId").asString(null));
         delivery.put("at", row.path("at").asString());
         if (target == null) ghosts.add(delivery);
         else ((ArrayNode) target.withArray("deliveries")).add(delivery);
       }
 
     for (var t : array(order.path("transitions")))
-      if (t.hasNonNull("trigger_event_id"))
-        Optional.ofNullable(messages.get(t.path("trigger_event_id").asString()))
+      if (t.hasNonNull("triggerEventId"))
+        Optional.ofNullable(messages.get(t.path("triggerEventId").asString()))
             .ifPresent(m -> m.set("sagaTransition", t));
     for (var e : array(order.path("events")))
       Optional.ofNullable(messages.get(e.path("eventId").asString()))

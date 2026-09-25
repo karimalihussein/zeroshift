@@ -63,7 +63,7 @@ Validate and Cutover are disabled while replay is paused. The pause flag is stor
 | `DELETE` | `/api/live/orders/{id}` | none |
 | `POST` | `/api/live/cdc/pause`, `/api/live/cdc/resume` | none |
 
-Invalid input returns `400`, and an action not allowed in the current state returns `409`, both as RFC 9457 problem details.
+Invalid input returns `400` (`VALIDATION_FAILED`), and an action not allowed in the current state returns `409` (`INVALID_ACTION`), both as RFC 9457 problem details with a stable `code` and the `requestId` ([ADR 016](decisions/016-http-api-conventions.md)).
 
 ## Tests
 

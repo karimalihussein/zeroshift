@@ -136,6 +136,25 @@ class ShippingServiceIT {
     // Keyed by hub: every scan on one partition, the hot one.
     assertThat(partitionsByParcel(lab("hub")).values().stream().flatMap(Set::stream).distinct())
         .hasSize(1);
+
+    // Bad input is a typed 400, not a 500 or a stack trace.
+    var unknown = labResponse("/lab/carrier/scans?keying=sideways");
+    assertThat(unknown.statusCode()).isEqualTo(400);
+    assertThat(unknown.body()).contains("\"code\":\"UNKNOWN_KEYING\"");
+    var shrink = labResponse("/lab/carrier/partitions?count=1");
+    assertThat(shrink.statusCode()).isEqualTo(400);
+    assertThat(shrink.body()).contains("\"code\":\"PARTITIONS_CAN_ONLY_GROW\"");
+    assertThat(labResponse("/lab/carrier/scans?parcels=11").body())
+        .contains("\"code\":\"VALIDATION_FAILED\"", "\"field\":\"parcels\"");
+  }
+
+  private HttpResponse<String> labResponse(String path) throws Exception {
+    return HttpClient.newHttpClient()
+        .send(
+            HttpRequest.newBuilder(URI.create("http://localhost:" + port + path))
+                .POST(HttpRequest.BodyPublishers.noBody())
+                .build(),
+            HttpResponse.BodyHandlers.ofString());
   }
 
   private JsonNode lab(String keying) throws Exception {

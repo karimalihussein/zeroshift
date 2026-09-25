@@ -331,7 +331,7 @@ function orderStages(s, j) {
       detail: `${count('PROCESSED')} processed${count('DUPLICATE_SKIPPED') ? ` · ${count('DUPLICATE_SKIPPED')} dup` : ''}${count('RETRY_SCHEDULED') ? ` · ${count('RETRY_SCHEDULED')} retries` : ''}${count('DEAD_LETTERED') ? ' · DLQ' : ''}` },
     saga: { state: !saga ? 'idle' : saga.state === 'CANCELLED' ? (saga.compensations.length ? 'compensated' : 'failed') : sagaState(saga.state), detail: saga ? saga.state.replaceAll('_', ' ').toLowerCase() : '—' },
     participants: { state: worst(parts.map(p => p.state)), detail: parts.filter(p => p.state !== 'idle').map(p => `${p.name.toLowerCase()} ${p.text.replace(/^(Payment|Stock|Shipment)/, '').toLowerCase() || p.state}`).join(' · ') || 'not reached', sub: parts },
-    projection: { state: ok(read) ? (writeOk && read.status === o.order.status ? 'done' : 'waiting') : onKafka.some(m => m.topic === 'order.events') ? 'waiting' : 'idle', detail: ok(read) ? `${read.status.toLowerCase()} · ${read.events_applied} events` : 'not projected yet' }
+    projection: { state: ok(read) ? (writeOk && read.status === o.order.status ? 'done' : 'waiting') : onKafka.some(m => m.topic === 'order.events') ? 'waiting' : 'idle', detail: ok(read) ? `${read.status.toLowerCase()} · ${read.eventsApplied} events` : 'not projected yet' }
   };
 }
 
@@ -410,7 +410,7 @@ function nodeTags(m, projection) {
   if (deliveries.some(d => d.decision === 'DEAD_LETTERED')) tags.push(chip('dead-lettered', 'bad'));
   if (deliveries.some(d => d.decision === 'IGNORED')) tags.push(chip('ignored', ''));
   if (!projection && !m.outboxAt && m.kafka?.length) tags.push(chip('in no outbox: ghost', 'bad'));
-  if (!projection && m.sagaTransition) tags.push(chip(`saga → ${m.sagaTransition.to_state.replaceAll('_', ' ').toLowerCase()}`, sagaState(m.sagaTransition.to_state) === 'done' ? 'good' : m.sagaTransition.to_state === 'COMPENSATING' ? 's-compensated' : m.sagaTransition.to_state === 'CANCELLED' ? 'bad' : 'info'));
+  if (!projection && m.sagaTransition) tags.push(chip(`saga → ${m.sagaTransition.toState.replaceAll('_', ' ').toLowerCase()}`, sagaState(m.sagaTransition.toState) === 'done' ? 'good' : m.sagaTransition.toState === 'COMPENSATING' ? 's-compensated' : m.sagaTransition.toState === 'CANCELLED' ? 'bad' : 'info'));
   if (!projection && !m.causationId && m.type !== 'OrderPlaced' && m.outboxAt) tags.push(chip('from timeout scanner', 'warn'));
   return tags;
 }
@@ -589,7 +589,7 @@ function messageInspector(m, projection) {
       deliveries.some(d => d.decision === 'DEAD_LETTERED') ? h('p', { class: 'callout bad' }, 'Retries were exhausted and the record was parked on the dead-letter topic. Redrive it from Retries & DLQ once the cause is fixed.') : null,
       steps.length ? section('Journey', timeline(steps)) : null,
       section(projection ? 'Projection' : 'Consumers', deliveries.length ? timeline(consumed) : empty(k.length ? 'On Kafka, not consumed yet.' : 'Nothing to consume yet.')),
-      !projection && m.sagaTransition ? section('Saga effect', kv([['Transition', `${m.sagaTransition.from_state || '∅'} → ${m.sagaTransition.to_state}`], ['Detail', m.sagaTransition.detail]])) : null,
+      !projection && m.sagaTransition ? section('Saga effect', kv([['Transition', `${m.sagaTransition.fromState || '∅'} → ${m.sagaTransition.toState}`], ['Detail', m.sagaTransition.detail]])) : null,
       section('Identifiers', idRow('event id', m.eventId), idRow('caused by', m.causationId), idRow('correlation', m.correlationId), idRow('traceparent', m.traceparent)),
       first?.headers ? section('Kafka headers', kv(Object.entries(first.headers).map(([key, value]) => [key, String(value)]))) : null,
       section('Envelope', h('pre', { class: 'code' }, JSON.stringify(m.envelope ?? null, null, 2))),
@@ -612,10 +612,10 @@ function orderInspector() {
       !writeOk ? h('p', { class: 'callout bad' }, 'Not in the event store: a lost or ghost order. Its messages, if any, are shown in the graph.') : null,
       saga?.failureReason ? h('p', { class: `callout ${saga.compensations.length ? 'warn' : 'bad'}` }, `${saga.failureReason}${saga.compensations.length ? `. Compensated: ${saga.compensations.join(', ')}.` : '.'}`) : null,
       writeOk ? section('Write model (event-sourced)', kv([['Status', o.order.status], ['Version', `v${o.order.version} · rebuilt from ${o.rebuiltFrom}`], ['Items', o.order.lines.map(l => `${l.quantity}× ${l.sku}`).join(', ')], ['Total', `$${o.order.total} ${o.order.currency}`]])) : null,
-      section('Read model (CQRS)', ok(read) ? kv([['Status', read.status], ['Consistency', writeOk && read.status === o.order.status ? 'in sync with the write model' : 'behind: catching up through Kafka'], ['Events applied', read.events_applied], ['Last', `${read.last_event_type} at ${read.last_offset}`]]) : empty('Not projected yet: waiting for order.events, or never published.')),
-      saga ? section('Saga', timeline((o.transitions || []).map(t => [sagaState(t.to_state) === 'done' ? 'done' : t.to_state === 'CANCELLED' ? (saga.compensations.length ? 'compensated' : 'failed') : t.to_state === 'COMPENSATING' ? 'compensated' : 'waiting', `${t.from_state ? `${t.from_state} → ` : ''}${t.to_state}`, `${t.trigger_type}: ${t.detail}`, t.at])),
+      section('Read model (CQRS)', ok(read) ? kv([['Status', read.status], ['Consistency', writeOk && read.status === o.order.status ? 'in sync with the write model' : 'behind: catching up through Kafka'], ['Events applied', read.eventsApplied], ['Last', `${read.lastEventType} at ${read.lastOffset}`]]) : empty('Not projected yet: waiting for order.events, or never published.')),
+      saga ? section('Saga', timeline((o.transitions || []).map(t => [sagaState(t.toState) === 'done' ? 'done' : t.toState === 'CANCELLED' ? (saga.compensations.length ? 'compensated' : 'failed') : t.toState === 'COMPENSATING' ? 'compensated' : 'waiting', `${t.fromState ? `${t.fromState} → ` : ''}${t.toState}`, `${t.triggerType}: ${t.detail}`, t.at])),
         saga.deadline ? h('p', { class: 'callout' }, `Step deadline ${time(saga.deadline)}: the lease-holding replica compensates if no reply arrives by then.`) : null) : null,
-      calls.length ? section('Payment gateway attempts', timeline(calls.slice().reverse().map(c => [c.outcome === 'CHARGED' ? 'done' : c.outcome === 'DECLINED' ? 'failed' : 'retrying', c.outcome, `${c.latency_ms} ms · breaker ${c.breaker_state} · ${c.detail}`, c.at]))) : null,
+      calls.length ? section('Payment gateway attempts', timeline(calls.slice().reverse().map(c => [c.outcome === 'CHARGED' ? 'done' : c.outcome === 'DECLINED' ? 'failed' : 'retrying', c.outcome, `${c.latencyMs} ms · breaker ${c.breakerState} · ${c.detail}`, c.at]))) : null,
       fold ? section('Aggregate rebuilt event by event', timeline(fold.map(step => ['done', `v${step.version} ${step.type}`, `status after: ${step.stateAfter.status}`, null]))) : null,
       journey.unmatched?.length ? section('Records without a readable envelope', ...journey.unmatched.map(u => h('pre', { class: 'code' }, JSON.stringify(u, null, 2)))) : null,
       section('Trace', idRow('correlation', journey.messages?.[0]?.correlationId), idRow('trace id', traceId),
@@ -650,7 +650,7 @@ function stageInspector(id) {
   if (src.order) {
     if (id === 'kafka' || id === 'debezium' || id === 'outbox') body.push(section('This order’s records', timeline(messages.map(m => [m.kafka?.length ? 'done' : m.outboxAt ? 'waiting' : 'failed', m.type, m.kafka?.[0] ? `${m.kafka[0].topic} p${m.kafka[0].partition}@${m.kafka[0].offset}${m.outboxAt ? ` · ${plus(m.outboxAt, m.kafka[0].timestamp, 'after commit')}` : ''}` : m.outboxAt ? 'in the outbox, not on Kafka yet' : 'no outbox row', m.kafka?.[0]?.timestamp || m.outboxAt]))));
     if (id === 'consumers' || id === 'projection') body.push(section(id === 'projection' ? 'Projection deliveries' : 'Deliveries', timeline(messages.flatMap(m => (m.deliveries || []).filter(d => id !== 'projection' || d.consumer === 'order-projection').map(d => [d.decision === 'PROCESSED' ? 'done' : d.decision === 'DEAD_LETTERED' ? 'failed' : d.decision === 'RETRY_SCHEDULED' ? 'retrying' : 'waiting', `${m.type} → ${d.consumer}`, `${decisionLabel(d.decision)}${d.attempt > 1 ? ` · attempt ${d.attempt}` : ''} · ${d.detail}`, d.at])).sort((a, b) => (a[3] || '').localeCompare(b[3] || '')))));
-    if (id === 'saga' && j.order?.transitions) body.push(section('Transitions', timeline(j.order.transitions.map(t => [sagaState(t.to_state), `${t.from_state || '∅'} → ${t.to_state}`, t.detail, t.at]))));
+    if (id === 'saga' && j.order?.transitions) body.push(section('Transitions', timeline(j.order.transitions.map(t => [sagaState(t.toState), `${t.fromState || '∅'} → ${t.toState}`, t.detail, t.at]))));
     if (id === 'participants') body.push(section('Services', timeline(src.order.sub.map(p => [p.state, p.name, p.text, null]))));
     if (id === 'tx' || id === 'api') { const placed = messages.find(m => m.type === 'OrderPlaced'); if (placed) body.push(section('Committed together', kv([['Event store', `#${placed.eventStorePosition} v${placed.eventStoreVersion}`], ['Outbox', messages.filter(m => m.outboxAt === placed.outboxAt || m.causationId === placed.eventId && m.producer === 'order-service').map(m => m.type).join(', ')], ['At', time(placed.outboxAt)]]))); }
   }
@@ -696,7 +696,7 @@ const intro = (text, ...extra) => h('div', { class: 'tab-intro' }, h('p', {}, te
 function renderOrdersTab(s) {
   if (!Array.isArray(s.orders)) return empty('order-service is unreachable.');
   if (!s.orders.length) return empty('No orders yet. Send one from the composer above.');
-  const read = new Map((Array.isArray(s.readModel) ? s.readModel : []).map(r => [r.order_id, r]));
+  const read = new Map((Array.isArray(s.readModel) ? s.readModel : []).map(r => [r.orderId, r]));
   return [intro('Sagas, newest first. The write model is the event-sourced order; the read model is its CQRS projection, caught up through Kafka. Click a row to follow it.'),
     h('div', { class: 'table-wrap' }, h('table', { class: 'data-table' }, h('thead', {}, h('tr', {}, ...['Order', 'Customer', 'Items', 'Total', 'Saga', 'Write model', 'Read model'].map(t => h('th', { class: `${t === 'Total' ? 'num' : ''} ${['Order', 'Items', 'Write model'].includes(t) ? 'hide-sm' : ''}` }, t)))),
       h('tbody', {}, ...s.orders.map(({ saga, order }) => {
@@ -759,7 +759,7 @@ function renderDlqTab(s) {
     h('div', { class: 'buttons' }, ...['payment.commands', 'inventory.commands', 'order.events'].map(topic => button(`Poison ${topic}`, () => act('poison', { topic }, 'Publishing an unreadable record…').then(() => showMessage(`Unreadable record on ${topic}: not retried, dead-lettered on the first failure.`), () => {}), { class: 'danger-soft' })))),
     h('div', { class: 'split' },
       h('div', {}, h('h3', { class: 'sub' }, `Consumer decisions · newest ${decisions.length}`), h('div', { class: 'feed' }, ...(decisions.length ? decisions.map(d => h('div', { class: 'feed-row' }, h('time', {}, seconds(d.at)), chip(decisionLabel(d.decision), decisionTone(d.decision)),
-        h('p', {}, `${d.consumer}${d.instance && d.instance !== d.consumer ? ` @ ${d.instance}` : ''} · ${d.type || 'unreadable'} · ${d.topic}-${d.kafka_partition}@${d.kafka_offset}${d.attempt > 1 ? ` · attempt ${d.attempt}` : ''}`, h('small', {}, d.detail)), openOrder(d.order_id))) : [empty('No deliveries yet.')]))),
+        h('p', {}, `${d.consumer}${d.instance && d.instance !== d.consumer ? ` @ ${d.instance}` : ''} · ${d.type || 'unreadable'} · ${d.topic}-${d.partition}@${d.offset}${d.attempt > 1 ? ` · attempt ${d.attempt}` : ''}`, h('small', {}, d.detail)), openOrder(d.orderId))) : [empty('No deliveries yet.')]))),
       h('div', {}, h('h3', { class: 'sub' }, `Dead-letter topics · ${records.length} parked`), h('div', { class: 'feed' }, ...(records.length ? records.map(r => {
         const headers = JSON.parse(r.headers || '{}');
         return h('div', { class: 'feed-row' }, h('time', {}, seconds(r.kafka_timestamp)), chip(r.topic, 'bad'),
@@ -790,7 +790,7 @@ function renderServicesTab(s) {
       kv([
         ['Consumers', h('div', { class: 'chips' }, ...svc.consumers.map(c => chip(`${c.pauseRequested ? 'paused' : c.running ? 'running' : 'stopped'} · ${c.assignedPartitions.length} partitions`, c.pauseRequested ? 'warn' : 'good')))],
         ['Outbox', svc.outbox?.slot ? `${number(svc.outbox.rows)} rows · ${number(s.unpublished?.[name]?.count ?? 0)} not on Kafka · slot ${svc.outbox.slotActive ? 'active' : 'idle'}` : 'none (read side)'],
-        holder ? ['Lease', holder.held ? `held by ${holder.owner}, token ${holder.token}, until ${time(holder.expires_at)}` : 'free'] : null,
+        holder ? ['Lease', holder.held ? `held by ${holder.owner}, token ${holder.token}, until ${time(holder.expiresAt)}` : 'free'] : null,
         ['Faults', svc.faults.length ? h('div', { class: 'chips' }, ...svc.faults.map(f => chip(`${f.name}=${f.mode}${f.remaining !== null ? ` ×${f.remaining}` : ''}`, 'bad'))) : 'none armed']
       ]),
       h('div', { class: 'buttons' }, fault('Error ×3', 'transient-error', 'error', 3, ''), fault('Crash after commit', 'crash-after-commit', 'crash', 1, 'danger-soft'),
@@ -808,7 +808,7 @@ function renderServicesTab(s) {
       h('div', {}, h('h3', { class: 'sub' }, 'Payment gateway & circuit breaker'), !ok(g) ? empty(`payment-service unreachable: ${g?.error || ''}`) : [
         h('div', { class: 'gateway-modes' }, ...['healthy', 'slow', 'down', 'declining'].map(mode => h('button', { type: 'button', class: 'small-button', 'aria-pressed': String(g.mode === mode), disabled: busy, onclick: () => act('gateway', { mode }) }, mode)), button('Reset breaker', () => act('breaker-reset'))),
         h('div', { class: 'stats' }, h('div', {}, 'Breaker', h('strong', { style: `color:var(--${g.breakerState === 'CLOSED' ? 'green' : g.breakerState === 'OPEN' ? 'red' : 'amber'})` }, g.breakerState.toLowerCase())), h('div', {}, 'Failure rate', h('strong', {}, g.failureRate < 0 ? '—' : `${Math.round(g.failureRate)}%`)), h('div', {}, 'Buffered calls', h('strong', {}, g.bufferedCalls)), h('div', {}, 'Refused while open', h('strong', {}, g.notPermittedCalls))),
-        h('div', { class: 'feed' }, ...(g.recentCalls.length ? g.recentCalls.slice(0, 8).map(c => h('div', { class: 'feed-row' }, h('time', {}, seconds(c.at)), chip(c.outcome, c.outcome === 'CHARGED' ? 'good' : c.outcome === 'DECLINED' ? 'warn' : 'bad'), h('p', {}, `${c.latency_ms} ms · breaker ${c.breaker_state.toLowerCase()}`, h('small', {}, `order ${short(c.order_id)} · ${c.detail}`)))) : [empty('No gateway calls yet.')]))]))];
+        h('div', { class: 'feed' }, ...(g.recentCalls.length ? g.recentCalls.slice(0, 8).map(c => h('div', { class: 'feed-row' }, h('time', {}, seconds(c.at)), chip(c.outcome, c.outcome === 'CHARGED' ? 'good' : c.outcome === 'DECLINED' ? 'warn' : 'bad'), h('p', {}, `${c.latencyMs} ms · breaker ${c.breakerState.toLowerCase()}`, h('small', {}, `order ${short(c.orderId)} · ${c.detail}`)))) : [empty('No gateway calls yet.')]))]))];
 }
 
 function renderReadTab(s) {
@@ -916,7 +916,7 @@ function orderingStatus() {
   const t = labs?.tracking;
   if (!ok(t)) return ['shipping down', 'bad'];
   const regressions = t.parcels.reduce((n, p) => n + p.regressions, 0);
-  const wrong = t.parcels.filter(p => p.last_seq < 4 && t.scans.some(sc => sc.tracking_number === p.tracking_number && sc.seq === 4)).length;
+  const wrong = t.parcels.filter(p => p.lastSeq < 4 && t.scans.some(sc => sc.trackingNumber === p.trackingNumber && sc.seq === 4)).length;
   if (!t.parcels.length) return ['not run', ''];
   const lag = state?.groups?.find?.(g => g.groupId === 'carrier-tracking')?.totalLag ?? 0;
   if (lag) return [`catching up · lag ${lag}`, 'warn'];
@@ -941,7 +941,7 @@ function renderOrderingLab() {
     ['consumer-resume', { service: 'shipping-service', consumer: 'carrier-tracking' }, 'Resuming the consumer…']], 'Same key, different partition: parcels whose key now hashes to a new partition get scans 3–4 before 1–2.');
   const hotKey = () => scenarioSteps([['carrier-scans', { keying: 'hub', parcels: 6 }, 'Every scan keyed by its hub…']], 'All scans on one partition: order is safe, but one consumer does all the work while the others idle.');
   const byPartition = new Map();
-  for (const sc of t.scans) byPartition.set(sc.kafka_partition, (byPartition.get(sc.kafka_partition) || 0) + 1);
+  for (const sc of t.scans) byPartition.set(sc.partition, (byPartition.get(sc.partition) || 0) + 1);
   const most = Math.max(1, ...byPartition.values());
   return h('div', { class: 'lab-grid' },
     steps([
@@ -959,14 +959,14 @@ function renderOrderingLab() {
       evidence('Now', h('div', { class: 'chips' }, chip(`${partitions} partitions`), chip(t.guard ? 'sequence guard on' : 'sequence guard off', t.guard ? 'good' : 'warn'), t.slow ? chip(`slow partition ${t.slow.replace(':', ' · ')} ms`, 'warn') : chip('no slow partition'),
         group ? chip(`carrier-tracking lag ${number(group.totalLag)}`, group.totalLag ? 'warn' : 'good') : null)),
       evidence('Parcels (tracking projection)', t.parcels.length ? h('table', { class: 'data-table' }, h('thead', {}, h('tr', {}, ...['Parcel', 'Status', 'Last scan', 'Regressions', 'Refused'].map(x => h('th', {}, x)))),
-        h('tbody', {}, ...t.parcels.map(p => { const delivered = t.scans.some(sc => sc.tracking_number === p.tracking_number && sc.seq === 4);
-          return h('tr', {}, h('td', { class: 'mono' }, p.tracking_number), h('td', {}, chip(p.status.replaceAll('_', ' ').toLowerCase(), p.status === 'DELIVERED' ? 'good' : delivered ? 'bad' : 'info'), delivered && p.status !== 'DELIVERED' ? h('small', { class: 'muted' }, ' but it was delivered') : null),
-            h('td', {}, p.last_seq), h('td', {}, p.regressions ? chip(p.regressions, 'bad') : '0'), h('td', {}, p.stale_skipped ? chip(p.stale_skipped, 'good') : '0')); })))
+        h('tbody', {}, ...t.parcels.map(p => { const delivered = t.scans.some(sc => sc.trackingNumber === p.trackingNumber && sc.seq === 4);
+          return h('tr', {}, h('td', { class: 'mono' }, p.trackingNumber), h('td', {}, chip(p.status.replaceAll('_', ' ').toLowerCase(), p.status === 'DELIVERED' ? 'good' : delivered ? 'bad' : 'info'), delivered && p.status !== 'DELIVERED' ? h('small', { class: 'muted' }, ' but it was delivered') : null),
+            h('td', {}, p.lastSeq), h('td', {}, p.regressions ? chip(p.regressions, 'bad') : '0'), h('td', {}, p.staleSkipped ? chip(p.staleSkipped, 'good') : '0')); })))
         : empty('No parcels tracked yet. Shipped orders are the parcels; run the trigger.')),
       evidence('Scans per partition', h('div', { class: 'partition-bars' }, ...[...Array(partitions).keys()].map(p => h('div', { class: 'pbar' }, h('span', {}, `p${p}`), h('i', { style: `width:${(byPartition.get(p) || 0) / most * 100}%` }), h('b', {}, byPartition.get(p) || 0))))),
       evidence('Scans in the order they were handled', t.scans.length ? h('div', { class: 'feed scan-feed' }, ...t.scans.slice(0, 24).map(sc => h('div', { class: 'feed-row' }, h('time', {}, seconds(sc.at)),
         chip(sc.outcome.replace('_', ' ').toLowerCase(), sc.outcome === 'APPLIED' ? 'good' : sc.outcome === 'REGRESSED' ? 'bad' : 's-compensated'),
-        h('p', {}, `${sc.tracking_number} · scan ${sc.seq} ${sc.status.replaceAll('_', ' ').toLowerCase()}`, h('small', {}, `p${sc.kafka_partition}@${sc.kafka_offset} · key ${String(sc.record_key).slice(0, 16)}`))))) : empty('No scans handled yet.'))));
+        h('p', {}, `${sc.trackingNumber} · scan ${sc.seq} ${sc.status.replaceAll('_', ' ').toLowerCase()}`, h('small', {}, `p${sc.partition}@${sc.offset} · key ${String(sc.recordKey).slice(0, 16)}`))))) : empty('No scans handled yet.'))));
 }
 
 // Lab 3: write, then read at once: stale, refused, or waited for.

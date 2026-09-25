@@ -51,7 +51,7 @@ offset, since every lab consumer starts there.
 |---|---|
 | **Failure** | Place an order and read it back at once from the read model: **404, your own order not found**, because the projection follows the write through the outbox, Debezium and Kafka. Pause the projection and it stays that way. |
 | **Why** | The read model is eventually consistent, and without knowing which write to wait for it can only answer with what it has. |
-| **Fix** | The write returns the order's `version` as a **consistency token**. `GET /orders/{id}?minVersion=N&waitMs=…` on order-query-service waits (at most 5 s, server side) until the projection has applied that version. If it is still behind it answers **409** with both versions, never stale data as if it were current. Alternatively, read the write model. |
+| **Fix** | The write returns the order's `version` as a **consistency token**. `GET /orders/{id}?minVersion=N&waitMs=…` on order-query-service waits (at most 5 s, server side) until the projection has applied that version. If it is still behind it answers **409** `READ_MODEL_BEHIND`, with `requiredVersion`, `projectedVersion` and `waitedMs` in the error's `context`, never stale data as if it were current. The logic lives in `ReadYourWrites`, not the controller. Alternatively, read the write model. |
 | **Recover** | Resume the projection: the backlog drains and token reads succeed after a short wait. |
 | **Evidence** | Per run: write latency and version; read status, latency and how long it waited; the verdict. |
 | **Tests** | `OrderQueryIT.aConsistencyTokenReadWaitsForTheProjectionInsteadOfServingAStaleAnswer`; drill `lab_read_your_writes`. |

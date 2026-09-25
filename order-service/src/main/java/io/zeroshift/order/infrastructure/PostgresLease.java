@@ -5,7 +5,7 @@ import static org.jooq.impl.DSL.when;
 
 import io.zeroshift.platform.PostgresClock;
 import java.time.Duration;
-import java.util.Map;
+import java.time.OffsetDateTime;
 import java.util.OptionalLong;
 import org.jooq.DSLContext;
 
@@ -66,18 +66,27 @@ public final class PostgresLease {
             .forShare());
   }
 
-  /** For the control plane: name, owner, token, acquired_at, expires_at, held. */
-  public Map<String, Object> describe(String name) {
+  /** The lease as it stands; owner and times are null when nobody has ever held it. */
+  public record View(
+      String name,
+      String owner,
+      Long token,
+      OffsetDateTime acquiredAt,
+      OffsetDateTime expiresAt,
+      boolean held) {}
+
+  public View describe(String name) {
     return db.select(
             LEASE.NAME,
             LEASE.OWNER,
             LEASE.TOKEN,
             LEASE.ACQUIRED_AT,
             LEASE.EXPIRES_AT,
-            LEASE.EXPIRES_AT.gt(PostgresClock.NOW).as("held"))
+            LEASE.EXPIRES_AT.gt(PostgresClock.NOW))
         .from(LEASE)
         .where(LEASE.NAME.eq(name))
-        .fetchOptionalMap()
-        .orElse(Map.of("name", name, "held", false));
+        .fetchOptional(
+            r -> new View(r.value1(), r.value2(), r.value3(), r.value4(), r.value5(), r.value6()))
+        .orElse(new View(name, null, null, null, null, false));
   }
 }

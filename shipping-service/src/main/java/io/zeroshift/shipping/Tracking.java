@@ -9,8 +9,9 @@ import io.zeroshift.contracts.Envelope;
 import io.zeroshift.platform.Decision;
 import io.zeroshift.platform.Handled;
 import io.zeroshift.platform.PostgresClock;
+import java.time.OffsetDateTime;
 import java.util.List;
-import java.util.Map;
+import java.util.UUID;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.jooq.DSLContext;
 
@@ -148,13 +149,62 @@ public final class Tracking {
     db.deleteFrom(TRACKING).where(TRACKING.TRACKING_NUMBER.in(parcels)).execute();
   }
 
-  /** For the control plane: parcels newest first, and the scans as they were handled. */
-  public Map<String, Object> view(int parcels, int scans) {
-    return Map.of(
-        "guard", guarded(),
-        "parcels",
-            db.selectFrom(TRACKING).orderBy(TRACKING.UPDATED_AT.desc()).limit(parcels).fetchMaps(),
-        "scans",
-            db.selectFrom(TRACKING_SCAN).orderBy(TRACKING_SCAN.ID.desc()).limit(scans).fetchMaps());
+  public record Parcel(
+      String trackingNumber,
+      UUID orderId,
+      String status,
+      int lastSeq,
+      int scansApplied,
+      int regressions,
+      int staleSkipped,
+      OffsetDateTime updatedAt) {}
+
+  /** One scan as the projection handled it. */
+  public record Scan(
+      long id,
+      String trackingNumber,
+      int seq,
+      String status,
+      String recordKey,
+      int partition,
+      long offset,
+      String outcome,
+      OffsetDateTime at) {}
+
+  /** Parcels, newest first. */
+  public List<Parcel> parcels(int limit) {
+    return db.selectFrom(TRACKING)
+        .orderBy(TRACKING.UPDATED_AT.desc())
+        .limit(limit)
+        .fetch(
+            r ->
+                new Parcel(
+                    r.getTrackingNumber(),
+                    r.getOrderId(),
+                    r.getStatus(),
+                    r.getLastSeq(),
+                    r.getScansApplied(),
+                    r.getRegressions(),
+                    r.getStaleSkipped(),
+                    r.getUpdatedAt()));
+  }
+
+  /** Scans as they were handled, newest first. */
+  public List<Scan> scans(int limit) {
+    return db.selectFrom(TRACKING_SCAN)
+        .orderBy(TRACKING_SCAN.ID.desc())
+        .limit(limit)
+        .fetch(
+            r ->
+                new Scan(
+                    r.getId(),
+                    r.getTrackingNumber(),
+                    r.getSeq(),
+                    r.getStatus(),
+                    r.getRecordKey(),
+                    r.getKafkaPartition(),
+                    r.getKafkaOffset(),
+                    r.getOutcome(),
+                    r.getAt()));
   }
 }

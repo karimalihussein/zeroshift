@@ -5,8 +5,12 @@ import static io.zeroshift.platform.db.Tables.CONSUMER_DECISION;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.zeroshift.contracts.Envelope;
 import io.zeroshift.contracts.MessageCodec;
+import java.time.OffsetDateTime;
+import java.util.List;
+import java.util.UUID;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.jooq.DSLContext;
+import org.jooq.impl.DSL;
 
 /** Durable record of every delivery outcome. Joins the caller's transaction when there is one. */
 public final class DecisionLog {
@@ -47,6 +51,49 @@ public final class DecisionLog {
     meters
         .counter("zeroshift.consumer.decisions", "consumer", consumer, "decision", decision.name())
         .increment();
+  }
+
+  /** One recorded delivery outcome, as the control plane shows it. */
+  public record Recorded(
+      long id,
+      String consumer,
+      UUID eventId,
+      String orderId,
+      String type,
+      String topic,
+      int partition,
+      long offset,
+      String decision,
+      int attempt,
+      String detail,
+      String traceId,
+      String instance,
+      OffsetDateTime at) {}
+
+  /** Newest first, at most {@code limit + 1} (the extra one tells a page there is more). */
+  public List<Recorded> recent(String orderId, int limit) {
+    var d = CONSUMER_DECISION;
+    return db.selectFrom(d)
+        .where(orderId == null ? DSL.noCondition() : d.ORDER_ID.eq(orderId))
+        .orderBy(d.ID.desc())
+        .limit(limit + 1)
+        .fetch(
+            r ->
+                new Recorded(
+                    r.getId(),
+                    r.getConsumer(),
+                    r.getEventId(),
+                    r.getOrderId(),
+                    r.getType(),
+                    r.getTopic(),
+                    r.getKafkaPartition(),
+                    r.getKafkaOffset(),
+                    r.getDecision(),
+                    r.getAttempt(),
+                    r.getDetail(),
+                    r.getTraceId(),
+                    r.getInstance(),
+                    r.getAt()));
   }
 
   /** Retries and dead letters are logged before (or without) a successful decode. */

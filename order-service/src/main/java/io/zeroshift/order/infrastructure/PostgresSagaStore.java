@@ -14,7 +14,6 @@ import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.Arrays;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import java.util.TreeSet;
 import java.util.UUID;
@@ -108,15 +107,22 @@ public final class PostgresSagaStore implements SagaStore {
         .fetch(PostgresSagaStore::saga);
   }
 
-  /** For the control plane: from_state, to_state, trigger_type, trigger_event_id, detail, at. */
   @Override
-  public List<Map<String, Object>> transitions(UUID orderId) {
+  public List<Transition> transitions(UUID orderId) {
     var t = SAGA_TRANSITION;
     return db.select(t.FROM_STATE, t.TO_STATE, t.TRIGGER_TYPE, t.TRIGGER_EVENT_ID, t.DETAIL, t.AT)
         .from(t)
         .where(t.ORDER_ID.eq(orderId))
         .orderBy(t.ID)
-        .fetchMaps();
+        .fetch(
+            r ->
+                new Transition(
+                    r.value1(),
+                    r.value2(),
+                    r.value3(),
+                    r.value4(),
+                    r.value5(),
+                    r.value6().toInstant()));
   }
 
   private static Saga saga(SagaRecord r) {

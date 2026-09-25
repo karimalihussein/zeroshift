@@ -13,6 +13,7 @@ services:
       - ./pom.xml:/workspace/pom.xml:ro
       - ./migration-lab/pom.xml:/workspace/migration-lab/pom.xml:ro
       - ./migration-lab/src:/workspace/migration-lab/src:ro
+      - ./platform-web:/workspace/platform-web:ro
       - ./scripts/dev-server.sh:/workspace/scripts/dev-server.sh:ro
       # Container-owned: dependency cache and compiled classes survive restarts and never
       # collide with a host IDE's target/.

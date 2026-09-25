@@ -311,6 +311,86 @@ class OrderServiceIT {
     }
   }
 
+  @org.springframework.boot.test.web.server.LocalServerPort int port;
+
+  @Test
+  @org.junit.jupiter.api.Order(11)
+  void theHttpApiUsesTheSharedContract() throws Exception {
+    var invalid =
+        post("/orders", "{\"customerId\":\"\",\"items\":[{\"sku\":\"SKU-CABLE\",\"quantity\":0}]}");
+    assertThat(invalid.statusCode()).isEqualTo(400);
+    assertThat(invalid.headers().firstValue("Content-Type"))
+        .hasValueSatisfying(t -> assertThat(t).startsWith("application/problem+json"));
+    assertThat(invalid.headers().firstValue("X-Request-Id")).hasValue("it-orders-1");
+    assertThat(invalid.body())
+        .contains(
+            "\"code\":\"VALIDATION_FAILED\"",
+            "\"requestId\":\"it-orders-1\"",
+            "\"field\":\"customerId\"",
+            "\"field\":\"items[0].quantity\"");
+
+    var unknownSku =
+        post(
+            "/orders",
+            "{\"customerId\":\"api\",\"items\":[{\"sku\":\"SKU-NOPE\",\"quantity\":1}]}");
+    assertThat(unknownSku.statusCode()).isEqualTo(422);
+    assertThat(unknownSku.body()).contains("\"code\":\"ORDER_RULE_VIOLATION\"");
+
+    var key = "api-" + UUID.randomUUID();
+    var first =
+        post(
+            "/orders",
+            key,
+            "{\"customerId\":\"api\",\"items\":[{\"sku\":\"SKU-CABLE\",\"quantity\":1}]}");
+    assertThat(first.statusCode()).isEqualTo(202);
+    assertThat(first.headers().firstValue("Idempotent-Replayed")).hasValue("false");
+    var reused =
+        post(
+            "/orders",
+            key,
+            "{\"customerId\":\"api\",\"items\":[{\"sku\":\"SKU-CABLE\",\"quantity\":2}]}");
+    assertThat(reused.statusCode()).isEqualTo(422);
+    assertThat(reused.body()).contains("\"code\":\"IDEMPOTENCY_KEY_REUSED\"");
+
+    var missing = get("/orders/" + UUID.randomUUID());
+    assertThat(missing.statusCode()).isEqualTo(404);
+    assertThat(missing.body()).contains("\"code\":\"ORDER_NOT_FOUND\"");
+    assertThat(get("/orders/not-a-uuid").body()).contains("\"code\":\"INVALID_PARAMETER\"");
+    assertThat(get("/orders?limit=0").body())
+        .contains("\"code\":\"VALIDATION_FAILED\"", "\"field\":\"limit\"");
+
+    var page = get("/orders?limit=1");
+    assertThat(page.statusCode()).isEqualTo(200);
+    assertThat(page.body())
+        .contains("\"data\":[", "\"meta\":{\"count\":1,\"limit\":1,\"hasMore\":true}");
+  }
+
+  private java.net.http.HttpResponse<String> post(String path, String body) throws Exception {
+    return post(path, null, body);
+  }
+
+  /** A JSON POST with a fixed request id, and an Idempotency-Key when {@code key} is given. */
+  private java.net.http.HttpResponse<String> post(String path, String key, String body)
+      throws Exception {
+    var request =
+        java.net.http.HttpRequest.newBuilder(java.net.URI.create("http://localhost:" + port + path))
+            .header("Content-Type", "application/json")
+            .header("X-Request-Id", "it-orders-1")
+            .POST(java.net.http.HttpRequest.BodyPublishers.ofString(body));
+    if (key != null) request.header("Idempotency-Key", key);
+    return java.net.http.HttpClient.newHttpClient()
+        .send(request.build(), java.net.http.HttpResponse.BodyHandlers.ofString());
+  }
+
+  private java.net.http.HttpResponse<String> get(String path) throws Exception {
+    return java.net.http.HttpClient.newHttpClient()
+        .send(
+            java.net.http.HttpRequest.newBuilder(
+                    java.net.URI.create("http://localhost:" + port + path))
+                .build(),
+            java.net.http.HttpResponse.BodyHandlers.ofString());
+  }
+
   private int outboxRows(UUID orderId) {
     return jdbc.queryForObject(
         "SELECT COUNT(*) FROM outbox WHERE aggregate_id=?", Integer.class, orderId.toString());

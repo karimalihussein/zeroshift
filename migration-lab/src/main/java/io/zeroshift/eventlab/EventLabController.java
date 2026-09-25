@@ -1,8 +1,6 @@
 package io.zeroshift.eventlab;
 
 import java.util.UUID;
-import org.springframework.http.HttpStatus;
-import org.springframework.http.ProblemDetail;
 import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.*;
 import tools.jackson.databind.JsonNode;
@@ -70,11 +68,5 @@ public class EventLabController {
   public JsonNode act(@PathVariable String action, @RequestBody(required = false) JsonNode body) {
     return actions.run(
         action, body == null ? JsonMapper.builder().build().createObjectNode() : body);
-  }
-
-  @ExceptionHandler(LabServices.ActionFailed.class)
-  @ResponseBody
-  ProblemDetail failed(LabServices.ActionFailed e) {
-    return ProblemDetail.forStatusAndDetail(HttpStatus.BAD_GATEWAY, e.getMessage());
   }
 }
