@@ -8,6 +8,7 @@
   <name>ZeroShift migration lab</name><description>A readable, real SQL Server to PostgreSQL migration lab and the control-plane dashboard</description>
   <dependencies>
     <dependency><groupId>io.zeroshift</groupId><artifactId>platform-web</artifactId><version>${project.version}</version></dependency>
+    <dependency><groupId>io.zeroshift</groupId><artifactId>contracts</artifactId><version>${project.version}</version></dependency>
     <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-webmvc</artifactId></dependency>
     <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-thymeleaf</artifactId></dependency>
     <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-jdbc</artifactId></dependency>
@@ -33,6 +34,19 @@
     <dependency><groupId>org.testcontainers</groupId><artifactId>postgresql</artifactId><scope>test</scope></dependency>
   </dependencies>
   <build>
+    <resources>
+      <resource><directory>src/main/resources</directory></resource>
+      <resource>
+        <directory>${project.basedir}/../infra/kafka</directory>
+        <includes><include>topics.sh</include></includes>
+        <targetPath>docs</targetPath>
+      </resource>
+      <resource>
+        <directory>${project.basedir}/../infra/debezium</directory>
+        <includes><include>outbox-connector.json</include><include>register.sh</include></includes>
+        <targetPath>docs</targetPath>
+      </resource>
+    </resources>
     <plugins>
       <plugin><groupId>org.springframework.boot</groupId><artifactId>spring-boot-maven-plugin</artifactId></plugin>
     </plugins>
