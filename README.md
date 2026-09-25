@@ -17,9 +17,11 @@ ZeroShift is a small Spring Boot application with a single dashboard. It copies 
 - **Lossless rollback after cutover:** PostgreSQL's post-cutover writes are captured, replayed back into SQL Server, validated and fenced before SQL Server becomes primary again. Out-of-band SQL Server writes are refused as conflicts, never overwritten
 - **Live Data Changes:** insert, update or delete rows in SQL Server yourself and watch them replay into PostgreSQL, or pause replay to hold the two databases apart
 
+A second lab, on **http://localhost:8080/events**, runs an event-driven order system on Kafka and shows the mechanisms distributed systems rely on, with the same rule: every value on screen comes from a table, a Kafka offset or a connector status. See [Event-driven lab](#event-driven-lab).
+
 ## Quick start
 
-Requires Docker with about 6–8 GB of memory (SQL Server alone needs 2 GB).
+Requires Docker with about 8–10 GB of memory for everything (SQL Server alone needs 2 GB; the event lab and its observability stack about 5 GB).
 
 ```sh
 git clone https://github.com/karimalihussein/zeroshift.git
@@ -43,7 +45,51 @@ Open **http://localhost:8080**. `docker compose up` runs the development stack w
 
 Progress is stage-weighted: snapshot rows 0–80%, catch-up 85%, prepare 90%, ready 95%, freeze 98%, complete 100%. It is not an ETA.
 
-## Architecture
+## Event-driven lab
+
+Five Spring Boot services, one Kafka broker (KRaft), Debezium, and a PostgreSQL database per service:
+
+```
+POST /orders ─► order-service ×2 ──outbox──► Debezium ──► Kafka ──► payment / inventory / shipping
+                (event-sourced order,       (WAL)         │            (each: own DB, outbox, inbox)
+                 saga orchestrator,                       │                     │
+                 lease-guarded timeouts)  ◄── replies ────┴──── outbox ◄────────┘
+                                                          └──► order-query-service (CQRS read model)
+OpenTelemetry agent in every JVM ─► collector ─► Tempo · Loki;  Prometheus scrapes Micrometer ─► Grafana
+```
+
+| Concept | Mechanism | ADR |
+|---|---|---|
+| Dual write vs transactional outbox | State change and outbox row in one transaction; Debezium relays committed WAL inserts | [008](docs/decisions/008-transactional-outbox.md) |
+| At-least-once delivery, idempotency | `processed_message` insert in the handler's transaction; every outcome logged per replica | [009](docs/decisions/009-idempotent-consumer.md) |
+| Saga, compensation, timeouts | Orchestrated by `order-service`, durable `saga_state`, step deadlines | [010](docs/decisions/010-orchestrated-saga.md) |
+| Event sourcing, snapshots, CQRS | `event_store(stream_id, version)`; projection rebuilt by replay | [011](docs/decisions/011-event-sourcing-and-cqrs.md) |
+| Retries, DLQ, circuit breaker | Exponential backoff → `*.dlt`; Resilience4j around the payment gateway | [012](docs/decisions/012-retries-dead-letters-breaker.md) |
+| Consumer groups and rebalancing | Two `order-service` replicas share the reply topics' partitions; crash one, watch them move | |
+| Distributed lock with fencing | PostgreSQL lease with a fencing token checked inside the guarded transaction | [013](docs/decisions/013-lease-with-fencing-tokens.md) |
+| Optimistic concurrency | Event-stream version, saga version and stock row version; *Concurrent reservations* | [011](docs/decisions/011-event-sourcing-and-cqrs.md) |
+| Observability | One trace per order across services and Kafka hops; logs linked by trace id | [014](docs/decisions/014-observability.md) |
+
+The **/events** page follows one order end to end (outbox → Kafka partition and offset → each consumer's decision → saga transition), shows topics, consumer groups and their members per replica, lag, the DLQ, connectors, the scanner lease, and has a lever for every failure. [docs/event-lab-drills.md](docs/event-lab-drills.md) walks through each drill.
+
+| URL | What |
+|---|---|
+| http://localhost:8080/events | Control plane |
+| http://localhost:3000 | Grafana: *ZeroShift event lab* dashboard, Explore for traces (Tempo) and logs (Loki). No login |
+| http://localhost:9090 | Prometheus |
+| http://localhost:18081, :18088 | `order-service` replicas A and B; `/lab/lease` shows the scanner lease |
+| http://localhost:18082, :18084, :18085, :18086 | payment, inventory, shipping, order-query services |
+| http://localhost:18083 | Kafka Connect REST |
+
+OpenSearch is optional, for full-text log search (about 1.5 GB more; OpenSearch Dashboards on :5601):
+
+```sh
+docker compose -f docker-compose.yml -f docker-compose.override.yml -f docker-compose.opensearch.yml up -d
+```
+
+The service images are built from the packaged jars (no hot reload): after changing a service, `docker compose up -d --build <service>`. Each service keeps its own Flyway history (`flyway_schema_history`) apart from the shared platform tables (outbox, inbox, decisions, faults), which are versioned in `flyway_platform_history`.
+
+## Migration lab architecture
 
 ```
 web ──────────────┐
@@ -73,7 +119,8 @@ All Java packages are under `src/main/java/io/zeroshift/`.
 
 - [How consistency is kept](docs/consistency.md): transaction boundaries, the change window, crash recovery and the fence
 - [Live Data Changes](docs/live-changes.md): the interactive CDC experiment and its API
-- [Design decisions](docs/decisions/): change capture, snapshot boundary, batching, checkpointing, cutover, rollback
+- [Design decisions](docs/decisions/): change capture, snapshot boundary, batching, checkpointing, cutover, rollback; outbox, idempotency, saga, event sourcing, retries, lease and fencing, observability
+- [Event lab failure drills](docs/event-lab-drills.md): what each drill breaks and what to watch
 - [Explaining the migration](docs/interview-notes.md): a talk track and common follow-up questions
 - [Verification](docs/verification.md): what was tested and measured
 
@@ -129,6 +176,7 @@ End-to-end checks against a running Compose stack (**both reset the demo data**)
 ```sh
 python3 scripts/verify_demo.py          # traffic, crash/resume, container kill, validation, cutover
 python3 scripts/verify_live_changes.py  # the paused-replay experiment over HTTP
+python3 scripts/verify_event_lab.py     # event lab: failover, lease/fencing, replay, sagas, tracing (adds orders only)
 ```
 
 ### Configuration
@@ -152,6 +200,7 @@ ZeroShift is an educational lab for one two-table application. It is not a gener
 - **Net changes:** Change Tracking reports the latest state per changed key, not every intermediate image.
 - **Freeze length:** the final full validation runs inside the write freeze. That is fine for demo sizes; production systems validate incrementally.
 - **Source fence:** triggers enforce the fence for ordinary DML only. Schema changes during a migration are not supported.
-- **Single instance:** one app instance owns recovery; there is no leader election.
+- **Single instance:** the migration app runs as one instance and owns recovery; there is no leader election. (The event lab's `order-service` does run two replicas, coordinated by a lease.)
+- **Event lab on one broker:** partitions, offsets, consumer groups and rebalancing are real, but with a single Kafka broker there is no replication, so broker failover is out of scope.
 - **Rollback is one-way back:** after a rollback PostgreSQL is a fenced, validated copy as of the switch; forward replication does not resume ([ADR 007](docs/decisions/007-reverse-sync-rollback.md)). Conflicting SQL Server writes are reported, not reconciled.
 - **Local use only:** the app has no authentication, ports bind to loopback, and the credentials in `.env.example` are local demo values. SQL Server Developer edition is licensed for development and testing only.

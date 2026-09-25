@@ -109,3 +109,21 @@ which is why Loki is the default log store.
   records with upcasters; a registry adds a service without a new lesson at this size.
 - No Kafka UI tool: the control plane shows the same facts, tied to the order being followed.
 - No event-sourcing framework (Axon etc.): the store is two tables so the mechanism stays visible.
+
+## 7. Status (2026-09-25)
+
+All eight increments are implemented and verified: `mvn verify` (unit + Testcontainers ITs for
+every module, migration lab included) and `scripts/verify_event_lab.py`, whose 14 drills run
+against the full Compose stack. Deviations from the plan above:
+
+- **Distributed lock:** a hand-written PostgreSQL lease with a fencing token checked inside the
+  guarded transaction instead of ShedLock, so the token is visible and testable
+  ([ADR 013](decisions/013-lease-with-fencing-tokens.md)).
+- **Replicated consumer:** the second replica is `order-service` (the saga consumer and the lease
+  holder), not a participant service. One saga consumer thread per replica, so partitions visibly
+  split and move.
+- **Platform schema:** the shared outbox/inbox tables have their own Flyway history
+  (`flyway_platform_history`), apart from each service's own migrations.
+- **Metrics:** Micrometer (scraped by Prometheus) rather than the agent's metrics exporter; the
+  agent sends traces and logs only. OpenSearch is an optional overlay, Loki the default.
+- **Memory:** the whole stack runs in about 7.5 GB (Docker VM limit here: 9.7 GB).
