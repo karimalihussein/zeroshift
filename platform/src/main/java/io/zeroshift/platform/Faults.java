@@ -1,0 +1,76 @@
+package io.zeroshift.platform;
+
+import static io.zeroshift.platform.db.Tables.LAB_FAULT;
+
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import org.jooq.DSLContext;
+import org.springframework.transaction.TransactionDefinition;
+import org.springframework.transaction.support.TransactionTemplate;
+
+/**
+ * Operator-armed failures, stored in the service's own database. Each trigger is committed in its
+ * own transaction, so a fault that makes the handler roll back is still counted as used: "fail 3
+ * times" fails three deliveries, not the same one forever.
+ */
+public final class Faults {
+  /** Every consumer: halt the JVM after the handler commits but before the offset commit. */
+  public static final String CRASH_AFTER_COMMIT = "crash-after-commit";
+
+  /** Every consumer: throw before processing, exercising retry with backoff and then the DLT. */
+  public static final String TRANSIENT_ERROR = "transient-error";
+
+  private final DSLContext db;
+  private final TransactionTemplate separate;
+
+  public Faults(DSLContext db, TransactionTemplate transactions) {
+    this.db = db;
+    separate = new TransactionTemplate(transactions.getTransactionManager());
+    separate.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+  }
+
+  /** Arms {@code name}; {@code times} null means until cleared. */
+  public void arm(String name, String mode, Integer times) {
+    db.insertInto(LAB_FAULT)
+        .set(LAB_FAULT.NAME, name)
+        .set(LAB_FAULT.MODE, mode)
+        .set(LAB_FAULT.REMAINING, times)
+        .onConflict(LAB_FAULT.NAME)
+        .doUpdate()
+        .set(LAB_FAULT.MODE, mode)
+        .set(LAB_FAULT.REMAINING, times)
+        .set(LAB_FAULT.ARMED_AT, PostgresClock.NOW)
+        .execute();
+  }
+
+  public void clear(String name) {
+    db.deleteFrom(LAB_FAULT).where(LAB_FAULT.NAME.eq(name)).execute();
+  }
+
+  /** The armed mode, if any, using up one trigger. */
+  public Optional<String> trigger(String name) {
+    return separate.execute(
+        s -> {
+          var mode =
+              db.update(LAB_FAULT)
+                  .set(LAB_FAULT.REMAINING, LAB_FAULT.REMAINING.minus(1))
+                  .where(
+                      LAB_FAULT
+                          .NAME
+                          .eq(name)
+                          .and(LAB_FAULT.REMAINING.isNull().or(LAB_FAULT.REMAINING.gt(0))))
+                  .returning(LAB_FAULT.MODE)
+                  .fetchOptional(LAB_FAULT.MODE);
+          db.deleteFrom(LAB_FAULT)
+              .where(LAB_FAULT.NAME.eq(name).and(LAB_FAULT.REMAINING.le(0)))
+              .execute();
+          return mode;
+        });
+  }
+
+  /** For the control plane: name, mode, remaining, armed_at. */
+  public List<Map<String, Object>> armed() {
+    return db.selectFrom(LAB_FAULT).orderBy(LAB_FAULT.NAME).fetchMaps();
+  }
+}

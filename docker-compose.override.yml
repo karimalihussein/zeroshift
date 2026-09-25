@@ -7,16 +7,17 @@ services:
     build: !reset null
     # Same JDK/Maven image as the Dockerfile's build stage.
     image: maven:3.9.11-eclipse-temurin-25
-    working_dir: /workspace
-    command: ["sh", "scripts/dev-server.sh"]
+    working_dir: /workspace/migration-lab
+    command: ["sh", "/workspace/scripts/dev-server.sh"]
     volumes:
       - ./pom.xml:/workspace/pom.xml:ro
-      - ./src:/workspace/src:ro
+      - ./migration-lab/pom.xml:/workspace/migration-lab/pom.xml:ro
+      - ./migration-lab/src:/workspace/migration-lab/src:ro
       - ./scripts/dev-server.sh:/workspace/scripts/dev-server.sh:ro
       # Container-owned: dependency cache and compiled classes survive restarts and never
       # collide with a host IDE's target/.
       - maven-repository:/root/.m2
-      - dev-target:/workspace/target
+      - dev-target:/workspace/migration-lab/target
     healthcheck:
       start_period: 5m # the first start downloads all dependencies
 

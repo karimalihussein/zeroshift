@@ -1,0 +1,31 @@
+# Fixed uids, so dashboards and the control plane's deep links can name them.
+apiVersion: 1
+datasources:
+  - name: Prometheus
+    uid: prometheus
+    type: prometheus
+    url: http://prometheus:9090
+    isDefault: true
+    jsonData:
+      exemplarTraceIdDestinations: [{name: trace_id, datasourceUid: tempo}]
+  - name: Tempo
+    uid: tempo
+    type: tempo
+    url: http://tempo:3200
+    jsonData:
+      serviceMap: {datasourceUid: prometheus}
+      nodeGraph: {enabled: true}
+      tracesToLogsV2:
+        datasourceUid: loki
+        spanStartTimeShift: -5m
+        spanEndTimeShift: 5m
+        customQuery: true
+        query: '{service_name=~".+"} | trace_id="$${__trace.traceId}"'
+  - name: Loki
+    uid: loki
+    type: loki
+    url: http://loki:3100
+    jsonData:
+      # OTLP logs carry trace_id as structured metadata: link each line to its trace.
+      derivedFields:
+        - {name: Trace, matcherType: label, matcherRegex: trace_id, url: '$${__value.raw}', datasourceUid: tempo}

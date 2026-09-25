@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ZeroShift — Live migration control</title>
+  <link rel="stylesheet" th:href="@{/style.css}">
+  <script defer th:src="@{/app.js}"></script>
+  <script defer th:src="@{/live.js}"></script>
+</head>
+<body>
+<svg class="icon-library" aria-hidden="true">
+  <symbol id="icon-database" viewBox="0 0 24 24"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v7c0 1.7 3.6 3 8 3s8-1.3 8-3V5M4 12v7c0 1.7 3.6 3 8 3s8-1.3 8-3v-7"/></symbol>
+  <symbol id="icon-activity" viewBox="0 0 24 24"><path d="M3 12h4l2.2-6 4 12 2.2-6H21"/></symbol>
+  <symbol id="icon-play" viewBox="0 0 24 24"><path d="m8 5 11 7-11 7Z"/></symbol>
+  <symbol id="icon-pause" viewBox="0 0 24 24"><path d="M8 5v14M16 5v14"/></symbol>
+  <symbol id="icon-check" viewBox="0 0 24 24"><path d="m5 12 4 4L19 6"/></symbol>
+  <symbol id="icon-shield" viewBox="0 0 24 24"><path d="M12 3 5 6v5c0 4.5 2.8 8.1 7 10 4.2-1.9 7-5.5 7-10V6Z"/><path d="m9 12 2 2 4-5"/></symbol>
+  <symbol id="icon-refresh" viewBox="0 0 24 24"><path d="M20 7v5h-5M4 17v-5h5"/><path d="M6.1 8A7 7 0 0 1 18 6l2 6M18 16a7 7 0 0 1-12 2l-2-6"/></symbol>
+  <symbol id="icon-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m16.5 16.5 4 4"/></symbol>
+  <symbol id="icon-bolt" viewBox="0 0 24 24"><path d="m13 2-8 12h7l-1 8 8-12h-7Z"/></symbol>
+  <symbol id="icon-arrow" viewBox="0 0 24 24"><path d="M5 12h14M14 7l5 5-5 5"/></symbol>
+  <symbol id="icon-terminal" viewBox="0 0 24 24"><path d="m4 7 5 5-5 5M11 18h9"/></symbol>
+  <symbol id="icon-clear" viewBox="0 0 24 24"><path d="M4 7h16M9.5 7V4.5h5V7M6.5 7l1 13h9l1-13"/></symbol>
+</svg>
+
+<main class="shell">
+  <header class="topbar">
+    <a class="brand" href="/" aria-label="ZeroShift home"><span class="brand-mark"><span></span><span></span><span></span></span><span><strong>ZeroShift</strong><small>Migration control plane</small></span></a>
+    <nav class="lab-nav" aria-label="Labs"><a href="/" aria-current="page">Migration</a><a href="/events">Event-driven</a></nav>
+    <div class="topbar-status"><span id="connection" class="connection" role="status"><i></i> Connecting</span><span class="environment">Local lab</span></div>
+  </header>
+
+  <section class="migration-hero" aria-labelledby="migration-title">
+    <div class="hero-heading"><div><p class="context">SQL Server to PostgreSQL</p><h1 id="migration-title">Live migration</h1></div><div class="hero-state"><span id="run-status" class="status-pill">Ready to begin</span><strong id="percent">0%</strong></div></div>
+    <div id="migration-topology" class="migration-topology">
+      <article class="database-node source-node"><span class="database-icon"><svg><use href="#icon-database"/></svg></span><div><small>Source</small><h2>SQL Server</h2><p><strong id="source-count">—</strong> rows</p><span id="source-detail">Waiting for connection</span></div><em id="source-role">Primary</em></article>
+      <div class="migration-track-wrap">
+        <div class="track-heading"><div><span>Current stage</span><strong id="stage">Idle</strong></div><span id="track-state">Waiting to start</span></div>
+        <div class="migration-track" aria-label="Migration stages">
+          <div class="track-line"><span id="track-fill"></span><i class="data-packet packet-one"></i><i class="data-packet packet-two"></i></div>
+          <div class="stage-node" data-stage="SNAPSHOT"><i>1</i><span>Snapshot</span></div><div class="stage-node" data-stage="CATCH_UP"><i>2</i><span>CDC catch-up</span></div><div class="stage-node" data-stage="PREPARE"><i>3</i><span>Indexes &amp;<br>constraints</span></div><div class="stage-node" data-stage="VALIDATION"><i>4</i><span>Validation</span></div><div class="stage-node" data-stage="CUTOVER"><i>5</i><span>Cutover</span></div>
+        </div>
+        <div class="progress-row"><progress id="progress" value="0" max="100" aria-label="Migration progress"></progress><span id="rows-summary">0 / 0 rows</span></div>
+      </div>
+      <article class="database-node target-node"><span class="database-icon"><svg><use href="#icon-database"/></svg></span><div><small>Target</small><h2>PostgreSQL</h2><p><strong id="target-count">—</strong> rows</p><span id="target-detail">Waiting for connection</span></div><em id="target-role">Target</em></article>
+    </div>
+  </section>
+
+  <section id="completion" class="completion" aria-labelledby="completion-title" hidden>
+    <header class="completion-head"><span class="completion-icon"><svg><use href="#icon-check"/></svg></span><div><h2 id="completion-title">Migration completed successfully</h2><p id="completion-summary">—</p></div><p class="completion-source">Recorded by the backend · survives reload</p></header>
+    <dl class="completion-metrics">
+      <div><dt>Rows migrated</dt><dd id="completion-rows">—</dd></div>
+      <div class="key-metric"><dt>Total migration time</dt><dd id="completion-duration">—</dd><small>Start to primary switch</small></div>
+      <div><dt>Avg throughput</dt><dd><span id="completion-throughput">—</span> <small>rows/sec</small></dd></div>
+      <div class="key-metric"><dt>Write freeze</dt><dd id="completion-freeze">—</dd><small>Actual cutover downtime</small></div>
+      <div><dt>CDC pending</dt><dd id="completion-cdc-pending">—</dd><small><span id="completion-cdc-applied">0</span> events applied</small></div>
+    </dl>
+    <ul class="completion-facts"><li id="completion-primary">PostgreSQL is now Primary</li><li id="completion-validation">Source/target validation passed</li><li id="completion-cdc">CDC fully caught up / 0 pending</li></ul>
+  </section>
+
+  <section id="rollback-panel" class="rollback-panel" aria-labelledby="rollback-title" hidden><div><p class="context">Reverse synchronization</p><h2 id="rollback-title">Rollback available</h2><p id="rollback-message">Post-cutover PostgreSQL writes are being captured.</p></div><div class="rollback-progress"><div><span id="rollback-progress-label">0%</span><span id="rollback-validation">Not checked</span></div><progress id="rollback-progress" value="0" max="100" aria-label="Rollback progress"></progress><p><span><strong id="rollback-pending">0</strong> reverse CDC pending</span><span><strong id="rollback-applied">0</strong> applied</span><span><strong id="rollback-conflicts">0</strong> conflicts</span></p></div><ol id="rollback-steps" class="rollback-steps" aria-label="Rollback stages" hidden><li data-stage="ROLLBACK_PREPARE"><i></i><span>Preparing</span></li><li data-stage="REVERSE_CATCH_UP"><i></i><span>Reverse catch-up</span></li><li data-stage="ROLLBACK_VALIDATION"><i></i><span>Validation</span></li><li data-stage="ROLLBACK_FREEZE"><i></i><span>Write freeze</span></li><li data-stage="FINAL_SYNC"><i></i><span>Final sync</span></li><li data-stage="SWITCH_PRIMARY"><i></i><span>Switching primary</span></li><li data-stage="ROLLED_BACK"><i></i><span>Completed</span></li></ol><ul id="rollback-facts" class="rollback-facts" hidden><li><strong>SQL Server</strong> Primary</li><li><strong>PostgreSQL</strong> Secondary</li><li><strong>Rollback</strong> Completed</li><li><strong id="rollback-data-lost">0</strong> Data lost</li></ul></section>
+
+  <section class="operations-grid" aria-label="Migration operations">
+    <div class="telemetry-panel">
+      <div class="section-heading"><div><p class="context">Backend telemetry</p><h2>Migration health</h2></div><span class="live-indicator"><i></i> Live</span></div>
+      <dl class="telemetry-grid"><div><dt>Primary database</dt><dd id="primary">SQL Server</dd></div><div><dt>Throughput</dt><dd><strong id="rate">0</strong> <small>rows/sec</small></dd></div><div><dt>CDC changes</dt><dd id="cdc">—</dd><small>pending / applied</small></div><div><dt>Checkpoint</dt><dd id="checkpoint">—</dd></div><div><dt>Committed batches</dt><dd id="batch">0</dd></div><div><dt>Validation</dt><dd id="validation">Not checked</dd></div><div><dt>Current table</dt><dd id="table">—</dd></div><div><dt>Rollback posture</dt><dd id="rollback-state">Source is authoritative</dd></div></dl>
+    </div>
+    <aside class="control-panel" aria-labelledby="controls-title">
+      <div class="section-heading"><div><p class="context">Operator controls</p><h2 id="controls-title">Runbook</h2></div></div>
+      <p id="message" role="status" aria-live="polite">Generate demo data, then start the migration.</p>
+      <div class="controls">
+        <fieldset><legend>Prepare</legend><div class="field-row"><label class="seed-rows"><span>Rows per table</span><input id="seed-rows" type="number" min="1" max="10000000" step="1" inputmode="numeric" aria-label="Demo rows per table"></label><button data-action="seed"><svg><use href="#icon-database"/></svg>Generate data</button></div><button data-action="traffic-start" id="traffic-button" class="wide"><svg><use href="#icon-activity"/></svg>Start live traffic</button></fieldset>
+        <fieldset><legend>Migrate</legend><button data-action="start" class="primary-action wide" disabled><svg><use href="#icon-play"/></svg>Start migration</button><div class="button-row"><button data-action="pause"><svg><use href="#icon-pause"/></svg>Pause</button><button data-action="resume"><svg><use href="#icon-play"/></svg>Resume</button></div></fieldset>
+        <fieldset><legend>Verify &amp; switch</legend><div class="button-row"><button data-action="validate"><svg><use href="#icon-shield"/></svg>Validate</button><button data-action="cutover" class="cutover-action"><svg><use href="#icon-arrow"/></svg>Cut over</button></div><p id="cutover-note">Available after CDC catch-up and preparation.</p></fieldset>
+        <fieldset id="rollback-controls" hidden><legend>Rollback</legend><div class="button-row"><button data-action="rollback"><svg><use href="#icon-refresh"/></svg>Roll back</button><button data-action="rollback-abort" class="danger">Abort rollback</button></div><p>Reverse-sync PostgreSQL changes before switching primary back to SQL Server.</p></fieldset>
+        <details class="danger-zone"><summary>Recovery and reset</summary><div><button data-action="crash"><svg><use href="#icon-bolt"/></svg>Simulate crash</button><button data-action="reset" class="danger"><svg><use href="#icon-refresh"/></svg>Reset lab</button></div></details>
+      </div>
+    </aside>
+  </section>
+
+  <section class="traffic-panel" aria-labelledby="traffic-title">
+    <div class="section-heading"><div><p class="context">Application workload</p><h2 id="traffic-title">Live traffic</h2></div><p id="traffic">Traffic stopped</p></div>
+    <div class="traffic-layout"><div class="traffic-route"><span>Client operations</span><i><svg><use href="#icon-activity"/></svg></i><strong id="traffic-target">—</strong></div><dl class="traffic-metrics"><div><dt>Operations/sec</dt><dd id="traffic-rate">0</dd></div><div><dt>Total</dt><dd id="traffic-total">0</dd></div><div><dt>Reads</dt><dd id="traffic-reads">0</dd></div><div><dt>Inserts</dt><dd id="traffic-inserts">0</dd></div><div><dt>Updates</dt><dd id="traffic-updates">0</dd></div><div><dt>Deletes</dt><dd id="traffic-deletes">0</dd></div><div><dt>Errors</dt><dd id="traffic-errors">0</dd></div></dl></div>
+    <p id="traffic-routing" class="panel-note">Committed operations: SQL Server 0 · PostgreSQL 0</p>
+  </section>
+
+  <section class="live" aria-labelledby="live-title">
+    <div class="section-heading"><div><p class="context">Record-level verification</p><h2 id="live-title">Inspect live data</h2></div><p>Change SQL Server, then watch the same record converge in PostgreSQL.</p></div>
+    <div class="live-toolbar"><div class="live-buttons"><button id="live-insert">Insert record</button><button id="live-update">Update migrated record</button><button id="live-delete">Delete migrated record</button><button id="live-cdc"><span class="key__label">Pause CDC replay</span></button></div><form id="inspect-form" class="inspect-form"><label for="record-id">Order ID</label><input id="record-id" type="number" min="1" step="1" required placeholder="100"><button type="submit"><svg><use href="#icon-search"/></svg>Inspect</button></form></div>
+    <p id="live-hint" role="status">Start a migration to inspect live changes.</p>
+    <form id="live-edit" class="live-edit" hidden><div class="subsection-heading"><h3 id="edit-title"></h3><button id="live-cancel" type="button" class="quiet">Cancel</button></div><div class="edit-fields"><label>Customer name<input id="edit-name" maxlength="180" required></label><label>Status<input id="edit-status" maxlength="24" required></label><label>Amount<input id="edit-amount" type="number" min="0" max="999999999999999.9999" step="0.0001" required></label></div><button id="live-save" type="submit" class="primary-action">Apply to SQL Server</button></form>
+    <div id="inspector" class="inspector" hidden><div class="subsection-heading"><h3 id="inspect-title"></h3><p id="record-sync" role="status" aria-live="polite"></p></div><div class="table-wrap"><table class="comparison"><thead><tr><th scope="col">Field</th><th scope="col">SQL Server</th><th scope="col">PostgreSQL</th></tr></thead><tbody id="record-values"></tbody></table></div><p id="record-before"></p><ol id="record-path" aria-label="Real change progress"></ol></div>
+  </section>
+
+  <section class="log-panel" aria-labelledby="log-title">
+    <div class="log-header"><div><p class="context">Durable backend events</p><h2 id="log-title"><svg><use href="#icon-terminal"/></svg>Live log</h2></div><div class="log-tools"><label class="log-search"><svg><use href="#icon-search"/></svg><input id="log-search" type="search" placeholder="Search events" aria-label="Search logs"></label><select id="log-level" aria-label="Filter logs by level"><option value="ALL">All levels</option><option value="SUCCESS">Success</option><option value="INFO">Info</option><option value="WARNING">Warning</option><option value="ERROR">Error</option></select><select id="log-category" aria-label="Filter logs by category"><option value="ALL">All systems</option><option value="MIGRATION">Migration</option><option value="CDC">CDC</option><option value="TRAFFIC">Traffic</option><option value="CUTOVER">Cutover</option><option value="ROLLBACK">Rollback</option></select><button id="log-pause" type="button"><svg><use href="#icon-pause"/></svg>Pause stream</button><button id="log-clear" type="button" title="Hide the events shown so far. The backend keeps them."><svg><use href="#icon-clear"/></svg>Clear</button></div></div>
+    <div class="log-columns" aria-hidden="true"><span>Time</span><span>Age</span><span>Level</span><span>System</span><span>Event</span></div>
+    <div id="logs" class="log-viewer" role="log" aria-live="polite" aria-label="Live migration logs"><p class="log-empty">Waiting for backend events…</p></div>
+    <footer class="log-footer"><span id="log-count">0 events</span><span><i></i> Polling backend every second</span></footer>
+  </section>
+
+  <footer class="page-footer"><span>ZeroShift migration lab</span><span>Real writes · durable checkpoints · no simulated progress</span></footer>
+</main>
+</body>
+</html>

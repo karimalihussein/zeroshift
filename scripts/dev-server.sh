@@ -1,5 +1,6 @@
 #!/bin/sh
-# Development entrypoint used by docker-compose.override.yml.
+# Development entrypoint used by docker-compose.override.yml. Runs from the migration-lab module
+# directory; ../pom.xml is the aggregator that module inherits from.
 # Runs the app with DevTools and recompiles when Java or configuration sources change; DevTools
 # restarts once the compile has finished. Templates, JS and CSS are served straight from src/ by
 # the dev profile, so they need neither a compile nor a restart.
@@ -33,12 +34,13 @@ mvn -B spring-boot:run -Dspring-boot.run.profiles=dev &
 app=$!
 trap 'kill "$app" 2>/dev/null; wait "$app"; exit 143' INT TERM
 
-pom=$(stat -c %y pom.xml)
+poms() { stat -c %y pom.xml ../pom.xml; }
+pom=$(poms)
 sources=$(signature)
 schema=$(migration_signature)
 while kill -0 "$app" 2>/dev/null; do
   sleep 1
-  if [ "$(stat -c %y pom.xml)" != "$pom" ]; then
+  if [ "$(poms)" != "$pom" ]; then
     echo "[dev] pom.xml changed: restarting Maven with the new classpath"
     kill "$app"
     wait "$app" || true

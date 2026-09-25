@@ -1,0 +1,312 @@
+{
+ "uid": "zeroshift-event-lab",
+ "title": "ZeroShift event lab",
+ "schemaVersion": 41,
+ "refresh": "5s",
+ "time": {
+  "from": "now-15m",
+  "to": "now"
+ },
+ "tags": [
+  "zeroshift"
+ ],
+ "panels": [
+  {
+   "type": "timeseries",
+   "title": "Consumer decisions / s",
+   "description": "Every delivery outcome: PROCESSED, DUPLICATE_SKIPPED, RETRY, DEAD_LETTERED. A replay shows as a burst of duplicates.",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "gridPos": {
+    "x": 0,
+    "y": 0,
+    "w": 12,
+    "h": 8
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "expr": "sum by (consumer, decision) (rate(zeroshift_consumer_decisions_total[1m]))",
+     "legendFormat": "{{consumer}} {{decision}}"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short"
+    },
+    "overrides": []
+   },
+   "id": 1
+  },
+  {
+   "type": "timeseries",
+   "title": "Consumer lag (records)",
+   "description": "What each consumer still has to read. A paused consumer or a crashed replica makes it climb; a rebalance hands its partitions to the survivor.",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "gridPos": {
+    "x": 12,
+    "y": 0,
+    "w": 12,
+    "h": 8
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "expr": "sum by (service, topic) (kafka_consumer_fetch_manager_records_lag)",
+     "legendFormat": "{{service}} {{topic}}"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short"
+    },
+    "overrides": []
+   },
+   "id": 2
+  },
+  {
+   "type": "state-timeline",
+   "title": "Payment gateway circuit breaker",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "gridPos": {
+    "x": 0,
+    "y": 8,
+    "w": 12,
+    "h": 5
+   },
+   "description": "CLOSED: calls pass. OPEN: calls fail fast without touching the gateway. HALF_OPEN: probing.",
+   "targets": [
+    {
+     "refId": "A",
+     "expr": "max by (state) (resilience4j_circuitbreaker_state{state=~\"closed|open|half_open\"}) == 1",
+     "legendFormat": "{{state}}"
+    }
+   ],
+   "options": {
+    "showValue": "never",
+    "mergeValues": true
+   },
+   "fieldConfig": {
+    "defaults": {},
+    "overrides": []
+   },
+   "id": 3
+  },
+  {
+   "type": "timeseries",
+   "title": "Gateway calls / s",
+   "description": "",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "gridPos": {
+    "x": 12,
+    "y": 8,
+    "w": 12,
+    "h": 5
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "expr": "sum by (kind) (rate(resilience4j_circuitbreaker_calls_seconds_count[1m]))",
+     "legendFormat": "{{kind}}"
+    },
+    {
+     "refId": "B",
+     "expr": "sum(rate(resilience4j_circuitbreaker_not_permitted_calls_total[1m]))",
+     "legendFormat": "rejected (breaker open)"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short"
+    },
+    "overrides": []
+   },
+   "id": 4
+  },
+  {
+   "type": "timeseries",
+   "title": "Saga timeouts and fenced scanners",
+   "description": "Timeouts are compensated by whichever replica holds the scanner lease. \"Fenced off\" is a stale holder whose token was superseded while it stalled: it wrote nothing.",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "gridPos": {
+    "x": 0,
+    "y": 13,
+    "w": 12,
+    "h": 8
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "expr": "sum by (service) (increase(zeroshift_saga_timeouts_total[1m]))",
+     "legendFormat": "timeouts on {{service}}"
+    },
+    {
+     "refId": "B",
+     "expr": "sum by (service) (increase(zeroshift_lease_fenced_total[1m]))",
+     "legendFormat": "fenced off on {{service}}"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short"
+    },
+    "overrides": []
+   },
+   "id": 5
+  },
+  {
+   "type": "timeseries",
+   "title": "HTTP requests / s",
+   "description": "",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "gridPos": {
+    "x": 12,
+    "y": 13,
+    "w": 12,
+    "h": 8
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "expr": "sum by (service) (rate(http_server_requests_seconds_count{uri!~\"/actuator.*\"}[1m]))",
+     "legendFormat": "{{service}}"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short"
+    },
+    "overrides": []
+   },
+   "id": 6
+  },
+  {
+   "type": "timeseries",
+   "title": "JVM heap used",
+   "description": "",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "gridPos": {
+    "x": 0,
+    "y": 21,
+    "w": 12,
+    "h": 8
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "expr": "sum by (service) (jvm_memory_used_bytes{area=\"heap\"})",
+     "legendFormat": "{{service}}"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "bytes"
+    },
+    "overrides": []
+   },
+   "id": 7
+  },
+  {
+   "type": "timeseries",
+   "title": "Hikari connections in use",
+   "description": "",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "gridPos": {
+    "x": 12,
+    "y": 21,
+    "w": 12,
+    "h": 8
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "expr": "sum by (service) (hikaricp_connections_active)",
+     "legendFormat": "{{service}}"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short"
+    },
+    "overrides": []
+   },
+   "id": 8
+  },
+  {
+   "type": "nodeGraph",
+   "title": "Service graph (from traces)",
+   "datasource": {
+    "type": "tempo",
+    "uid": "tempo"
+   },
+   "gridPos": {
+    "x": 0,
+    "y": 29,
+    "w": 24,
+    "h": 12
+   },
+   "description": "Built by Tempo from spans: HTTP calls and Kafka hops (producer \u2192 consumer) between services.",
+   "targets": [
+    {
+     "refId": "A",
+     "queryType": "serviceMap",
+     "datasource": {
+      "type": "tempo",
+      "uid": "tempo"
+     }
+    }
+   ],
+   "id": 9
+  },
+  {
+   "type": "logs",
+   "title": "Warnings and errors",
+   "datasource": {
+    "type": "loki",
+    "uid": "loki"
+   },
+   "gridPos": {
+    "x": 0,
+    "y": 41,
+    "w": 24,
+    "h": 12
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "expr": "{service_name=~\".+\"} | severity_text=~\"WARN|ERROR\""
+    }
+   ],
+   "options": {
+    "showTime": true,
+    "wrapLogMessage": true,
+    "sortOrder": "Descending"
+   },
+   "id": 10
+  }
+ ],
+ "editable": true
+}

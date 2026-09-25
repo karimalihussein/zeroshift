@@ -2,34 +2,68 @@
 <project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
   <modelVersion>4.0.0</modelVersion>
   <parent><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-parent</artifactId><version>4.1.1</version><relativePath/></parent>
-  <groupId>io.zeroshift</groupId><artifactId>zeroshift</artifactId><version>1.0.0</version>
-  <name>ZeroShift</name><description>A readable, real SQL Server to PostgreSQL migration lab</description>
-  <properties><java.version>25</java.version><junit-jupiter.version>5.14.0</junit-jupiter.version><testcontainers.version>1.21.4</testcontainers.version></properties>
-  <dependencies>
-    <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-webmvc</artifactId></dependency>
-    <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-thymeleaf</artifactId></dependency>
-    <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-jdbc</artifactId></dependency>
-    <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-validation</artifactId></dependency>
-    <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-actuator</artifactId></dependency>
-    <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-flyway</artifactId></dependency>
-    <dependency><groupId>org.flywaydb</groupId><artifactId>flyway-database-postgresql</artifactId></dependency>
-    <dependency><groupId>io.micrometer</groupId><artifactId>micrometer-registry-prometheus</artifactId><scope>runtime</scope></dependency>
-    <dependency><groupId>com.microsoft.sqlserver</groupId><artifactId>mssql-jdbc</artifactId></dependency>
-    <dependency><groupId>org.postgresql</groupId><artifactId>postgresql</artifactId></dependency>
-    <!-- Development only: optional, and excluded from the repackaged production jar. -->
-    <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-devtools</artifactId><scope>runtime</scope><optional>true</optional></dependency>
-    <dependency><groupId>org.junit.jupiter</groupId><artifactId>junit-jupiter</artifactId><version>${junit-jupiter.version}</version><scope>test</scope></dependency>
-    <dependency><groupId>org.mockito</groupId><artifactId>mockito-core</artifactId><scope>test</scope></dependency>
-    <dependency><groupId>org.assertj</groupId><artifactId>assertj-core</artifactId><scope>test</scope></dependency>
-    <dependency><groupId>org.awaitility</groupId><artifactId>awaitility</artifactId><scope>test</scope></dependency>
-    <dependency><groupId>org.testcontainers</groupId><artifactId>junit-jupiter</artifactId><version>${testcontainers.version}</version><scope>test</scope></dependency>
-    <dependency><groupId>org.testcontainers</groupId><artifactId>mssqlserver</artifactId><version>${testcontainers.version}</version><scope>test</scope></dependency>
-    <dependency><groupId>org.testcontainers</groupId><artifactId>postgresql</artifactId><version>${testcontainers.version}</version><scope>test</scope></dependency>
-  </dependencies>
-  <build><plugins>
-    <plugin><groupId>org.springframework.boot</groupId><artifactId>spring-boot-maven-plugin</artifactId></plugin>
-    <plugin><groupId>org.apache.maven.plugins</groupId><artifactId>maven-surefire-plugin</artifactId><configuration><excludes><exclude>**/*IT.java</exclude></excludes></configuration></plugin>
-    <plugin><groupId>org.apache.maven.plugins</groupId><artifactId>maven-failsafe-plugin</artifactId><executions><execution><goals><goal>integration-test</goal><goal>verify</goal></goals></execution></executions></plugin>
-    <plugin><groupId>com.diffplug.spotless</groupId><artifactId>spotless-maven-plugin</artifactId><version>3.0.0</version><configuration><java><googleJavaFormat><version>1.28.0</version></googleJavaFormat></java></configuration></plugin>
-  </plugins></build>
+  <groupId>io.zeroshift</groupId><artifactId>zeroshift-parent</artifactId><version>1.0.0</version><packaging>pom</packaging>
+  <name>ZeroShift</name><description>Hands-on labs: a real SQL Server to PostgreSQL migration and an event-driven order system</description>
+  <modules>
+    <module>contracts</module>
+    <module>platform</module>
+    <module>order-service</module>
+    <module>payment-service</module>
+    <module>inventory-service</module>
+    <module>shipping-service</module>
+    <module>order-query-service</module>
+    <module>migration-lab</module>
+  </modules>
+  <properties>
+    <java.version>25</java.version><testcontainers.version>1.21.4</testcontainers.version>
+    <!-- jOOQ code generation (profile jooq-codegen): modules with a database opt in. -->
+    <jooq.codegen.skip>true</jooq.codegen.skip>
+    <jooq.migrations>${project.basedir}/src/main/resources/db/migration</jooq.migrations>
+    <jooq.package>unset</jooq.package>
+  </properties>
+  <dependencyManagement>
+    <dependencies>
+      <dependency><groupId>org.testcontainers</groupId><artifactId>testcontainers-bom</artifactId><version>${testcontainers.version}</version><type>pom</type><scope>import</scope></dependency>
+    </dependencies>
+  </dependencyManagement>
+  <build>
+    <!-- Stable jar names, so one Dockerfile can package any service module. -->
+    <finalName>${project.artifactId}</finalName>
+    <plugins>
+      <plugin><groupId>org.apache.maven.plugins</groupId><artifactId>maven-surefire-plugin</artifactId><configuration><excludes><exclude>**/*IT.java</exclude></excludes></configuration></plugin>
+      <plugin><groupId>org.apache.maven.plugins</groupId><artifactId>maven-failsafe-plugin</artifactId><executions><execution><goals><goal>integration-test</goal><goal>verify</goal></goals></execution></executions></plugin>
+      <!-- Generated jOOQ classes are committed here, outside src/main/java (and so outside spotless). -->
+      <plugin><groupId>org.codehaus.mojo</groupId><artifactId>build-helper-maven-plugin</artifactId>
+        <executions><execution><id>jooq-sources</id><phase>generate-sources</phase><goals><goal>add-source</goal></goals>
+          <configuration><sources><source>${project.basedir}/src/generated/java</source></sources></configuration></execution></executions></plugin>
+      <plugin><groupId>com.diffplug.spotless</groupId><artifactId>spotless-maven-plugin</artifactId><version>3.0.0</version><configuration><java><googleJavaFormat><version>1.28.0</version></googleJavaFormat></java></configuration></plugin>
+    </plugins>
+  </build>
+  <profiles>
+    <!--
+      Regenerates the jOOQ classes of every module with a database, from its Flyway migrations
+      applied to a real PostgreSQL (Testcontainers). Run after adding a migration, then commit:
+        mvn -Pjooq-codegen -DskipTests process-test-classes
+    -->
+    <profile>
+      <id>jooq-codegen</id>
+      <dependencies>
+        <dependency><groupId>org.jooq</groupId><artifactId>jooq-codegen</artifactId><scope>test</scope></dependency>
+      </dependencies>
+      <build><plugins>
+        <plugin><groupId>org.codehaus.mojo</groupId><artifactId>exec-maven-plugin</artifactId>
+          <executions><execution><id>jooq-codegen</id><phase>process-test-classes</phase><goals><goal>java</goal></goals>
+            <configuration>
+              <skip>${jooq.codegen.skip}</skip>
+              <mainClass>io.zeroshift.platform.testing.JooqCodegen</mainClass>
+              <classpathScope>test</classpathScope>
+              <arguments>
+                <argument>${jooq.migrations}</argument>
+                <argument>${jooq.package}</argument>
+                <argument>${project.basedir}/src/generated/java</argument>
+              </arguments>
+            </configuration></execution></executions></plugin>
+      </plugins></build>
+    </profile>
+  </profiles>
 </project>

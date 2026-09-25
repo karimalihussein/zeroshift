@@ -11,6 +11,42 @@
         ],
         "createdAt": "2026-09-24T15:00:54.335Z",
         "reason": "model triage: the only one-sided 3px borders in this file are .branch--source/.branch--target, the application-feeder route lines of the signal-box track drawing, not card accents"
+      },
+      {
+        "rule": "design-system-color",
+        "value": "#000",
+        "files": [
+          "migration-lab/src/main/resources/static/events.css"
+        ],
+        "createdAt": "2026-09-25T12:22:40.681Z",
+        "reason": "model triage: opaque stop of the tab bar's mask-image gradient, an alpha mask, never a painted colour"
+      },
+      {
+        "rule": "design-system-color",
+        "value": "rgba(120, 160, 255, .35)",
+        "files": [
+          "migration-lab/src/main/resources/static/events.css"
+        ],
+        "createdAt": "2026-09-25T12:22:40.752Z",
+        "reason": "model triage: ::selection tint inside the code-night payload block, where the page's light selection colour would be invisible"
+      },
+      {
+        "rule": "design-system-color",
+        "value": "rgba(28, 45, 74, .12)",
+        "files": [
+          "migration-lab/src/main/resources/static/events.css"
+        ],
+        "createdAt": "2026-09-25T12:22:40.814Z",
+        "reason": "model triage: hover lift shadow on rail stops, same rgba(28,45,74) base as the --shadow token at a different alpha"
+      },
+      {
+        "rule": "design-system-radius",
+        "value": "2px",
+        "files": [
+          "migration-lab/src/main/resources/static/events.css"
+        ],
+        "createdAt": "2026-09-25T12:22:40.874Z",
+        "reason": "model triage: rounded ends of the 2px rail connector and tab underline strokes, line caps rather than a container shape"
       }
     ]
   }

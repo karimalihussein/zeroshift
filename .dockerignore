@@ -1,6 +1,9 @@
 .git
 .env
+.impeccable
 node_modules
+**/target
 target
 docs
+scripts/*.py
 *.log

@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ZeroShift — Event-driven lab</title>
+  <link rel="icon" th:href="@{/favicon.svg}">
+  <link rel="stylesheet" th:href="@{/style.css}">
+  <link rel="stylesheet" th:href="@{/events.css}">
+  <script defer th:src="@{/events.js}"></script>
+</head>
+<body th:attr="data-grafana=${grafanaUrl}">
+<!--
+  THESIS: One order is one causal graph. Every message it produced is a node linked to the message that
+  caused it, laid out in service lanes, each node carrying its own outbox → Debezium → Kafka → consumer
+  proof. Refuses the stacked dashboard of equal panels.
+  OWN-WORLD: ZeroShift control plane: cool grey canvas, white panels, ink #172033, blue for selected and
+  waiting; green done, amber retrying, violet compensated, red failed. System sans, mono only for
+  ids, topics and offsets.
+  STORY: Send an order (random or hand-edited), watch its messages arrive lane by lane from real
+  backend state, click any node or stage to inspect payload, headers, offsets and decisions.
+  FIRST VIEWPORT: 10-stop flow rail across the top; composer strip beneath; causation graph (left,
+  ~2/3) with inspector (right, sticky). Primary action: Send order, right end of the composer.
+  FORM: causation graph, #5 of 7 grounded structures, user-locked; seed fe36de25.
+  FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, DESIGN.md, and every shipping raster carrying its provenance
+-->
+<main class="shell events-shell">
+  <header class="topbar">
+    <a class="brand" href="/" aria-label="ZeroShift home"><span class="brand-mark"><span></span><span></span><span></span></span><span><strong>ZeroShift</strong><small>Distributed systems control plane</small></span></a>
+    <nav class="lab-nav" aria-label="Labs"><a href="/">Migration</a><a href="/events" aria-current="page">Event-driven</a></nav>
+    <div class="topbar-status"><span id="connection" class="connection" role="status"><i></i> Connecting</span><a id="grafana-link" class="environment" target="_blank" rel="noopener" hidden>Grafana</a><span class="environment">Local lab</span></div>
+  </header>
+
+  <section class="flow" aria-labelledby="flow-title">
+    <div class="flow-head">
+      <h1 id="flow-title">Follow an order through the system</h1>
+      <p id="flow-note" class="flow-note">Each stop reads the running system: databases, Debezium, Kafka and the services themselves.</p>
+    </div>
+    <ol id="rail" class="rail" aria-label="Stages from request to projection"></ol>
+    <ul class="legend" aria-label="State legend">
+      <li class="s-done">Done</li><li class="s-waiting">Waiting</li><li class="s-retrying">Retrying</li><li class="s-compensated">Compensated</li><li class="s-failed">Failed</li><li class="s-idle">Not reached</li>
+    </ul>
+  </section>
+
+  <section class="composer" aria-labelledby="composer-title">
+    <div class="composer-title">
+      <h2 id="composer-title">Send a test order</h2>
+      <p>POST /orders through the control plane. Every send is new data.</p>
+    </div>
+    <form id="composer" class="composer-form" novalidate>
+      <label class="field customer-field"><span>Customer</span><input id="customer" maxlength="40" autocomplete="off" required></label>
+      <fieldset class="field lines-field"><legend>Items</legend><div id="lines" class="lines"></div><button id="add-line" type="button" class="link-button">Add item</button></fieldset>
+      <label class="field scenario-field"><span>What should happen</span><select id="scenario"></select><small id="scenario-note"></small></label>
+      <div class="composer-actions">
+        <button id="randomize" type="button" class="icon-button" title="New random customer and items"></button>
+        <button id="send" type="submit" class="primary-action send-button"></button>
+      </div>
+      <details id="json-editor" class="json-editor">
+        <summary>Request body <span class="mono">JSON</span></summary>
+        <textarea id="json" spellcheck="false" aria-label="Request body as JSON"></textarea>
+        <p id="json-error" class="json-error" role="alert"></p>
+      </details>
+    </form>
+    <p id="message" class="composer-message" role="status" aria-live="polite"></p>
+  </section>
+
+  <section class="workbench" aria-label="Followed order">
+    <div class="graph-panel">
+      <header class="graph-head">
+        <div class="order-picker">
+          <label for="order-select" class="sr-only">Followed order</label>
+          <select id="order-select"></select>
+        </div>
+        <div id="order-facts" class="order-facts"></div>
+        <div id="order-tools" class="order-tools"></div>
+      </header>
+      <div id="graph" class="graph" tabindex="-1"></div>
+    </div>
+    <aside id="inspector" class="inspector" aria-label="Inspector" aria-live="polite"></aside>
+  </section>
+
+  <section class="system" aria-label="System state">
+    <div id="tabs" class="tabs" role="tablist" aria-label="System views"></div>
+    <div id="tab-panel" class="tab-panel" role="tabpanel"></div>
+  </section>
+
+  <footer class="page-footer"><span>ZeroShift event-driven lab</span><span id="footer-note">Real Kafka · Debezium CDC · durable state · no simulated progress</span></footer>
+</main>
+</body>
+</html>

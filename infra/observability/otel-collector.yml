@@ -1,0 +1,21 @@
+# Every JVM's OpenTelemetry agent sends traces and logs here (OTLP). The collector batches them and
+# fans out: traces to Tempo, logs to Loki. Metrics do not pass through: Prometheus scrapes each
+# service's Micrometer endpoint directly.
+receivers:
+  otlp:
+    protocols:
+      grpc: {endpoint: 0.0.0.0:4317}
+      http: {endpoint: 0.0.0.0:4318}
+processors:
+  memory_limiter: {check_interval: 1s, limit_mib: 150}
+  batch: {timeout: 1s}
+exporters:
+  otlp/tempo:
+    endpoint: tempo:4317
+    tls: {insecure: true}
+  otlphttp/loki:
+    endpoint: http://loki:3100/otlp
+service:
+  pipelines:
+    traces: {receivers: [otlp], processors: [memory_limiter, batch], exporters: [otlp/tempo]}
+    logs: {receivers: [otlp], processors: [memory_limiter, batch], exporters: [otlphttp/loki]}

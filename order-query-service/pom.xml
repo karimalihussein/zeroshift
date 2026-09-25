@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+  <parent><groupId>io.zeroshift</groupId><artifactId>zeroshift-parent</artifactId><version>1.0.0</version></parent>
+  <artifactId>order-query-service</artifactId>
+  <properties><jooq.codegen.skip>false</jooq.codegen.skip><jooq.package>io.zeroshift.query.db</jooq.package></properties>
+  <name>ZeroShift order query service</name><description>CQRS read side: order projections rebuilt by replaying order.events</description>
+  <dependencies>
+    <dependency><groupId>io.zeroshift</groupId><artifactId>platform</artifactId><version>${project.version}</version></dependency>
+    <dependency><groupId>io.zeroshift</groupId><artifactId>platform</artifactId><version>${project.version}</version><type>test-jar</type><scope>test</scope></dependency>
+    <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-test</artifactId><scope>test</scope></dependency>
+    <dependency><groupId>org.awaitility</groupId><artifactId>awaitility</artifactId><scope>test</scope></dependency>
+    <dependency><groupId>org.testcontainers</groupId><artifactId>postgresql</artifactId><scope>test</scope></dependency>
+    <dependency><groupId>org.testcontainers</groupId><artifactId>kafka</artifactId><scope>test</scope></dependency>
+  </dependencies>
+  <build>
+    <plugins>
+      <plugin><groupId>org.springframework.boot</groupId><artifactId>spring-boot-maven-plugin</artifactId></plugin>
+    </plugins>
+  </build>
+</project>
