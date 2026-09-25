@@ -7,9 +7,6 @@ spring:
     password: ${DB_PASSWORD:zeroshift_local}
     hikari:
       maximum-pool-size: 10
-  flyway:
-    # Shared outbox/inbox tables (platform, versions 0.x) first, then this service's own.
-    locations: classpath:db/platform,classpath:db/migration
   kafka:
     bootstrap-servers: ${KAFKA_BOOTSTRAP:localhost:9094}
     consumer:

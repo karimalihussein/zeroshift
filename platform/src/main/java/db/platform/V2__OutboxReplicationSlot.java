@@ -10,9 +10,9 @@ import org.flywaydb.core.api.migration.Context;
  * refuses to create a slot inside a transaction that has written anything.
  *
  * <p>A slot nobody reads retains WAL forever, so a service without an outbox connector opts out
- * with {@code spring.flyway.placeholders.outboxSlot=false}.
+ * with {@code zeroshift.outbox-slot=false}.
  */
-public class V0_2__OutboxReplicationSlot extends BaseJavaMigration {
+public class V2__OutboxReplicationSlot extends BaseJavaMigration {
   @Override
   public boolean canExecuteInTransaction() {
     return false;

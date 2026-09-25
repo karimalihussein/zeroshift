@@ -2,9 +2,13 @@ package io.zeroshift.platform;
 
 import io.zeroshift.contracts.MalformedMessageException;
 import io.zeroshift.contracts.Topics;
+import java.util.Map;
 import java.util.Objects;
+import javax.sql.DataSource;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.common.TopicPartition;
+import org.flywaydb.core.Flyway;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.kafka.autoconfigure.ConcurrentKafkaListenerContainerFactoryConfigurer;
 import org.springframework.context.annotation.*;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -25,18 +29,41 @@ public class PlatformConfiguration {
   /** Four retries at 0.5 s, 1 s, 2 s and 4 s, then the dead-letter topic. */
   public static final int MAX_RETRIES = 4;
 
+  /**
+   * The platform's tables (outbox, inbox, decisions, faults) are versioned apart from the service's
+   * own schema, in their own history table, so either can gain a migration without the other's
+   * version numbers getting in the way. Runs before any platform component is created.
+   */
   @Bean
-  Outbox outbox(JdbcTemplate jdbc) {
+  PlatformSchema platformSchema(
+      DataSource dataSource, @Value("${zeroshift.outbox-slot:true}") boolean outboxSlot) {
+    Flyway.configure()
+        .dataSource(dataSource)
+        .locations("classpath:db/platform")
+        .table("flyway_platform_history")
+        .baselineOnMigrate(true)
+        .baselineVersion("0")
+        .placeholders(Map.of("outboxSlot", Boolean.toString(outboxSlot)))
+        .load()
+        .migrate();
+    return new PlatformSchema();
+  }
+
+  /** Marker: depending on it guarantees the platform tables exist. */
+  public static final class PlatformSchema {}
+
+  @Bean
+  Outbox outbox(JdbcTemplate jdbc, PlatformSchema schema) {
     return new Outbox(jdbc);
   }
 
   @Bean
-  DecisionLog decisionLog(JdbcTemplate jdbc) {
+  DecisionLog decisionLog(JdbcTemplate jdbc, PlatformSchema schema) {
     return new DecisionLog(jdbc);
   }
 
   @Bean
-  Faults faults(JdbcTemplate jdbc, TransactionTemplate transactions) {
+  Faults faults(JdbcTemplate jdbc, TransactionTemplate transactions, PlatformSchema schema) {
     return new Faults(jdbc, transactions);
   }
 
