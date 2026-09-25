@@ -1047,6 +1047,7 @@ function renderAll() {
   renderGraph();
   renderInspector();
   renderLabs();
+  renderKafka();
   renderTabs();
 }
 async function refresh() {
@@ -1058,7 +1059,7 @@ async function refresh() {
     el('connection').classList.remove('disconnected');
     if (!draft.items.length && Array.isArray(state.catalog)) regenerate();
     else renderComposer();
-    await Promise.all([refreshJourney(), fetch('/api/events/labs').then(r => r.ok ? r.json() : null).then(v => { labs = v; }).catch(() => {})]);
+    await Promise.all([refreshJourney(), refreshKafka(), fetch('/api/events/labs').then(r => r.ok ? r.json() : null).then(v => { labs = v; }).catch(() => {})]);
     renderAll();
   } catch {
     el('connection').replaceChildren(h('i'), ' Disconnected');

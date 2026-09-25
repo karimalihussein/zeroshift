@@ -70,6 +70,7 @@ OpenTelemetry agent in every JVM ─► collector ─► Tempo · Loki;  Prometh
 | Optimistic concurrency | Event-stream version, saga version and stock row version; *Concurrent reservations* | [011](docs/decisions/011-event-sourcing-and-cqrs.md) |
 | Observability | One trace per order across services and Kafka hops; logs linked by trace id | [014](docs/decisions/014-observability.md) |
 | Typed persistence | Flyway → PostgreSQL → generated jOOQ classes; no hand-built SQL strings | [015](docs/decisions/015-jooq-persistence.md) |
+| Kafka internals (Phase 2) | A separate 3-node KRaft cluster (profile `kafka-lab`): controller quorum, leader failure under load, acks=1 vs acks=all, min.insync.replicas, idempotent retries, unclean election, at-most/at-least/exactly-once with real worker crashes | [017](docs/decisions/017-kafka-lab-cluster.md), [labs](docs/labs.md#phase-2-kafka-internals) |
 | HTTP API conventions | Typed records; lists as `{data, meta}`; errors as `application/problem+json` with a stable `code`, request id and trace id; one shared `platform-web` module | [016](docs/decisions/016-http-api-conventions.md) |
 | API-edge idempotency | *Experiments → Client retries*: a timed-out client's retry doubles the order; an `Idempotency-Key` makes it one | [labs](docs/labs.md) |
 | Ordering and partitioning | *Experiments → Ordering*: wrong keys, adding partitions in flight, hot keys; a sequence guard and replay recover | [labs](docs/labs.md) |
@@ -85,6 +86,13 @@ The **/events** page follows one order end to end (outbox → Kafka partition an
 | http://localhost:18081, :18088 | `order-service` replicas A and B; `/lab/lease` shows the scanner lease |
 | http://localhost:18082, :18084, :18085, :18086 | payment, inventory, shipping, order-query services |
 | http://localhost:18083 | Kafka Connect REST |
+
+The Kafka internals lab needs its own 3-node cluster, a Compose profile so the everyday stack stays small (about 1.15 GB more):
+
+```sh
+docker compose --profile kafka-lab up -d
+python3 scripts/verify_event_lab.py kafka     # its 7 drills
+```
 
 OpenSearch is optional, for full-text log search (about 1.5 GB more; OpenSearch Dashboards on :5601):
 
@@ -124,7 +132,7 @@ All Java packages are under `src/main/java/io/zeroshift/`.
 
 - [How consistency is kept](docs/consistency.md): transaction boundaries, the change window, crash recovery and the fence
 - [Live Data Changes](docs/live-changes.md): the interactive CDC experiment and its API
-- [Design decisions](docs/decisions/): change capture, snapshot boundary, batching, checkpointing, cutover, rollback; outbox, idempotency, saga, event sourcing, retries, lease and fencing, observability, jOOQ, HTTP API conventions
+- [Design decisions](docs/decisions/): change capture, snapshot boundary, batching, checkpointing, cutover, rollback; outbox, idempotency, saga, event sourcing, retries, lease and fencing, observability, jOOQ, HTTP API conventions, the Kafka lab cluster
 - [Event lab failure drills](docs/event-lab-drills.md): what each drill breaks and what to watch
 - [Experiments](docs/labs.md): the learning labs (Learn → Trigger → Observe → Break → Understand → Fix → Recover)
 - [Explaining the migration](docs/interview-notes.md): a talk track and common follow-up questions

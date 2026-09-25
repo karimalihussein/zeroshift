@@ -4,6 +4,7 @@
 Every check drives the real system (HTTP, Kafka, crashes) and asserts on what it recorded:
 service state, consumer decisions, Kafka offsets, the lease table, Tempo, Loki and Prometheus.
 Run all drills, or name some: scripts/verify_event_lab.py happy failover lease
+("kafka" names the Phase 2 drills, which need the kafka-lab Compose profile.)
 """
 import json
 import subprocess
@@ -437,13 +438,151 @@ def drill_lab_read_your_writes():
     ok(f'recovered: token read 200 ({token["read"]["orderStatus"]}) after waiting {token["read"].get("waitedMs", 0)} ms')
 
 
+# ---- Phase 2: Kafka internals, on the 3-node lab cluster (Compose profile kafka-lab) ----------------
+KLAB = f'{LAB}/api/kafka-lab'
+
+
+def klab(path, method='POST', timeout=180):
+    return call(f'{KLAB}{path}', method, timeout=timeout)
+
+
+def kstate():
+    return call(f'{KLAB}/state', timeout=10)
+
+
+def kpart(state, topic, p=0):
+    """The partition as last observed; KeyError while the cluster is not answering (wait_for retries)."""
+    for t in state['cluster']['topics']:
+        if t['name'] == topic:
+            return t['partitions'][p]
+    raise KeyError(f'{topic} not in this snapshot')
+
+
+def kafka_running():
+    state = try_call(f'{KLAB}/state')
+    return bool(state and state['cluster']['reachable'] and len(state['cluster']['nodes']) == 3)
+
+
+def drill_kafka_quorum():
+    """Kill the controller quorum leader: the two remaining voters elect another."""
+    klab('/reset')
+    s = kstate()
+    leader = s['cluster']['quorum']['leaderId']
+    assert all(n['state'] == 'running' and n['registeredBroker'] for n in s['cluster']['nodes']), s['cluster']['nodes']
+    assert all(p['isr'] == [1, 2, 3] for p in next(t for t in s['cluster']['topics'] if t['name'] == 'lab.replicated')['partitions'])
+    ok(f'3 nodes up, quorum leader node {leader}, lab.replicated: 3 partitions, ISR [1, 2, 3] each')
+    klab(f'/nodes/{leader}/kill')
+    new = wait_for(lambda: (q := kstate()['cluster']['quorum']) and q['leaderId'] not in (None, leader) and q, 'a new quorum leader', 30)
+    ok(f'killed node {leader}: node {new["leaderId"]} leads the quorum, epoch {new["leaderEpoch"]}')
+    klab('/recover')
+    ok('recovered: all three nodes registered again')
+
+
+def drill_kafka_failover():
+    """Kill a partition leader under traffic: nothing acknowledged is lost, nothing is duplicated."""
+    klab('/recover')
+    klab('/traffic/start')
+    wait_for(lambda: kstate()['traffic']['consumed'] > 40, 'traffic to flow', 30)
+    leader = wait_for(lambda: kpart(kstate(), 'lab.replicated')['leader'], 'lab.replicated-0 to have a leader', 30)
+    klab(f'/nodes/{leader}/kill')
+    moved = wait_for(lambda: (p := kpart(kstate(), 'lab.replicated')) and p['leader'] not in (None, leader) and leader not in p['isr'] and p, 'a new leader', 30)
+    ok(f'killed node {leader} under 20 writes/s: lab.replicated-0 now led by node {moved["leader"]}, ISR {moved["isr"]}')
+    klab('/recover')
+    wait_for(lambda: all(len(p['isr']) == 3 for p in next(t for t in kstate()['cluster']['topics'] if t['name'] == 'lab.replicated')['partitions']), 'the ISR to be whole again', 60)
+    v = klab('/traffic/stop')
+    assert v['lostAcknowledged'] == 0 and v['duplicates'] == 0 and v['acked'] > 40, v
+    ok(f'recovered, node {leader} back in the ISR: {v["acked"]} acknowledged, 0 lost, 0 duplicated, {v["retries"]} retries, slowest ack {v["maxLatencyMs"]} ms')
+
+
+def drill_kafka_acks():
+    """acks=1 loses acknowledged records when the leader crashes first; acks=all does not."""
+    klab('/recover')
+    one = klab('/scenarios/acks?acks=1')['result']
+    assert one['acknowledged'] == [6, 7, 8, 9, 10] and one['lost'], one
+    ok(f'acks=1: records 6–10 acknowledged by node {one["leader"]} alone, {len(one["lost"])} lost after it crashed')
+    klab('/recover')
+    lines = wait_for(lambda: call(f'{KLAB}/nodes/{one["leader"]}/truncations?partition=lab.acks-0')['lines'], 'the old leader to truncate', 30)
+    ok(f'node {one["leader"]} came back and truncated: "{lines[-1].split("] ")[-1][:60]}"')
+    every = klab('/scenarios/acks?acks=all')['result']
+    assert not every['lost'] and set(range(6, 11)) <= set(every['present']), every
+    ok('acks=all, same crash: nothing acknowledged lost; the producer retried against the new leader')
+    klab('/recover')
+
+
+def drill_kafka_min_isr():
+    """min.insync.replicas refuses acks=all when too few replicas are in sync; acks=1 bypasses it."""
+    klab('/reset')
+    s = wait_for(lambda: (st := kstate()) and kpart(st, 'lab.durability')['leader'] and st, 'lab.durability to be visible', 30)
+    p = kpart(s, 'lab.durability')
+    follower = next(r for r in p['replicas'] if r != p['leader'] and r != s['cluster']['quorum']['leaderId'])
+    klab(f'/nodes/{follower}/stop')
+    wait_for(lambda: len(kpart(kstate(), 'lab.durability')['isr']) == 2, 'the ISR to shrink', 30)
+    first = klab('/probe?acks=all')
+    assert first['written'], first
+    klab('/topics/lab.durability/min-insync-replicas?value=3', 'PUT')
+    refused, accepted = klab('/probe?acks=all'), klab('/probe?acks=1')
+    assert not refused['written'] and 'NotEnoughReplicas' in refused['error'] and accepted['written'], (refused, accepted)
+    ok(f'node {follower} stopped, ISR {refused["isr"]}, min ISR 3: acks=all refused ({refused["error"].split(":")[0]}), acks=1 written')
+    klab('/topics/lab.durability/min-insync-replicas?value=2', 'PUT')
+    again = klab('/probe?acks=all')
+    assert again['written'], again
+    klab('/recover')
+    ok('min ISR back to 2: acks=all accepted again; node recovered')
+
+
+def drill_kafka_retries():
+    """A retrying producer without idempotence writes duplicates; an idempotent one writes once."""
+    klab('/recover')
+    plain, idem = klab('/scenarios/retries?idempotent=false')['result'], klab('/scenarios/retries?idempotent=true')['result']
+    assert plain['copies'] > 1 and idem['copies'] == 1, (plain, idem)
+    ok(f'plain producer: 1 send, {plain["retries"]} retries, {plain["copies"]} copies; idempotent: {idem["retries"]} retries, 1 copy')
+
+
+def drill_kafka_unclean():
+    """The last in-sync replica dies: offline; an unclean election loses data, waiting does not."""
+    klab('/reset')
+    broken = klab('/scenarios/unclean/break')['result']
+    assert broken['partition']['leader'] is None and broken['partition']['elr'] == [broken['leader']], broken
+    ok(f'offline: no leader, ELR {broken["partition"]["elr"]}, {len(broken["acknowledged"])} acknowledged records')
+    elected = klab('/scenarios/unclean/elect')['result']
+    assert len(elected['lost']) == 3, elected
+    ok(f'unclean election: available again, {len(elected["lost"])} acknowledged records gone')
+    klab('/reset')
+    broken = klab('/scenarios/unclean/break')['result']
+    klab(f'/nodes/{broken["leader"]}/start')
+    wait_for(lambda: kpart(kstate(), 'lab.unclean')['leader'] is not None, 'the in-sync replica to lead', 60)
+    checked = klab('/scenarios/unclean/check')['result']
+    assert not checked['lost'] and len(checked['present']) == 4, checked
+    ok(f'waited for node {broken["leader"]} instead: it leads again, all 4 records kept')
+    klab('/reset')
+
+
+def drill_kafka_delivery():
+    """A worker JVM crashing mid-batch: gaps, duplicates, or neither with transactions."""
+    klab('/recover')
+    amo = klab('/delivery?mode=at-most-once&crash=true')['result']
+    assert amo['committed']['missing'] and not amo['committed']['duplicated'], amo['committed']
+    ok(f'at-most-once, crash: {len(amo["committed"]["missing"])} missing {amo["committed"]["missing"]}, none duplicated')
+    alo = klab('/delivery?mode=at-least-once&crash=true')['result']
+    assert alo['committed']['duplicated'] and not alo['committed']['missing'], alo['committed']
+    ok(f'at-least-once, crash: {len(alo["committed"]["duplicated"])} duplicated {alo["committed"]["duplicated"]}, none missing')
+    eos = klab('/delivery?mode=exactly-once&crash=true')['result']
+    assert not eos['committed']['missing'] and not eos['committed']['duplicated'] and eos['uncommitted']['duplicated'], eos
+    ok(f'exactly-once, crash: read_committed every record once; read_uncommitted sees aborted copies of {eos["uncommitted"]["duplicated"]}')
+
+
 DRILLS = {name[len('drill_'):]: fn for name, fn in globals().items() if name.startswith('drill_')}
 ORDER = ['health', 'happy', 'replicas', 'duplicate', 'replay', 'compensation', 'poison', 'observability',
          'failover', 'lease', 'fencing', 'crash_after_commit', 'timeout', 'breaker',
          'lab_idempotency', 'lab_ordering', 'lab_repartition', 'lab_read_your_writes']
+KAFKA = ['kafka_quorum', 'kafka_failover', 'kafka_acks', 'kafka_min_isr', 'kafka_retries', 'kafka_unclean', 'kafka_delivery']
 
 if __name__ == '__main__':
-    chosen = sys.argv[1:] or ORDER
+    chosen = [d for name in sys.argv[1:] for d in (KAFKA if name == 'kafka' else [name])]
+    if not chosen:
+        chosen = ORDER + KAFKA if kafka_running() else ORDER
+        if chosen == ORDER:
+            print('(Kafka lab drills skipped: start them with `docker compose --profile kafka-lab up -d`)')
     failed = []
     for name in chosen:
         print(f'▶ {name}', flush=True)
@@ -453,6 +592,7 @@ if __name__ == '__main__':
             print(f'  ({time.monotonic() - started:.0f} s)', flush=True)
         except Exception as e:  # report every drill, then fail
             failed.append(name)
-            print(f'  ✗ {type(e).__name__}: {e}', flush=True)
+            detail = e.read().decode(errors='replace')[:400] if isinstance(e, urllib.error.HTTPError) else ''
+            print(f'  ✗ {type(e).__name__}: {e} {detail}', flush=True)
     print('FAILED: ' + ', '.join(failed) if failed else f'All {len(chosen)} drills passed.')
     sys.exit(1 if failed else 0)

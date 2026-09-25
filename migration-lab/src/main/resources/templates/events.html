@@ -7,6 +7,7 @@
   <link rel="icon" th:href="@{/favicon.svg}">
   <link rel="stylesheet" th:href="@{/style.css}">
   <link rel="stylesheet" th:href="@{/events.css}">
+  <script defer th:src="@{/kafka-lab.js}"></script>
   <script defer th:src="@{/events.js}"></script>
 </head>
 <body th:attr="data-grafana=${grafanaUrl}">
@@ -88,6 +89,18 @@
       <div id="lab-tabs" class="lab-tabs" role="tablist" aria-label="Experiments"></div>
     </div>
     <div id="lab-panel" class="lab-panel" role="tabpanel"></div>
+  </section>
+
+  <section class="labs kafka-lab" aria-labelledby="kafka-title">
+    <div class="labs-head">
+      <div>
+        <h2 id="kafka-title">Kafka internals</h2>
+        <p>A separate 3-node KRaft cluster. Nodes are killed, stopped and frozen for real; leaders, ISRs, offsets and every record’s fate are read back from Kafka and Docker.</p>
+      </div>
+      <div id="kafka-tabs" class="lab-tabs" role="tablist" aria-label="Kafka labs"></div>
+    </div>
+    <div id="kafka-cluster" class="kafka-cluster"></div>
+    <div id="kafka-panel" class="lab-panel" role="tabpanel"></div>
   </section>
 
   <section class="system" aria-label="System state">

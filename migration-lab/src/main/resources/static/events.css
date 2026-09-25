@@ -360,3 +360,37 @@ details.more summary { color: var(--muted); font-size: 12px; cursor: pointer; }
 .button-link { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 30px; padding: 5px 10px; border: 1px solid var(--line-strong); border-radius: 7px; background: white; color: #26334a; font-size: 12px; font-weight: 650; text-decoration: none; transition: background .15s, border-color .15s; }
 .button-link:hover { background: #f3f6fa; border-color: #aeb9c9; }
 .node, .recent-list button { justify-content: stretch; justify-items: stretch; align-items: start; }
+
+/* ---- Kafka internals ---------------------------------------------------------------------------- */
+.kafka-cluster { display: grid; gap: 12px; padding: 16px 20px 4px; }
+.kafka-nodes { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.kafka-node { display: grid; gap: 10px; padding: 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel-2); min-width: 0; transition: border-color .2s, background .2s; }
+.kafka-node header { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.kafka-node header b { margin-right: auto; font-size: 13px; }
+.kafka-node dl { display: grid; grid-template-columns: 74px minmax(0, 1fr); gap: 4px 8px; margin: 0; font-size: 12px; }
+.kafka-node dt { color: var(--muted); }
+.kafka-node dd { margin: 0; font-size: 12px; font-weight: 500; overflow-wrap: anywhere; }
+.kafka-node.st-exited, .kafka-node.st-dead { border-color: var(--red); background: var(--red-soft); }
+.kafka-node.st-paused { border-color: var(--amber); background: var(--amber-soft); }
+.kafka-toolbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; }
+.kafka-toolbar p { margin: 0; color: #2f3b52; font-size: 13px; }
+.kafka-problems { margin: 0; }
+.kafka-off { display: grid; gap: 8px; justify-items: start; padding: 14px; border: 1px dashed var(--line-strong); border-radius: 12px; }
+.kafka-off p { margin: 0; font-size: 13px; }
+.kafka-off code, .log-lines { font: 12px var(--mono); }
+.kafka-off code { padding: 6px 10px; border-radius: 7px; background: #eef1f6; }
+.log-lines { max-height: 220px; margin: 0; padding: 10px; overflow: auto; border-radius: 10px; background: #1d2433; color: #d9e0ee; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
+.traffic-chart { display: flex; align-items: flex-end; gap: 2px; height: 72px; padding: 6px; border-radius: 10px; background: var(--paper); border: 1px solid #edf0f5; }
+.traffic-chart span { display: flex; flex: 1 1 0; flex-direction: column-reverse; min-width: 2px; height: 100%; }
+.traffic-chart i { display: block; width: 100%; border-radius: 2px 2px 0 0; }
+.traffic-chart i.ok { background: var(--green); opacity: .8; }
+.traffic-chart i.fail { background: var(--red); }
+.seq-grid { display: grid; grid-template-columns: repeat(10, minmax(0, 1fr)); gap: 4px; }
+.seq-grid span { padding: 5px 0; border-radius: 6px; background: #eef1f6; color: #3c4960; font: 600 11px var(--mono); text-align: center; }
+.seq-grid .gap { background: var(--red); color: white; }
+.seq-grid .dup { background: var(--amber-soft); color: var(--amber); outline: 1px solid var(--amber); }
+.evidence h4 { margin: 4px 0 0; font-size: 12px; color: var(--muted); }
+.worker-log { display: grid; gap: 6px; }
+.worker-log p { margin: 0; font-size: 12px; }
+@media (max-width: 900px) { .kafka-nodes { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 760px) { .kafka-cluster { padding-left: 14px; padding-right: 14px; } .seq-grid { grid-template-columns: repeat(6, minmax(0, 1fr)); } }

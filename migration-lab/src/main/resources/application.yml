@@ -53,3 +53,9 @@ event-lab:
     inventory-service: ${INVENTORY_SERVICE_URL:http://localhost:18084}
     shipping-service: ${SHIPPING_SERVICE_URL:http://localhost:18085}
     order-query-service: ${ORDER_QUERY_SERVICE_URL:http://localhost:18086}
+# Phase 2 Kafka lab (Compose profile kafka-lab): a 3-node KRaft cluster and the Docker API proxy
+# used to fail its nodes. Blank from the host: the lab then reports how to start it.
+kafka-lab:
+  bootstrap: ${KAFKA_LAB_BOOTSTRAP:}
+  docker-url: ${KAFKA_LAB_DOCKER:}
+  cluster: ${KAFKA_LAB_CLUSTER:compose}

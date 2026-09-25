@@ -27,7 +27,76 @@ x-commerce-env: &commerce-env
   OTEL_LOGS_EXPORTER: otlp
   # Polling loops (the saga-timeout scanner) would each start a trace every second.
   OTEL_INSTRUMENTATION_SPRING_SCHEDULING_ENABLED: 'false'
+# Phase 2 Kafka lab (profile kafka-lab): a separate 3-node KRaft cluster, each node both broker and
+# controller, so the controller quorum is 3 voters. restart: 'no' because the lab kills, stops and
+# pauses these nodes for real, and a killed broker must stay down until the operator recovers it.
+# Small heaps and faster failure detection than the defaults; everything else is stock Kafka.
+x-kafka-lab-node: &kafka-lab-node
+  image: apache/kafka:4.1.0
+  profiles: [kafka-lab]
+  restart: 'no'
+  mem_limit: 640m
+  healthcheck:
+    test: ['CMD-SHELL', '/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 >/dev/null 2>&1']
+    interval: 5s
+    timeout: 10s
+    retries: 30
+    start_period: 20s
+x-kafka-lab-env: &kafka-lab-env
+  CLUSTER_ID: zslab-3node-kraft-00001
+  KAFKA_PROCESS_ROLES: broker,controller
+  KAFKA_LISTENERS: INTERNAL://:9092,CONTROLLER://:9093
+  KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INTERNAL:PLAINTEXT,CONTROLLER:PLAINTEXT
+  KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+  KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+  KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka-lab-1:9093,2@kafka-lab-2:9093,3@kafka-lab-3:9093
+  KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 3
+  KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 3
+  KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 2
+  KAFKA_DEFAULT_REPLICATION_FACTOR: 3
+  KAFKA_MIN_INSYNC_REPLICAS: 2
+  KAFKA_AUTO_CREATE_TOPICS_ENABLE: 'false'
+  KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+  # A crashed broker is noticed after 6 s (default 9 s); a follower that stops fetching leaves the
+  # ISR after 10 s (default 30 s); leadership drifts back to preferred replicas every 30 s.
+  KAFKA_BROKER_HEARTBEAT_INTERVAL_MS: 1000
+  KAFKA_BROKER_SESSION_TIMEOUT_MS: 6000
+  KAFKA_REPLICA_LAG_TIME_MAX_MS: 10000
+  KAFKA_LEADER_IMBALANCE_CHECK_INTERVAL_SECONDS: 30
+  # Lab-sized internals. Kafka preallocates a 10 MB offset and time index for every partition's
+  # active segment; with the default 50 partitions each for __consumer_offsets and
+  # __transaction_state each node's layer reports about 2.4 GB (sparse files, little real disk).
+  KAFKA_OFFSETS_TOPIC_NUM_PARTITIONS: 3
+  KAFKA_TRANSACTION_STATE_LOG_NUM_PARTITIONS: 3
+  KAFKA_LOG_INDEX_SIZE_MAX_BYTES: 1048576
+  KAFKA_LOG_SEGMENT_BYTES: 16777216
+  KAFKA_HEAP_OPTS: -Xms192m -Xmx320m
 services:
+  kafka-lab-1:
+    <<: *kafka-lab-node
+    hostname: kafka-lab-1
+    labels: {zeroshift.kafka-lab.node: '1', zeroshift.kafka-lab.cluster: compose}
+    environment: {<<: *kafka-lab-env, KAFKA_NODE_ID: 1, KAFKA_ADVERTISED_LISTENERS: 'INTERNAL://kafka-lab-1:9092'}
+  kafka-lab-2:
+    <<: *kafka-lab-node
+    hostname: kafka-lab-2
+    labels: {zeroshift.kafka-lab.node: '2', zeroshift.kafka-lab.cluster: compose}
+    environment: {<<: *kafka-lab-env, KAFKA_NODE_ID: 2, KAFKA_ADVERTISED_LISTENERS: 'INTERNAL://kafka-lab-2:9092'}
+  kafka-lab-3:
+    <<: *kafka-lab-node
+    hostname: kafka-lab-3
+    labels: {zeroshift.kafka-lab.node: '3', zeroshift.kafka-lab.cluster: compose}
+    environment: {<<: *kafka-lab-env, KAFKA_NODE_ID: 3, KAFKA_ADVERTISED_LISTENERS: 'INTERNAL://kafka-lab-3:9092'}
+  # The control plane kills and restarts lab brokers through Docker's API. It gets this proxy
+  # instead of the socket: container endpoints only, and the control plane itself only touches
+  # containers labelled zeroshift.kafka-lab.node.
+  kafka-lab-docker:
+    image: tecnativa/docker-socket-proxy:v0.4.1
+    profiles: [kafka-lab]
+    restart: 'no'
+    mem_limit: 64m
+    environment: {CONTAINERS: 1, POST: 1}
+    volumes: ['/var/run/docker.sock:/var/run/docker.sock:ro']
   sqlserver:
     image: mcr.microsoft.com/mssql/server:2022-latest
     platform: linux/amd64
@@ -70,6 +139,9 @@ services:
       TRAFFIC_MS: ${TRAFFIC_MS:-100}
       EVENT_LAB_KAFKA: kafka:9092
       EVENT_LAB_CONNECT: http://kafka-connect:8083
+      # Only reachable when the kafka-lab profile runs; the Kafka lab says so otherwise.
+      KAFKA_LAB_BOOTSTRAP: kafka-lab-1:9092,kafka-lab-2:9092,kafka-lab-3:9092
+      KAFKA_LAB_DOCKER: http://kafka-lab-docker:2375
       ORDER_SERVICE_URL: http://order-service:8080
       ORDER_SERVICE_B_URL: http://order-service-b:8080
       PAYMENT_SERVICE_URL: http://payment-service:8080
