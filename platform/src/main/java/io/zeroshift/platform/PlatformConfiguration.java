@@ -10,6 +10,7 @@ import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.common.TopicPartition;
 import org.flywaydb.core.Flyway;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.flyway.autoconfigure.FlywayMigrationInitializer;
 import org.springframework.boot.kafka.autoconfigure.ConcurrentKafkaListenerContainerFactoryConfigurer;
 import org.springframework.context.annotation.*;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -34,10 +35,17 @@ public class PlatformConfiguration {
    * The platform's tables (outbox, inbox, decisions, faults) are versioned apart from the service's
    * own schema, in their own history table, so either can gain a migration without the other's
    * version numbers getting in the way. Runs before any platform component is created.
+   *
+   * <p>Order matters: the service's own migrations (Spring Boot's Flyway, {@code serviceSchema})
+   * run first, into an empty schema; the platform history then baselines at 0 over the now
+   * non-empty schema and applies its migrations. The other way round, Spring Boot's Flyway would
+   * refuse to start on a non-empty schema without a history table.
    */
   @Bean
   PlatformSchema platformSchema(
-      DataSource dataSource, @Value("${zeroshift.outbox-slot:true}") boolean outboxSlot) {
+      DataSource dataSource,
+      FlywayMigrationInitializer serviceSchema,
+      @Value("${zeroshift.outbox-slot:true}") boolean outboxSlot) {
     Flyway.configure()
         .dataSource(dataSource)
         .locations("classpath:db/platform")
