@@ -1,5 +1,6 @@
 package io.zeroshift.platform;
 
+import io.micrometer.core.instrument.MeterRegistry;
 import io.zeroshift.contracts.Envelope;
 import io.zeroshift.contracts.MessageCodec;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
@@ -9,10 +10,12 @@ import org.springframework.jdbc.core.JdbcTemplate;
 public final class DecisionLog {
   private final JdbcTemplate jdbc;
   private final String instance;
+  private final MeterRegistry meters;
 
-  public DecisionLog(JdbcTemplate jdbc, String instance) {
+  public DecisionLog(JdbcTemplate jdbc, String instance, MeterRegistry meters) {
     this.jdbc = jdbc;
     this.instance = instance;
+    this.meters = meters;
   }
 
   public void record(
@@ -38,6 +41,10 @@ public final class DecisionLog {
         detail == null ? "" : detail.substring(0, Math.min(detail.length(), 1000)),
         Traces.traceId(),
         instance);
+    // Counted even if the surrounding transaction later rolls back: the delivery still happened.
+    meters
+        .counter("zeroshift.consumer.decisions", "consumer", consumer, "decision", decision.name())
+        .increment();
   }
 
   /** Retries and dead letters are logged before (or without) a successful decode. */

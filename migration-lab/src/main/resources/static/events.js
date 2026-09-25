@@ -13,6 +13,11 @@ const SERVICE_FAULTS = {
   'shipping-service': [['shipping-fail', 'fail', 'Fail next shipment']]
 };
 let state = null;
+const grafana = document.body.dataset.grafana;
+// Grafana Explore for one query; datasource uids are fixed by infra/observability provisioning.
+const explore = (uid, query) => `${grafana}/explore?schemaVersion=1&panes=${encodeURIComponent(JSON.stringify({ z: {
+  datasource: uid, range: { from: 'now-6h', to: 'now' },
+  queries: [{ refId: 'A', datasource: { type: uid, uid }, ...(uid === 'tempo' ? { queryType: 'traceql', query } : { expr: query }) }] } }))}`;
 let selected = null;
 let journey = null;
 let fold = null;
@@ -210,7 +215,11 @@ function renderJourney() {
     ['Customer · total', writeOk ? o.order.customerId : '—', writeOk ? `$${o.order.total} ${o.order.currency}` : '—'],
     ['Correlation id', short(journey.messages?.[0]?.correlationId), 'Shared by every message below']
   ];
-  el('journey-summary').replaceChildren(...summary.map(([label, value, note]) => h('div', {}, h('span', { class: 'label' }, label), h('strong', {}, value), h('span', {}, note))));
+  const traceId = journey.messages?.find(m => m.traceparent)?.traceparent.split('-')[1];
+  el('journey-summary').replaceChildren(...summary.map(([label, value, note]) => h('div', {}, h('span', { class: 'label' }, label), h('strong', {}, value), h('span', {}, note))),
+    h('div', {}, h('span', { class: 'label' }, 'Trace'), h('strong', { class: 'mono' }, short(traceId)),
+      traceId && grafana ? h('span', {}, h('a', { href: explore('tempo', traceId), target: '_blank', rel: 'noopener' }, 'Trace in Tempo'), ' · ', h('a', { href: explore('loki', `{service_name=~".+"} | trace_id="${traceId}"`), target: '_blank', rel: 'noopener' }, 'Logs in Loki'))
+        : h('span', {}, traceId ? 'One trace across every service and Kafka hop' : 'No traceparent: the agent was not attached')));
   const rows = [];
   for (const m of journey.messages || []) {
     const kind = m.topic?.endsWith('.commands') ? 'command' : m.type?.startsWith('Order') ? 'event' : 'reply';
@@ -410,7 +419,6 @@ el('journey-fold').addEventListener('click', async () => {
   renderJourney();
 });
 el('retention-demo').addEventListener('click', () => act('retention-demo', {}, 'Producing…').then(() => showMessage('20 records on lab.retention-demo. Closed segments older than a minute are deleted: the earliest offset moves forward.'), () => {}));
-const grafana = document.body.dataset.grafana;
 if (grafana) el('footer-links').append(' · ', h('a', { href: grafana, target: '_blank', rel: 'noopener' }, 'Grafana: metrics, traces, logs'));
 
 async function poll() { await refresh(); setTimeout(poll, 1000); }

@@ -1,0 +1,39 @@
+# Optional: logs also go to OpenSearch, for full-text search in OpenSearch Dashboards
+# (http://localhost:5601). Costs about 1.5 GB more memory than Loki alone. Loki keeps receiving
+# everything, so Grafana's trace ↔ log links still work.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.override.yml -f docker-compose.opensearch.yml up -d
+services:
+  opensearch:
+    image: opensearchproject/opensearch:3.2.0
+    environment:
+      discovery.type: single-node
+      # A local lab: plain HTTP, no users.
+      DISABLE_SECURITY_PLUGIN: 'true'
+      DISABLE_INSTALL_DEMO_CONFIG: 'true'
+      OPENSEARCH_JAVA_OPTS: -Xms512m -Xmx512m
+    volumes: [opensearch-data:/usr/share/opensearch/data]
+    ports: ['127.0.0.1:${OPENSEARCH_PORT:-9200}:9200']
+    mem_limit: 1g
+    healthcheck:
+      test: ['CMD-SHELL', 'curl -sf http://localhost:9200/_cluster/health >/dev/null']
+      interval: 5s
+      timeout: 5s
+      retries: 40
+  opensearch-dashboards:
+    image: opensearchproject/opensearch-dashboards:3.2.0
+    environment:
+      OPENSEARCH_HOSTS: '["http://opensearch:9200"]'
+      DISABLE_SECURITY_DASHBOARDS_PLUGIN: 'true'
+    ports: ['127.0.0.1:${OPENSEARCH_DASHBOARDS_PORT:-5601}:5601']
+    depends_on:
+      opensearch: {condition: service_healthy}
+  # Adds a second config file; the collector merges it over the first, so the logs pipeline now
+  # exports to both Loki and OpenSearch.
+  otel-collector:
+    command: ['--config=/etc/otelcol/config.yml', '--config=/etc/otelcol/opensearch.yml']
+    volumes: ['./infra/observability/otel-collector-opensearch.yml:/etc/otelcol/opensearch.yml:ro']
+    depends_on:
+      opensearch: {condition: service_healthy}
+volumes:
+  opensearch-data:

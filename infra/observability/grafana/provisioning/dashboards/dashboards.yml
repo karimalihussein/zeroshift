@@ -1,0 +1,6 @@
+apiVersion: 1
+providers:
+  - name: zeroshift
+    folder: ZeroShift
+    type: file
+    options: {path: /var/lib/grafana/dashboards}

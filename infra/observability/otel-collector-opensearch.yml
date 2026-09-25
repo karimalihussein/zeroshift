@@ -1,0 +1,9 @@
+# Merged over otel-collector.yml by docker-compose.opensearch.yml. Lists are replaced, not
+# appended, so the logs pipeline names both exporters.
+exporters:
+  opensearch:
+    http: {endpoint: http://opensearch:9200}
+    logs_index: zeroshift-logs
+service:
+  pipelines:
+    logs: {exporters: [otlphttp/loki, opensearch]}

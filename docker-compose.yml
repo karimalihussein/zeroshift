@@ -18,6 +18,15 @@ x-commerce-env: &commerce-env
   KAFKA_BOOTSTRAP: kafka:9092
   DB_USER: ${POSTGRES_USER:-zeroshift}
   DB_PASSWORD: ${POSTGRES_PASSWORD:-zeroshift_local}
+  # OpenTelemetry agent (baked into the image): HTTP, JDBC and Kafka spans, W3C context carried
+  # through Kafka headers, and logs with their trace id, sent to the collector. The service name
+  # comes from spring.application.name; metrics stay with Micrometer, which Prometheus scrapes.
+  JAVA_TOOL_OPTIONS: -javaagent:/app/opentelemetry-javaagent.jar
+  OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+  OTEL_METRICS_EXPORTER: none
+  OTEL_LOGS_EXPORTER: otlp
+  # Polling loops (the saga-timeout scanner) would each start a trace every second.
+  OTEL_INSTRUMENTATION_SPRING_SCHEDULING_ENABLED: 'false'
 services:
   sqlserver:
     image: mcr.microsoft.com/mssql/server:2022-latest
@@ -166,6 +175,7 @@ services:
       DB_URL: jdbc:postgresql://commerce-postgres:5432/orders
       SAGA_STEP_TIMEOUT: ${SAGA_STEP_TIMEOUT:-30s}
       ZEROSHIFT_INSTANCE: order-service
+      OTEL_RESOURCE_ATTRIBUTES: service.instance.id=order-service
     ports: ['127.0.0.1:${ORDER_SERVICE_PORT:-18081}:8080']
   # A second replica: the order-saga consumer group spreads its partitions over both, and the
   # saga-timeout scanner runs on whichever replica holds the lease.
@@ -177,6 +187,7 @@ services:
       DB_URL: jdbc:postgresql://commerce-postgres:5432/orders
       SAGA_STEP_TIMEOUT: ${SAGA_STEP_TIMEOUT:-30s}
       ZEROSHIFT_INSTANCE: order-service-b
+      OTEL_RESOURCE_ATTRIBUTES: service.instance.id=order-service-b
     depends_on:
       order-service: {condition: service_healthy}
     ports: ['127.0.0.1:${ORDER_SERVICE_B_PORT:-18088}:8080']
@@ -187,6 +198,7 @@ services:
     environment:
       <<: *commerce-env
       ZEROSHIFT_INSTANCE: payment-service
+      OTEL_RESOURCE_ATTRIBUTES: service.instance.id=payment-service
       DB_URL: jdbc:postgresql://commerce-postgres:5432/payments
       GATEWAY_URL: http://payment-gateway:8080
     ports: ['127.0.0.1:${PAYMENT_SERVICE_PORT:-18082}:8080']
@@ -197,6 +209,7 @@ services:
     environment:
       <<: *commerce-env
       ZEROSHIFT_INSTANCE: inventory-service
+      OTEL_RESOURCE_ATTRIBUTES: service.instance.id=inventory-service
       DB_URL: jdbc:postgresql://commerce-postgres:5432/inventory
     ports: ['127.0.0.1:${INVENTORY_SERVICE_PORT:-18084}:8080']
   shipping-service:
@@ -206,6 +219,7 @@ services:
     environment:
       <<: *commerce-env
       ZEROSHIFT_INSTANCE: shipping-service
+      OTEL_RESOURCE_ATTRIBUTES: service.instance.id=shipping-service
       DB_URL: jdbc:postgresql://commerce-postgres:5432/shipping
     ports: ['127.0.0.1:${SHIPPING_SERVICE_PORT:-18085}:8080']
   order-query-service:
@@ -215,6 +229,7 @@ services:
     environment:
       <<: *commerce-env
       ZEROSHIFT_INSTANCE: order-query-service
+      OTEL_RESOURCE_ATTRIBUTES: service.instance.id=order-query-service
       DB_URL: jdbc:postgresql://commerce-postgres:5432/order_query
     ports: ['127.0.0.1:${ORDER_QUERY_SERVICE_PORT:-18086}:8080']
   # The external card processor: WireMock, made slow, down or declining from the dashboard.
@@ -222,6 +237,55 @@ services:
     image: wiremock/wiremock:3.13.1
     volumes: ['./infra/payment-gateway/mappings:/home/wiremock/mappings:ro']
     ports: ['127.0.0.1:${PAYMENT_GATEWAY_PORT:-18090}:8080']
+  # ---- Observability ---------------------------------------------------------------------------
+  # Agents → collector → Tempo (traces) and Loki (logs); Prometheus scrapes Micrometer and receives
+  # Tempo's service-graph metrics; Grafana shows all three, linked by trace id.
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.135.0
+    command: ['--config=/etc/otelcol/config.yml']
+    volumes: ['./infra/observability/otel-collector.yml:/etc/otelcol/config.yml:ro']
+    mem_limit: 200m
+    depends_on: [tempo, loki]
+  tempo:
+    image: grafana/tempo:2.8.2
+    command: ['-config.file=/etc/tempo.yml']
+    user: '0' # writes /var/tempo on a fresh named volume, which Docker creates root-owned
+    volumes:
+      - ./infra/observability/tempo.yml:/etc/tempo.yml:ro
+      - tempo-data:/var/tempo
+    ports: ['127.0.0.1:${TEMPO_PORT:-3200}:3200']
+    mem_limit: 400m
+  loki:
+    image: grafana/loki:3.5.5
+    volumes: [loki-data:/loki]
+    ports: ['127.0.0.1:${LOKI_PORT:-3100}:3100']
+    mem_limit: 400m
+  prometheus:
+    image: prom/prometheus:v3.5.0
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.retention.time=3d
+      - --web.enable-remote-write-receiver # Tempo's service graph
+      - --enable-feature=exemplar-storage
+    volumes:
+      - ./infra/observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    ports: ['127.0.0.1:${PROMETHEUS_PORT:-9090}:9090']
+    mem_limit: 400m
+  grafana:
+    image: grafana/grafana:12.1.1
+    environment:
+      # A local lab: no login, everyone is admin.
+      GF_AUTH_ANONYMOUS_ENABLED: 'true'
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
+      GF_AUTH_DISABLE_LOGIN_FORM: 'true'
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/event-lab.json
+    volumes:
+      - ./infra/observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./infra/observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports: ['127.0.0.1:${GRAFANA_PORT:-3000}:3000']
+    depends_on: [prometheus, tempo, loki]
+    mem_limit: 300m
   # Registers the outbox connectors once the services' migrations created publication and slot.
   connect-init:
     image: curlimages/curl:8.16.0
@@ -239,3 +303,6 @@ volumes:
   postgres-java-data:
   commerce-postgres-data:
   kafka-data:
+  tempo-data:
+  loki-data:
+  prometheus-data:

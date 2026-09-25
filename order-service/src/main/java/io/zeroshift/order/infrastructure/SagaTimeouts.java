@@ -1,5 +1,7 @@
 package io.zeroshift.order.infrastructure;
 
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.MeterRegistry;
 import io.zeroshift.order.application.OrderSaga;
 import io.zeroshift.order.application.SagaStore;
 import io.zeroshift.platform.Faults;
@@ -36,6 +38,8 @@ public class SagaTimeouts {
   private final Clock clock;
   private final PostgresLease lease;
   private final Faults faults;
+  private final Counter fenced;
+  private final Counter timedOut;
 
   public SagaTimeouts(
       SagaStore sagas,
@@ -43,9 +47,12 @@ public class SagaTimeouts {
       TransactionOperations transactions,
       Clock clock,
       PostgresLease lease,
-      Faults faults) {
+      Faults faults,
+      MeterRegistry meters) {
     this.lease = lease;
     this.faults = faults;
+    fenced = meters.counter("zeroshift.lease.fenced", "lease", LEASE);
+    timedOut = meters.counter("zeroshift.saga.timeouts");
     this.sagas = sagas;
     this.saga = saga;
     this.transactions = transactions;
@@ -69,6 +76,7 @@ public class SagaTimeouts {
                 "Scanner {} fenced off: token {} was superseded while it stalled",
                 lease.owner(),
                 token);
+            fenced.increment();
             return;
           }
           sagas
@@ -82,6 +90,7 @@ public class SagaTimeouts {
                         lease.owner(),
                         token);
                     saga.timeout(due);
+                    timedOut.increment();
                   });
         });
   }

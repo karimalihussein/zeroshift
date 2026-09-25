@@ -1,5 +1,6 @@
 package io.zeroshift.platform;
 
+import io.micrometer.core.instrument.MeterRegistry;
 import io.zeroshift.contracts.MalformedMessageException;
 import io.zeroshift.contracts.Topics;
 import java.util.Map;
@@ -61,8 +62,9 @@ public class PlatformConfiguration {
   DecisionLog decisionLog(
       JdbcTemplate jdbc,
       PlatformSchema schema,
+      MeterRegistry meters,
       @Value("${zeroshift.instance:${HOSTNAME:local}}") String instance) {
-    return new DecisionLog(jdbc, instance);
+    return new DecisionLog(jdbc, instance, meters);
   }
 
   @Bean

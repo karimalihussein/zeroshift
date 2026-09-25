@@ -1,5 +1,6 @@
 package io.zeroshift.order.infrastructure;
 
+import io.micrometer.core.instrument.MeterRegistry;
 import io.zeroshift.order.application.*;
 import io.zeroshift.platform.Faults;
 import io.zeroshift.platform.Inbox;
@@ -80,8 +81,9 @@ public class OrderWiring {
       TransactionTemplate transactions,
       Clock clock,
       PostgresLease lease,
-      Faults faults) {
-    return new SagaTimeouts(sagas, saga, transactions, clock, lease, faults);
+      Faults faults,
+      MeterRegistry meters) {
+    return new SagaTimeouts(sagas, saga, transactions, clock, lease, faults, meters);
   }
 
   @Bean

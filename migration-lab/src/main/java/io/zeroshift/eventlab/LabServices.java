@@ -16,6 +16,13 @@ import tools.jackson.databind.node.ObjectNode;
  */
 @Component
 public class LabServices {
+  /**
+   * Sent with every read: a W3C parent whose sampled flag is off, so each service's OpenTelemetry
+   * agent (parent-based sampling) records nothing for the dashboard's once-a-second polling and
+   * Tempo keeps only real traffic. Actions (POST) carry no parent and start a normal trace.
+   */
+  static final String UNSAMPLED = "00-5a3057b3f1f7a1e0c0ffee0000000001-00f067aa0ba902b7-00";
+
   private final EventLabSettings settings;
   private final RestClient http;
   private final JsonMapper json = JsonMapper.builder().build();
@@ -34,7 +41,11 @@ public class LabServices {
   }
 
   public JsonNode get(String service, String path) {
-    return http.get().uri(url(service) + path).retrieve().body(JsonNode.class);
+    return http.get()
+        .uri(url(service) + path)
+        .header("traceparent", UNSAMPLED)
+        .retrieve()
+        .body(JsonNode.class);
   }
 
   /** The body, or {"error": ...} when the service is down or refuses. */
