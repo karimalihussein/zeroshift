@@ -1,8 +1,8 @@
 package io.zeroshift.query;
 
 import io.zeroshift.platform.Inbox;
+import org.jooq.DSLContext;
 import org.springframework.context.annotation.*;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.kafka.config.KafkaListenerEndpointRegistry;
 import org.springframework.kafka.core.KafkaAdmin;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -10,8 +10,13 @@ import org.springframework.transaction.support.TransactionTemplate;
 @Configuration(proxyBeanMethods = false)
 public class QueryWiring {
   @Bean
-  OrderProjection orderProjection(JdbcTemplate jdbc) {
-    return new OrderProjection(jdbc);
+  ReadModels readModels(DSLContext db) {
+    return new ReadModels(db);
+  }
+
+  @Bean
+  OrderProjection orderProjection(ReadModels readModels) {
+    return new OrderProjection(readModels);
   }
 
   @Bean
@@ -23,8 +28,9 @@ public class QueryWiring {
   ProjectionRebuild projectionRebuild(
       KafkaListenerEndpointRegistry registry,
       KafkaAdmin kafkaAdmin,
-      JdbcTemplate jdbc,
+      ReadModels readModels,
+      Inbox inbox,
       TransactionTemplate transactions) {
-    return new ProjectionRebuild(registry, kafkaAdmin, jdbc, transactions);
+    return new ProjectionRebuild(registry, kafkaAdmin, readModels, inbox, transactions);
   }
 }

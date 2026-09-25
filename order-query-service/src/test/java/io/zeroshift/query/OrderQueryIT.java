@@ -28,6 +28,12 @@ class OrderQueryIT {
   @Autowired ProjectionRebuild rebuild;
 
   @Test
+  void generatedJooqClassesMatchTheMigratedSchema(@Autowired org.jooq.DSLContext db) {
+    io.zeroshift.platform.testing.GeneratedSchema.assertMatchesDatabase(
+        db, io.zeroshift.platform.db.Public.PUBLIC, io.zeroshift.query.db.Public.PUBLIC);
+  }
+
+  @Test
   void projectsTheLifecycleAndRebuildsTheSameViewByReplaying() throws Exception {
     var id = UUID.randomUUID();
     var placed =
@@ -59,6 +65,58 @@ class OrderQueryIT {
             jdbc.queryForObject(
                 "SELECT events_applied FROM order_view WHERE order_id=?", Integer.class, id))
         .isEqualTo(4);
+  }
+
+  @Test
+  void projectsACancellationWithItsCompensationsAndIgnoresAnUnknownOrder() {
+    var id = UUID.randomUUID();
+    var placed =
+        Envelope.of(
+            new OrderPlaced(
+                id,
+                "cust-cancel",
+                List.of(new OrderLine("SKU-CABLE", 3, new BigDecimal("9.99"))),
+                new BigDecimal("29.97"),
+                "USD"),
+            UUID.randomUUID(),
+            null);
+    send(kafka, placed);
+    send(kafka, placed.reply(new OrderPaymentAuthorized(id, UUID.randomUUID())));
+    // A '|' inside a compensation must survive: the array is bound as an array, not a string.
+    var compensations = List.of("payment refunded | card ending 4242", "stock released");
+    send(kafka, placed.reply(new OrderCancelled(id, "Stock rejected: none left", compensations)));
+    var unknown = UUID.randomUUID();
+    send(kafka, Envelope.of(new OrderShipped(unknown, "ZS-X", "ZeroShift Express"), unknown, null));
+
+    await().atMost(WAIT).until(() -> "CANCELLED".equals(status(id)));
+    var row =
+        jdbc.queryForMap(
+            "SELECT cancel_reason, compensations::text AS compensations, item_count, events_applied"
+                + " FROM order_view WHERE order_id=?",
+            id);
+    assertThat(row.get("cancel_reason")).isEqualTo("Stock rejected: none left");
+    assertThat(row.get("compensations"))
+        .isEqualTo("{\"payment refunded | card ending 4242\",\"stock released\"}");
+    assertThat(row).containsEntry("item_count", 3).containsEntry("events_applied", 3);
+    assertThat(
+            jdbc.queryForMap(
+                "SELECT orders_placed, orders_shipped, orders_cancelled, shipped_value"
+                    + " FROM customer_summary WHERE customer_id='cust-cancel'"))
+        .containsEntry("orders_placed", 1)
+        .containsEntry("orders_shipped", 0)
+        .containsEntry("orders_cancelled", 1)
+        .hasEntrySatisfying("shipped_value", v -> assertThat((BigDecimal) v).isZero());
+
+    await()
+        .atMost(WAIT)
+        .until(
+            () ->
+                jdbc.queryForObject(
+                        "SELECT COUNT(*) FROM consumer_decision WHERE order_id=? AND decision='IGNORED'",
+                        Integer.class,
+                        unknown.toString())
+                    == 1);
+    assertThat(status(unknown)).isNull();
   }
 
   private String status(UUID id) {
