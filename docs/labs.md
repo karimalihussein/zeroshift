@@ -258,3 +258,58 @@ seven experiments; each must hold every claim and leave the lab reset); unit tes
 `LoadGeneratorTest`, `ExperimentTest`, `EdgeGuardsTest`, `GatewayPolicyTest`, `LabPressureTest`;
 integration tests `ToxiproxyIT` and `OrderServiceIT.edgeGuardsRefuseOverHttpWithRetryAfterAndTheirOwnCodes`.
 
+# Phase 4: Events over time
+
+**http://localhost:8080/history.** Pick an order; its events sit on a time axis, each labelled with
+the schema version it was stored at. Drag the version slider or type an instant: order-service
+folds its event store again up to that point (no snapshot) and the page highlights what changed.
+Click an event to see it as stored next to how today's code reads it (fields added by an upcaster
+are marked). **Replay Kafka from here** asks the broker's time index for the offset of that instant
+on every partition and reads the order's own partition from there, showing each record's offset,
+timestamp and whether it is the same event as in the event store. Design: [ADR 020](decisions/020-events-over-time.md).
+
+Each experiment below runs on the live system in six steps, **History → Inspect → Change /
+rebuild → Replay → Compare → Understand**, and is stored in `lab_run` when complete.
+
+**Replay and time travel.** A finished order's stored events; each as stored and as read; the
+order rebuilt at every version and at an instant between its first two events; the same events
+found on Kafka from the placement time's offset; both histories compared event by event with the
+relay delay of each (150–530 ms here).
+
+**Projection evolution.** Sales per SKU over every order ever placed, built by the control plane
+from order.events with its offsets stored beside its rows. v1 counts at placement: against the
+event store it overcounted every SKU (cancelled orders). v2 counts at shipment: rebuilt from
+offset 0 (30,893 records, 2.9 s) it matched shipped orders' lines read from the event store
+exactly. Three new orders, one over the payment limit, then a catch-up from the stored offsets
+reads only the new records: v1 counts the declined order, v2 does not.
+
+**Schema evolution.** Stored events by type and schema version, and the contract registry
+(versions, upcasters, downcasters). An order placed as the previous release wrote it: OrderPlaced
+stored and published as v1 (payload and `schemaVersion` header), completed by the saga and
+projected with currency USD by another service, all through the v1 → v2 upcaster. Then a release
+not yet rolled out writes OrderPlaced v3 (money as integer cents) to order.events: order-projection
+refuses it on the first delivery and it lands in `order.events.dlt` with
+`OrderPlaced v3 is newer than this consumer understands (v2)` in its headers. Finally four readers
+(v1, deployed v2, v2 without its version check, proposed v3) read a real v1, v2 and v3 record:
+
+| Written by | v1 reader | v2 reader (deployed) | v2 without version check | v3 reader |
+|---|---|---|---|---|
+| v1 (previous release) | ✓ | ✓ upcast | ✓ upcast | ✓ upcast twice |
+| v2 (current) | ✗ newer than it understands | ✓ | ✓ | ✓ upcast |
+| v3 (not rolled out) | ✗ | ✗ newer than it understands | ✗ "unitPrice must not be negative" (misleading) | ✓ |
+
+So a breaking change rolls out readers first, then writers. Contract tests:
+`ContractCompatibilityTest` (frozen v1 and v2 payloads, contiguous upcasters, a previous-release
+writer reproduces the frozen v1 byte for byte, newer versions are refused as malformed so they are
+dead-lettered rather than retried, added fields need no bump) and `SchemaReadersTest`.
+
+**Log compaction.** `lab.order-status` recreated and filled with five real orders' status
+changelogs (one record per status change, keyed by order id) and a tombstone for one of them. Read
+from offset 0: every status is there. After the segment rolls, the log cleaner compacted 19
+records to 6 in 18 s. Read again: one value per key, matching order-service's current status; the
+tombstoned key is gone from the rebuilt table; offsets keep their gaps. `lab.retention-demo`, a
+normal topic with 60 s retention, instead deletes whole segments by age, latest values included.
+
+Automated coverage: `python3 scripts/verify_history_lab.py` (direct time-travel and legacy-v1
+drills against the services, then all four labs with assertions on what each step read back); unit
+tests `ContractCompatibilityTest`, `RebuildTest`, `SchemaReadersTest`.

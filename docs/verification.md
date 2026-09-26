@@ -83,3 +83,31 @@ replicas (up to 98 %). Earlier in the session, with the 3-node kafka-lab cluster
 own 900 MB limit. Running Phase 3's experiments and the kafka-lab profile at the same time needs
 more than 9.7 GB.
 
+## Phase 4: events over time
+
+Run on 2026-09-26 against the full Compose stack (with the chaos overlay still in place) on the
+same machine.
+
+**`scripts/verify_history_lab.py`**: all 6 drills passed.
+
+| Drill | Observed |
+|---|---|
+| time_travel | all 4 versions of a finished order rebuilt from the event store equal the fold; as of 2000-01-01 the order is NEW, as of its first event PLACED; Kafka's time index gave partition 0 offset 10225 and the same 4 events in order at 10225–10228 |
+| legacy_v1 | OrderPlaced stored as v1 without currency, read as v2 with USD; published as v1 at order.events offset 10097 (payload and `schemaVersion` header); saga COMPLETED; order-query-service projected currency USD |
+| lab_time_travel | six steps; event store and Kafka agree on 4 records; relay delays 136–165 ms |
+| lab_projection | v1 overcounts every SKU (6,326 keyboards, 4,136 mice, 4,063 cables, 2 monitors); v2 rebuilt from 30,927 records in 2.8 s equals shipped lines from the event store exactly; catch-up read only the 10 new records; the declined order counted by v1 only |
+| lab_schema | v1 order stored, published, completed and projected; a v3 event dead-lettered on its first delivery to order.events.dlt with "OrderPlaced v3 is newer than this consumer understands (v2)"; matrix on real records as in [labs](labs.md#phase-4-events-over-time) |
+| lab_compaction | 19 records compacted to 6 eleven seconds after the segment rolled; one value per key, matching order-service; tombstoned key gone; offsets keep their gaps |
+
+**Regression on the Phase 4 service builds** (outbox and event store now record the schema version
+actually written): `scripts/verify_event_lab.py` 18/18 (Phase 1), `scripts/verify_resilience_lab.py`
+9/9 (Phase 3), in the same run. The Phase 2 drills were not run: the kafka-lab cluster was stopped
+to leave memory for this run, and Phase 4 changes nothing it uses.
+
+**Tests.** `mvn spotless:check test` passes for every module, including `ContractCompatibilityTest`
+(6), `RebuildTest` (4) and `SchemaReadersTest` (4); `OrderServiceIT` 13/13 on the new event store
+and outbox code, including the check that the generated jOOQ classes match the migrated schema.
+
+**Resources** (docker stats every 10 s, 75 samples across the three suites): containers used
+7.6 GB on average, 8.0 GB at peak. The control plane peaked at 639 MB (of a 700 MB limit) and
+326 % CPU while rebuilding the projection from 31k records; Kafka at 184 % CPU and 1.1 GB.

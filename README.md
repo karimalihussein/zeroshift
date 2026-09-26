@@ -74,6 +74,7 @@ OpenTelemetry agent in every JVM ─► collector ─► Tempo · Loki;  Prometh
 | Typed persistence | Flyway → PostgreSQL → generated jOOQ classes; no hand-built SQL strings | [015](docs/decisions/015-jooq-persistence.md) |
 | Kafka internals (Phase 2) | A separate 3-node KRaft cluster (profile `kafka-lab`): controller quorum, leader failure under load, acks=1 vs acks=all, min.insync.replicas, idempotent retries, unclean election, at-most/at-least/exactly-once with real worker crashes | [017](docs/decisions/017-kafka-lab-cluster.md), [labs](docs/labs.md#phase-2-kafka-internals) |
 | Failure, load, backpressure, resilience (Phase 3) | `/resilience`: open-loop load generator; Toxiproxy latency, bandwidth, reset, partition and outage on five real links (overlay `docker-compose.chaos.yml`); slow consumers and `max.poll.interval.ms` evictions; retry storms, backoff with jitter and a retry budget, timeouts, circuit breaker with consumer pause, bulkhead, rate limiting, load shedding | [019](docs/decisions/019-resilience-lab.md), [labs](docs/labs.md#phase-3-failure-load-backpressure-and-resilience) |
+| Events over time (Phase 4) | `/history`: rebuild an order at any version or instant from the event store; replay order.events from a timestamp by real offsets; a projection rebuilt from history (wrong, fixed, compared with the event store); OrderPlaced v1 written as the previous release did and read everywhere through the upcaster; a v3 event dead-lettered by today's readers; reader × writer matrix; a compacted topic with tombstones | [020](docs/decisions/020-events-over-time.md), [labs](docs/labs.md#phase-4-events-over-time) |
 | HTTP API conventions | Typed records; lists as `{data, meta}`; errors as `application/problem+json` with a stable `code`, request id and trace id; one shared `platform-web` module | [016](docs/decisions/016-http-api-conventions.md) |
 | API-edge idempotency | *Experiments → Client retries*: a timed-out client's retry doubles the order; an `Idempotency-Key` makes it one | [labs](docs/labs.md) |
 | Ordering and partitioning | *Experiments → Ordering*: wrong keys, adding partitions in flight, hot keys; a sequence guard and replay recover | [labs](docs/labs.md) |
@@ -95,6 +96,14 @@ The Kafka internals lab needs its own 3-node cluster, a Compose profile so the e
 ```sh
 docker compose --profile kafka-lab up -d
 python3 scripts/verify_event_lab.py kafka     # its 7 drills
+```
+
+## Events over time (Phase 4)
+
+**http://localhost:8080/history** needs only the default stack. Select an order, move along its versions or pick an instant, compare each event as stored with how it is read today, and replay order.events from that instant. Four experiments (time travel, projection evolution, schema evolution, log compaction) each run in six steps:
+
+```sh
+python3 scripts/verify_history_lab.py      # 2 direct drills + the 4 experiments
 ```
 
 ## Resilience lab (Phase 3)
