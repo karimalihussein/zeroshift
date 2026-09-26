@@ -37,7 +37,8 @@ public final class OrderProjection {
         switch (event) {
           case OrderPaymentAuthorized e -> readModels.paid(e.orderId(), e.paymentId(), at);
           case OrderStockReserved e -> readModels.reserved(e.orderId(), e.reservationId(), at);
-          case OrderShipped e -> readModels.shipped(e.orderId(), e.trackingNumber(), at);
+          case OrderShipped e ->
+              readModels.shipped(e.orderId(), e.trackingNumber(), e.carrier(), at);
           case OrderCancelled e ->
               readModels.cancelled(e.orderId(), e.reason(), e.compensations(), at);
           case OrderPlaced e -> throw new IllegalStateException("handled above");

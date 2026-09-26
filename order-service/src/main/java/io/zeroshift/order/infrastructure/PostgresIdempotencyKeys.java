@@ -24,8 +24,7 @@ public final class PostgresIdempotencyKeys implements IdempotencyKeys {
                     r.getRequestHash(),
                     r.getOrderId(),
                     r.getCorrelationId(),
-                    r.getEventId(),
-                    r.getTotal()));
+                    r.getEventId()));
   }
 
   @Override
@@ -36,7 +35,6 @@ public final class PostgresIdempotencyKeys implements IdempotencyKeys {
             .set(IDEMPOTENCY_KEY.ORDER_ID, claim.orderId())
             .set(IDEMPOTENCY_KEY.CORRELATION_ID, claim.correlationId())
             .set(IDEMPOTENCY_KEY.EVENT_ID, claim.eventId())
-            .set(IDEMPOTENCY_KEY.TOTAL, claim.total())
             .onConflictDoNothing()
             .execute()
         == 1;

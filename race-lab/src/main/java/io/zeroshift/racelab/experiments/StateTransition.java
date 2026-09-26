@@ -21,7 +21,7 @@ import java.util.Map;
 
 /** 4. A shipping worker and a cancellation worker both move the same PAID order. */
 public class StateTransition extends ReadDecideWrite {
-  static final String READ = "SELECT status, version FROM shop_order WHERE id = ?";
+  static final String READ = "SELECT status, version FROM orders WHERE id = ?";
 
   @Override
   public ExperimentInfo info() {
@@ -43,29 +43,29 @@ public class StateTransition extends ReadDecideWrite {
                 Mode.UNSAFE,
                 "Validate the transition against the status read, then write the new status. The"
                     + " write does not re-check the status it replaces.",
-                "SELECT status FROM shop_order WHERE id = ?;\n-- if (status == PAID) …\n"
-                    + "UPDATE shop_order SET status = :target WHERE id = ?;",
+                "SELECT status FROM orders WHERE id = ?;\n-- if (status == PAID) …\n"
+                    + "UPDATE orders SET status = :target WHERE id = ?;",
                 Isolation.READ_COMMITTED,
                 false),
             mode(
                 Mode.ATOMIC,
                 "A compare-and-set on the status: move to the target only if the order is still"
                     + " PAID. The loser matches no row and performs no side effect.",
-                "UPDATE shop_order SET status = :target\n WHERE id = ? AND status = 'PAID';",
+                "UPDATE orders SET status = :target\n WHERE id = ? AND status = 'PAID';",
                 Isolation.READ_COMMITTED,
                 true),
             mode(
                 Mode.PESSIMISTIC,
                 "Lock the order while validating. The second worker waits, then reads the new status"
                     + " and refuses its transition.",
-                "SELECT status FROM shop_order WHERE id = ? FOR UPDATE;",
+                "SELECT status FROM orders WHERE id = ? FOR UPDATE;",
                 Isolation.READ_COMMITTED,
                 true),
             mode(
                 Mode.OPTIMISTIC,
                 "Write the transition only at the version validated. The loser retries, reads the"
                     + " other status and refuses.",
-                "UPDATE shop_order SET status = :target, version = :v + 1\n"
+                "UPDATE orders SET status = :target, version = :v + 1\n"
                     + " WHERE id = ? AND version = :v;",
                 Isolation.READ_COMMITTED,
                 true),
@@ -94,24 +94,25 @@ public class StateTransition extends ReadDecideWrite {
 
   @Override
   public Map<String, Object> seed(LabDatabase db, RunContext run) {
-    var order = run.requests().getFirst().orderId();
-    long id =
-        db.insert(
-            "INSERT INTO shop_order(run_id, order_id, status, version) VALUES (?, ?, 'PAID', 1)"
-                + " RETURNING id",
-            run.runId(),
-            order);
-    return Map.of("run", run.runId(), "order", id);
+    var first = run.requests().getFirst();
+    var order = java.util.UUID.fromString(first.orderId());
+    db.update(
+        "INSERT INTO orders(id, run_id, customer_id, status, currency, total)"
+            + " VALUES (?, ?, ?, 'PAID', 'USD', 89.00)",
+        order,
+        run.runId(),
+        java.util.UUID.fromString(first.customerId()));
+    return Map.of("run", run.runId(), "order", order);
   }
 
   @Override
   public Map<String, Object> observe(LabDatabase db, RunContext run) {
     return db.one(
         "SELECT o.status, o.version,"
-            + " (SELECT count(*) FROM order_effect e WHERE e.shop_order_id = o.id AND e.effect = 'SHIPMENT') AS shipments,"
-            + " (SELECT count(*) FROM order_effect e WHERE e.shop_order_id = o.id AND e.effect = 'REFUND') AS refunds"
-            + " FROM shop_order o WHERE o.id = ?",
-        run.key("order"));
+            + " (SELECT count(*) FROM order_effect e WHERE e.order_id = o.id AND e.effect = 'SHIPMENT') AS shipments,"
+            + " (SELECT count(*) FROM order_effect e WHERE e.order_id = o.id AND e.effect = 'REFUND') AS refunds"
+            + " FROM orders o WHERE o.id = ?",
+        run.uuid("order"));
   }
 
   @Override
@@ -126,12 +127,12 @@ public class StateTransition extends ReadDecideWrite {
 
   @Override
   String target(Participant p) {
-    return "order #" + p.key("order");
+    return "order " + p.uuid("order").toString().substring(0, 8);
   }
 
   @Override
   Read read(Participant p, boolean lock) {
-    return Read.of(target(p), READ + (lock ? " FOR UPDATE" : ""), "status", p.key("order"))
+    return Read.of(target(p), READ + (lock ? " FOR UPDATE" : ""), "status", p.uuid("order"))
         .versioned("version");
   }
 
@@ -143,7 +144,9 @@ public class StateTransition extends ReadDecideWrite {
     return new Decision(
         paid,
         move + " allowed",
-        paid ? "a PAID order may be " + targetStatus(p).toLowerCase() : "the order is already " + status,
+        paid
+            ? "a PAID order may be " + targetStatus(p).toLowerCase()
+            : "the order is already " + status,
         "refused " + move + ": the order is already " + status);
   }
 
@@ -151,10 +154,10 @@ public class StateTransition extends ReadDecideWrite {
   Write blindWrite(Participant p, Row row) {
     return Write.update(
             target(p),
-            "UPDATE shop_order SET status = ?, version = version + 1 WHERE id = ?",
+            "UPDATE orders SET status = ?, version = version + 1 WHERE id = ?",
             "status=" + targetStatus(p),
             targetStatus(p),
-            p.key("order"))
+            p.uuid("order"))
         .version(row.number("version") + 1);
   }
 
@@ -162,10 +165,10 @@ public class StateTransition extends ReadDecideWrite {
   Write conditionalWrite(Participant p, Row row) {
     return Write.update(
         target(p),
-        "UPDATE shop_order SET status = ?, version = version + 1 WHERE id = ? AND status = 'PAID'",
+        "UPDATE orders SET status = ?, version = version + 1 WHERE id = ? AND status = 'PAID'",
         "status=" + targetStatus(p),
         targetStatus(p),
-        p.key("order"));
+        p.uuid("order"));
   }
 
   @Override
@@ -173,11 +176,11 @@ public class StateTransition extends ReadDecideWrite {
     long v = row.number("version");
     return Write.update(
             target(p),
-            "UPDATE shop_order SET status = ?, version = ? WHERE id = ? AND version = ?",
+            "UPDATE orders SET status = ?, version = ? WHERE id = ? AND version = ?",
             "status=" + targetStatus(p),
             targetStatus(p),
             v + 1,
-            p.key("order"),
+            p.uuid("order"),
             v)
         .version(v + 1);
   }
@@ -191,10 +194,10 @@ public class StateTransition extends ReadDecideWrite {
   Write record(Participant p, Row row) {
     return Write.insert(
         "order effects",
-        "INSERT INTO order_effect(run_id, shop_order_id, effect, request_id) VALUES (?, ?, ?, ?)",
+        "INSERT INTO order_effect(run_id, order_id, effect, request_id) VALUES (?, ?, ?, ?)",
         effect(p),
         p.key("run"),
-        p.key("order"),
+        p.uuid("order"),
         effect(p),
         p.identity().requestId());
   }
@@ -230,7 +233,8 @@ public class StateTransition extends ReadDecideWrite {
   }
 
   @Override
-  public String conclusion(RunContext run, InvariantResult invariant, List<RequestResult> requests) {
+  public String conclusion(
+      RunContext run, InvariantResult invariant, List<RequestResult> requests) {
     if (invariant.holds()) return Texts.preserved(run.config(), requests);
     return "Both workers validated their transition against PAID, the only state they had read."
         + " Each then performed its side effect and wrote its status; the last write decided the"

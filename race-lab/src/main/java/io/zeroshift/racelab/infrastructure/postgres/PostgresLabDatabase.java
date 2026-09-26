@@ -19,13 +19,12 @@ public final class PostgresLabDatabase implements LabDatabase {
   static final List<String> SCENARIO_TABLES =
       List.of(
           "reservation",
-          "item",
+          "product",
           "deposit",
           "account",
-          "charge",
           "payment",
           "order_effect",
-          "shop_order",
+          "orders",
           "document_revision",
           "document",
           "doctor");

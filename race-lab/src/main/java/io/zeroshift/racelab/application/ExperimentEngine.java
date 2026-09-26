@@ -22,6 +22,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
@@ -46,7 +47,8 @@ public class ExperimentEngine implements AutoCloseable {
   private final Tracing tracing;
   private final RunStreams streams;
   private final ExecutorService executor =
-      Executors.newSingleThreadExecutor(Thread.ofPlatform().name("race-lab-engine").daemon().factory());
+      Executors.newSingleThreadExecutor(
+          Thread.ofPlatform().name("race-lab-engine").daemon().factory());
   private final AtomicLong running = new AtomicLong();
   private final String instance = hostName();
 
@@ -73,8 +75,8 @@ public class ExperimentEngine implements AutoCloseable {
           new Run.Request(
               String.valueOf(LANES.charAt(i)),
               id("req"),
-              id("ord"),
-              id("cus"),
+              UUID.randomUUID().toString(),
+              UUID.randomUUID().toString(),
               experiment.role(i)));
     return runs.create(config, requests);
   }
@@ -93,7 +95,8 @@ public class ExperimentEngine implements AutoCloseable {
 
   /**
    * Deletes every run, event and scenario row of the lab (race_lab only) and restarts their ids, so
-   * the next run starts from the same state as the first one ever did. Refused while a run executes.
+   * the next run starts from the same state as the first one ever did. Refused while a run
+   * executes.
    */
   public Map<String, Integer> reset() {
     if (!running.compareAndSet(0, -1)) throw new RaceLabErrors.LabBusy(running.get());
@@ -122,13 +125,21 @@ public class ExperimentEngine implements AutoCloseable {
     var modeInfo = info.mode(mode);
     if (modeInfo == null)
       throw new RaceLabErrors.InvalidConfig(
-          info.title() + " does not support " + mode.label() + "; it supports "
+          info.title()
+              + " does not support "
+              + mode.label()
+              + "; it supports "
               + info.modes().stream().map(m -> m.mode().label()).toList());
     // Unset values arrive as negatives (Integer.MIN_VALUE for the initial value): defaults apply.
     int requests = c.requests() <= 0 ? limits.defaultRequests() : c.requests();
     if (requests < limits.minRequests() || requests > limits.maxRequests())
       throw new RaceLabErrors.InvalidConfig(
-          info.title() + " runs " + limits.minRequests() + "–" + limits.maxRequests() + " requests");
+          info.title()
+              + " runs "
+              + limits.minRequests()
+              + "–"
+              + limits.maxRequests()
+              + " requests");
     int value = c.initialValue() == Integer.MIN_VALUE ? limits.defaultValue() : c.initialValue();
     if (value < limits.minValue() || value > limits.maxValue())
       throw new RaceLabErrors.InvalidConfig(
@@ -136,7 +147,9 @@ public class ExperimentEngine implements AutoCloseable {
     int delay = c.delayMs() < 0 ? limits.defaultDelayMs() : c.delayMs();
     if (delay > 5000) throw new RaceLabErrors.InvalidConfig("The delay must be 0–5000 ms");
     int retries =
-        c.maxRetries() < 0 ? (experiment.retries(mode) ? limits.defaultRetries() : 0) : c.maxRetries();
+        c.maxRetries() < 0
+            ? (experiment.retries(mode) ? limits.defaultRetries() : 0)
+            : c.maxRetries();
     if (retries > 10) throw new RaceLabErrors.InvalidConfig("Retries must be 0–10");
     Isolation isolation =
         mode == Mode.SERIALIZABLE
@@ -211,7 +224,8 @@ public class ExperimentEngine implements AutoCloseable {
       if (!joinAll(threads, TimeUnit.SECONDS.toNanos(RUN_LIMIT_SECONDS))) {
         backends.keySet().forEach(db::cancel);
         joinAll(threads, TimeUnit.SECONDS.toNanos(10));
-        throw new IllegalStateException("Run exceeded " + RUN_LIMIT_SECONDS + " s and was cancelled");
+        throw new IllegalStateException(
+            "Run exceeded " + RUN_LIMIT_SECONDS + " s and was cancelled");
       }
 
       var result = participants.stream().map(TransactionParticipant::result).toList();
@@ -250,11 +264,14 @@ public class ExperimentEngine implements AutoCloseable {
       recorder.close();
       current =
           current.completed(
-              new RunResult(metrics, invariant, result, initial, finalState, highlights, explanation),
+              new RunResult(
+                  metrics, invariant, result, initial, finalState, highlights, explanation),
               Instant.now());
       runs.save(current);
     } catch (RuntimeException | Error e) {
-      current = current.failed(Objects.toString(e.getMessage(), e.getClass().getSimpleName()), Instant.now());
+      current =
+          current.failed(
+              Objects.toString(e.getMessage(), e.getClass().getSimpleName()), Instant.now());
       runs.save(current);
     } finally {
       participants.forEach(TransactionParticipant::close);

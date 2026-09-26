@@ -36,73 +36,101 @@ public class CustomerSummaryRecord extends UpdatableRecordImpl<CustomerSummaryRe
     }
 
     /**
+     * Setter for <code>public.customer_summary.customer_name</code>.
+     */
+    public void setCustomerName(String value) {
+        set(1, value);
+    }
+
+    /**
+     * Getter for <code>public.customer_summary.customer_name</code>.
+     */
+    public String getCustomerName() {
+        return (String) get(1);
+    }
+
+    /**
+     * Setter for <code>public.customer_summary.currency</code>.
+     */
+    public void setCurrency(String value) {
+        set(2, value);
+    }
+
+    /**
+     * Getter for <code>public.customer_summary.currency</code>.
+     */
+    public String getCurrency() {
+        return (String) get(2);
+    }
+
+    /**
      * Setter for <code>public.customer_summary.orders_placed</code>.
      */
     public void setOrdersPlaced(Integer value) {
-        set(1, value);
+        set(3, value);
     }
 
     /**
      * Getter for <code>public.customer_summary.orders_placed</code>.
      */
     public Integer getOrdersPlaced() {
-        return (Integer) get(1);
+        return (Integer) get(3);
     }
 
     /**
      * Setter for <code>public.customer_summary.orders_shipped</code>.
      */
     public void setOrdersShipped(Integer value) {
-        set(2, value);
+        set(4, value);
     }
 
     /**
      * Getter for <code>public.customer_summary.orders_shipped</code>.
      */
     public Integer getOrdersShipped() {
-        return (Integer) get(2);
+        return (Integer) get(4);
     }
 
     /**
      * Setter for <code>public.customer_summary.orders_cancelled</code>.
      */
     public void setOrdersCancelled(Integer value) {
-        set(3, value);
+        set(5, value);
     }
 
     /**
      * Getter for <code>public.customer_summary.orders_cancelled</code>.
      */
     public Integer getOrdersCancelled() {
-        return (Integer) get(3);
+        return (Integer) get(5);
     }
 
     /**
      * Setter for <code>public.customer_summary.shipped_value</code>.
      */
     public void setShippedValue(BigDecimal value) {
-        set(4, value);
+        set(6, value);
     }
 
     /**
      * Getter for <code>public.customer_summary.shipped_value</code>.
      */
     public BigDecimal getShippedValue() {
-        return (BigDecimal) get(4);
+        return (BigDecimal) get(6);
     }
 
     /**
      * Setter for <code>public.customer_summary.updated_at</code>.
      */
     public void setUpdatedAt(OffsetDateTime value) {
-        set(5, value);
+        set(7, value);
     }
 
     /**
      * Getter for <code>public.customer_summary.updated_at</code>.
      */
     public OffsetDateTime getUpdatedAt() {
-        return (OffsetDateTime) get(5);
+        return (OffsetDateTime) get(7);
     }
 
     // -------------------------------------------------------------------------
@@ -128,10 +156,12 @@ public class CustomerSummaryRecord extends UpdatableRecordImpl<CustomerSummaryRe
     /**
      * Create a detached, initialised CustomerSummaryRecord
      */
-    public CustomerSummaryRecord(String customerId, Integer ordersPlaced, Integer ordersShipped, Integer ordersCancelled, BigDecimal shippedValue, OffsetDateTime updatedAt) {
+    public CustomerSummaryRecord(String customerId, String customerName, String currency, Integer ordersPlaced, Integer ordersShipped, Integer ordersCancelled, BigDecimal shippedValue, OffsetDateTime updatedAt) {
         super(CustomerSummary.CUSTOMER_SUMMARY);
 
         setCustomerId(customerId);
+        setCustomerName(customerName);
+        setCurrency(currency);
         setOrdersPlaced(ordersPlaced);
         setOrdersShipped(ordersShipped);
         setOrdersCancelled(ordersCancelled);

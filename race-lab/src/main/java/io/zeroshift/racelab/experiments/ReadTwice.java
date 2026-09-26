@@ -43,7 +43,9 @@ abstract class ReadTwice implements Experiment {
       p.decide(
           same,
           "read 1 = read 2",
-          same ? "one consistent view for the whole transaction" : "the data changed under the transaction");
+          same
+              ? "one consistent view for the whole transaction"
+              : "the data changed under the transaction");
       p.commit("read " + a + ", then " + b);
     } else {
       p.sync("first read");
@@ -82,7 +84,8 @@ abstract class ReadTwice implements Experiment {
   }
 
   @Override
-  public String conclusion(RunContext run, InvariantResult invariant, List<RequestResult> requests) {
+  public String conclusion(
+      RunContext run, InvariantResult invariant, List<RequestResult> requests) {
     var iso = run.config().isolation();
     return invariant.holds()
         ? "At "

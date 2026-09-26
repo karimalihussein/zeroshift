@@ -10,7 +10,7 @@ import org.jooq.DSLContext;
  * The shipment table: one row per order, written once, so a repeated command gets the same answer.
  */
 public final class Shipments {
-  public record Shipment(boolean scheduled, String trackingNumber, String reason) {}
+  public record Shipment(boolean scheduled, String trackingNumber, String carrier, String reason) {}
 
   public record Shipped(java.util.UUID orderId, String trackingNumber) {}
 
@@ -21,10 +21,11 @@ public final class Shipments {
   }
 
   public Optional<Shipment> find(UUID orderId) {
-    return db.select(SHIPMENT.STATUS, SHIPMENT.TRACKING_NUMBER, SHIPMENT.REASON)
+    return db.select(SHIPMENT.STATUS, SHIPMENT.TRACKING_NUMBER, SHIPMENT.CARRIER, SHIPMENT.REASON)
         .from(SHIPMENT)
         .where(SHIPMENT.ORDER_ID.eq(orderId))
-        .fetchOptional(r -> new Shipment("SCHEDULED".equals(r.value1()), r.value2(), r.value3()));
+        .fetchOptional(
+            r -> new Shipment("SCHEDULED".equals(r.value1()), r.value2(), r.value3(), r.value4()));
   }
 
   public void scheduled(UUID orderId, String trackingNumber, String carrier) {

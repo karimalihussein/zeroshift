@@ -4,6 +4,7 @@ import io.zeroshift.contracts.Envelope;
 import io.zeroshift.contracts.MessageCodec;
 import io.zeroshift.contracts.Topics;
 import io.zeroshift.order.application.EventStore;
+import io.zeroshift.order.application.OrderTables;
 import io.zeroshift.order.application.PlaceOrder;
 import io.zeroshift.order.domain.Order;
 import io.zeroshift.platform.Crash;
@@ -28,44 +29,59 @@ public class DualWriteDemo {
 
   public record Result(UUID orderId, UUID eventId, String outcome) {}
 
-  private final PlaceOrder pricing;
+  private final PlaceOrder placeOrder;
   private final EventStore events;
+  private final OrderTables tables;
   private final KafkaTemplate<String, String> kafka;
   private final TransactionOperations transactions;
 
   public DualWriteDemo(
-      PlaceOrder pricing,
+      PlaceOrder placeOrder,
       EventStore events,
+      OrderTables tables,
       KafkaTemplate<String, String> kafka,
       TransactionOperations transactions) {
-    this.pricing = pricing;
+    this.placeOrder = placeOrder;
     this.events = events;
+    this.tables = tables;
     this.kafka = kafka;
     this.transactions = transactions;
   }
 
-  public Result place(String customerId, List<PlaceOrder.Item> items, Mode mode) {
+  public Result place(UUID customerId, List<PlaceOrder.Item> items, String voucherCode, Mode mode) {
     var id = UUID.randomUUID();
-    var placed =
-        Envelope.of(Order.place(id, customerId, pricing.price(items)), UUID.randomUUID(), null);
+    var quote = placeOrder.quote(customerId, items, voucherCode);
     if (mode == Mode.PUBLISH_THEN_ROLLBACK) {
+      var published = new Envelope[1];
       try {
         transactions.executeWithoutResult(
             tx -> {
-              events.append(id, 0, List.of(placed));
-              publish(placed);
+              published[0] = write(id, quote);
+              publish(published[0]);
               throw new IllegalStateException("database write failed after the Kafka publish");
             });
       } catch (IllegalStateException expected) {
         return new Result(
             id,
-            placed.eventId(),
+            published[0] == null ? null : published[0].eventId(),
             "OrderPlaced is on Kafka, but the order was rolled back: consumers saw a ghost order");
       }
     }
-    transactions.executeWithoutResult(tx -> events.append(id, 0, List.of(placed)));
+    var placed = transactions.execute(tx -> write(id, quote));
     Crash.now("order " + id + " committed; dying before its Kafka publish, so the event is lost");
     return new Result(id, placed.eventId(), "unreachable");
+  }
+
+  /**
+   * The database half of the dual write: everything the normal path writes (the event, the order,
+   * its invoice, the voucher's use) except the outbox row and the saga.
+   */
+  private Envelope write(UUID id, PlaceOrder.Quote quote) {
+    var event = placeOrder.placed(id, quote);
+    var placed = Envelope.of(event, UUID.randomUUID(), null);
+    events.append(id, 0, List.of(placed));
+    tables.recorded(Order.empty(id).apply(event), List.of(event));
+    return placed;
   }
 
   private void publish(Envelope envelope) {

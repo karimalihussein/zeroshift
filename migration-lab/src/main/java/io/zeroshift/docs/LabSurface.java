@@ -83,8 +83,33 @@ final class LabSurface {
             .group("Events over time")
             .title("Place an order as schema v1")
             .summary(
-                "Places an order through the normal path while writing OrderPlaced at schema v1 (no currency), as the previous release did.")
-            .response(202, "202 with the placed order, as POST /orders.", null)
+                "Places an order through the normal path (same body and checks as POST /orders, without an Idempotency-Key) while writing OrderPlaced at schema v1, as the previous release did: no currency and none of the commerce fields (customerName, subtotal, discount, taxRate, tax, voucherCode, invoiceNumber; on lines productId, name, subtotal, discount, total). Readers upcast it and see neutral amounts. The orders and invoice tables keep the real amounts, so the lab can compare the two. v1 can only mean USD.")
+            .body(Surface.placeOrder())
+            .response(
+                202,
+                "PlaceOrder.Placed: the placed order, as POST /orders answers it but without traceId.",
+                Op.schema(
+                    "Placed",
+                    "order-service/src/main/java/io/zeroshift/order/application/PlaceOrder.java",
+                    null,
+                    Op.field("orderId", "uuid", true, ""),
+                    Op.field("correlationId", "uuid", true, ""),
+                    Op.field("eventId", "uuid", true, "The OrderPlaced event, stored at v1."),
+                    Op.field("invoiceNumber", "string", true, ""),
+                    Op.field("currency", "string", true, "Always USD here."),
+                    Op.field("subtotal", "decimal", true, ""),
+                    Op.field("discount", "decimal", true, ""),
+                    Op.field("tax", "decimal", true, ""),
+                    Op.field("total", "decimal", true, ""),
+                    Op.field("version", "long", true, ""),
+                    Op.field("replayed", "boolean", true, "Always false: no Idempotency-Key.")))
+            .error(422, "UNKNOWN_CUSTOMER", "No customer with this customerId.")
+            .error(
+                422, "ORDER_RULE_VIOLATION", "An unknown or inactive SKU, or another order rule.")
+            .error(
+                422, "VOUCHER_NOT_APPLICABLE", "The voucher does not exist or cannot be used now.")
+            .error(409, "VOUCHER_EXHAUSTED", "The voucher's usage limit is used up.")
+            .error(503, "CATALOG_UNAVAILABLE", "inventory-service did not answer the price lookup.")
             .source("order-service/src/main/java/io/zeroshift/order/web/HistoryController.java")
             .done("order-post-legacy-order"));
     ops.add(
@@ -108,7 +133,7 @@ final class LabSurface {
             .group("Resilience")
             .title("Restock a SKU")
             .summary(
-                "Raises free stock to at least available units, like a delivery. Never lowers stock.")
+                "Raises the product's stock (units that can still be sold) to at least available, like a delivery. Never lowers it.")
             .path("sku", "string", "SKU.")
             .query(
                 "available",
@@ -116,8 +141,11 @@ final class LabSurface {
                 true,
                 null,
                 "Units free to reserve afterwards, 1–10,000,000.")
-            .response(200, "The resulting state.", null)
-            .error(404, "UNKNOWN_SKU", "No such SKU.")
+            .response(
+                200,
+                "ApiResponse of ProductCatalog.StockLevel: every product's level after the restock.",
+                Surface.stockLevel())
+            .error(404, "UNKNOWN_SKU", "No product with this SKU.")
             .source(
                 "inventory-service/src/main/java/io/zeroshift/inventory/infrastructure/StockController.java")
             .done("inventory-post-restock"));

@@ -13,8 +13,8 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * One concurrency lesson: the rows it races on, what each request does per strategy, and the rule
- * a correct execution keeps. The SQL lives here because the SQL is the lesson; the engine runs it,
+ * One concurrency lesson: the rows it races on, what each request does per strategy, and the rule a
+ * correct execution keeps. The SQL lives here because the SQL is the lesson; the engine runs it,
  * records it and checks the result.
  */
 public interface Experiment {
@@ -24,8 +24,8 @@ public interface Experiment {
   Map<String, Object> seed(LabDatabase db, RunContext run);
 
   /**
-   * One attempt of one request, as one transaction. It ends by {@link Participant#commit} or
-   * {@link Participant#reject}; an abort by PostgreSQL or a stale version propagates as {@link
+   * One attempt of one request, as one transaction. It ends by {@link Participant#commit} or {@link
+   * Participant#reject}; an abort by PostgreSQL or a stale version propagates as {@link
    * Participant.Aborted} and the engine decides about a retry.
    */
   void attempt(Participant p);
@@ -71,9 +71,15 @@ public interface Experiment {
   }
 
   /** A run as the experiment sees it: configuration, request identities, and its seeded keys. */
-  record RunContext(long runId, RunConfig config, List<Run.Request> requests, Map<String, Object> keys) {
+  record RunContext(
+      long runId, RunConfig config, List<Run.Request> requests, Map<String, Object> keys) {
     public long key(String name) {
       return ((Number) keys.get(name)).longValue();
+    }
+
+    /** A seeded row's UUID (products, orders: the commerce model's ids). */
+    public java.util.UUID uuid(String name) {
+      return (java.util.UUID) keys.get(name);
     }
   }
 }

@@ -2,14 +2,17 @@ package io.zeroshift.docs;
 
 import io.zeroshift.contracts.Contracts;
 import io.zeroshift.contracts.Envelope;
+import io.zeroshift.contracts.OrderLine;
 import io.zeroshift.docs.Model.EventDoc;
 import io.zeroshift.docs.Model.Field;
 import java.lang.reflect.ParameterizedType;
+import java.lang.reflect.RecordComponent;
 import java.lang.reflect.Type;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 /** Event pages built from {@link Contracts} and the payload record components. */
@@ -69,7 +72,9 @@ final class Events {
       throw new IllegalStateException(
           "Document the upcaster for " + contract.type() + " in Events.upcasters");
     return List.of(
-        "v1 → v2: a missing currency is set to USD. v2 payloads already contain currency. Readers ignore fields they do not know; renaming a field needs a new upcaster here.");
+        "v1 → v2: a missing currency is set to USD. v2 payloads already contain currency. Readers ignore fields they do not know; renaming a field needs a new upcaster here.",
+        "The commerce fields (customerName, subtotal, discount, taxRate, tax, voucherCode, invoiceNumber; on each line productId, name, subtotal, discount, total) were added inside v2, which is backward compatible. A payload without them decodes with neutral values: subtotal = total, discount and tax 0.00, tax rate 0, the customer id as the name, and per line subtotal = total = unitPrice × quantity and name = sku.",
+        "Writing as v1 (the history lab's previous deployment) removes currency and every commerce field, and refuses a currency other than USD.");
   }
 
   private static List<String> producers(String type) {
@@ -161,15 +166,52 @@ final class Events {
     if (!type.isRecord()) return sample(type, type);
     var pad = " ".repeat(indent);
     var lines = new ArrayList<String>();
-    for (var component : type.getRecordComponents()) {
-      lines.add(
-          pad
-              + "\""
-              + component.getName()
-              + "\": "
-              + sample(component.getGenericType(), component.getType()));
-    }
+    for (var component : type.getRecordComponents())
+      lines.add(pad + "\"" + component.getName() + "\": " + value(type, component));
     return "{\n" + String.join(",\n", lines) + "\n" + " ".repeat(indent - 2) + "}";
+  }
+
+  /**
+   * One consistent order in the examples: 2 × SKU-CABLE at 12.99 with WELCOME10 (10%) and 8% tax.
+   * Amounts are scale 2 and total = subtotal − discount + tax, as Money and OrderPlaced require.
+   */
+  private static final Map<String, String> ORDER =
+      Map.of(
+          "subtotal", "25.98",
+          "discount", "2.60",
+          "taxRate", "0.0800",
+          "tax", "1.87",
+          "total", "25.25",
+          "amount", "25.25");
+
+  private static final Map<String, String> LINE =
+      Map.of(
+          "unitPrice", "12.99",
+          "subtotal", "25.98",
+          "discount", "2.60",
+          "total", "23.38");
+
+  private static final Map<String, String> KNOWN =
+      Map.of(
+          "customerId", "\"5b0e6f4c-2d1a-4c3e-9f7b-1a2b3c4d5e6f\"",
+          "customerName", "\"Amara Okafor\"",
+          "currency", "\"USD\"",
+          "sku", "\"SKU-CABLE\"",
+          "name", "\"USB-C cable, 2 m\"",
+          "voucherCode", "\"WELCOME10\"",
+          "invoiceNumber", "\"INV-2026-000042\"",
+          "idempotencyKey", "\"order:3f1c0b2e-7a4d-4e1a-9c3b-6d8e2f0a1b44:authorize\"");
+
+  private static String value(Class<?> owner, RecordComponent component) {
+    var name = component.getName();
+    var raw = component.getType();
+    if (raw == BigDecimal.class) {
+      var amount = (owner == OrderLine.class ? LINE : ORDER).get(name);
+      if (amount != null) return amount;
+    }
+    if (raw == String.class && KNOWN.containsKey(name)) return KNOWN.get(name);
+    if (raw == int.class && name.equals("quantity")) return "2";
+    return sample(component.getGenericType(), raw);
   }
 
   private static String sample(Type generic, Class<?> raw) {
@@ -184,7 +226,7 @@ final class Events {
     if (raw == UUID.class) return "\"3f1c0b2e-7a4d-4e1a-9c3b-6d8e2f0a1b44\"";
     if (raw == int.class || raw == Integer.class || raw == long.class || raw == Long.class)
       return "1";
-    if (raw == BigDecimal.class) return "9.99";
+    if (raw == BigDecimal.class) return "25.25";
     if (raw == boolean.class || raw == Boolean.class) return "true";
     if (raw == Instant.class) return "\"2026-09-26T00:00:00Z\"";
     if (raw.isRecord()) return example(raw, 4);

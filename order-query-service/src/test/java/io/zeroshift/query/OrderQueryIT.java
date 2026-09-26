@@ -26,6 +26,7 @@ class OrderQueryIT {
   @Autowired KafkaTemplate<String, String> kafka;
   @Autowired JdbcTemplate jdbc;
   @Autowired ProjectionRebuild rebuild;
+  @Autowired ReadModels readModels;
 
   @Test
   void generatedJooqClassesMatchTheMigratedSchema(@Autowired org.jooq.DSLContext db) {
@@ -36,18 +37,51 @@ class OrderQueryIT {
   @Test
   void projectsTheLifecycleAndRebuildsTheSameViewByReplaying() throws Exception {
     var id = UUID.randomUUID();
+    var customer = UUID.randomUUID().toString();
+    // 59.00 + 9.99 = 68.99, voucher SAVE10 takes 10.00 (split 8.55 / 1.45 by subtotal),
+    // tax 8% of 58.99 = 4.72, total 63.71.
+    var lines =
+        List.of(
+            OrderLine.of(UUID.randomUUID(), "SKU-MOUSE", "Mouse", 2, new BigDecimal("29.50"))
+                .withDiscount(new BigDecimal("8.55")),
+            OrderLine.of(UUID.randomUUID(), "SKU-CABLE", "Cable", 1, new BigDecimal("9.99"))
+                .withDiscount(new BigDecimal("1.45")));
     var placed =
         Envelope.of(
             new OrderPlaced(
                 id,
-                "cust-9",
-                List.of(new OrderLine("SKU-MOUSE", 2, new BigDecimal("29.50"))),
-                new BigDecimal("59.00"),
-                "USD"),
+                customer,
+                "Ada Lovelace",
+                lines,
+                "USD",
+                new BigDecimal("68.99"),
+                new BigDecimal("10.00"),
+                new BigDecimal("0.0800"),
+                new BigDecimal("4.72"),
+                new BigDecimal("63.71"),
+                "SAVE10",
+                "INV-2026-000001"),
             UUID.randomUUID(),
             null);
     send(kafka, placed);
+    await().atMost(WAIT).until(() -> "PLACED".equals(status(id)));
+    var view = readModels.order(id).orElseThrow();
+    assertThat(view.customerName()).isEqualTo("Ada Lovelace");
+    assertThat(view.currency()).isEqualTo("USD");
+    assertThat(view.subtotal()).isEqualByComparingTo("68.99");
+    assertThat(view.discount()).isEqualByComparingTo("10.00");
+    assertThat(view.taxRate()).isEqualByComparingTo("0.0800");
+    assertThat(view.tax()).isEqualByComparingTo("4.72");
+    assertThat(view.total()).isEqualByComparingTo("63.71");
+    assertThat(view.voucherCode()).isEqualTo("SAVE10");
+    assertThat(view.invoiceNumber()).isEqualTo("INV-2026-000001");
+    assertThat(view.invoiceStatus()).isEqualTo("ISSUED");
+    assertThat(view.itemCount()).isEqualTo(3);
+    assertThat(view.items()).isEqualTo(lines);
+
     send(kafka, placed.reply(new OrderPaymentAuthorized(id, UUID.randomUUID())));
+    await().atMost(WAIT).until(() -> "PAID".equals(status(id)));
+    assertThat(invoiceStatus(id)).isEqualTo("PAID");
     send(kafka, placed.reply(new OrderStockReserved(id, UUID.randomUUID())));
     var shipped = placed.reply(new OrderShipped(id, "ZS-1", "ZeroShift Express"));
     send(kafka, shipped);
@@ -55,12 +89,24 @@ class OrderQueryIT {
 
     await().atMost(WAIT).until(() -> "SHIPPED".equals(status(id)));
     await().atMost(WAIT).until(() -> decisions("DUPLICATE_SKIPPED") >= 1);
-    assertThat(shippedValue("cust-9")).isEqualByComparingTo("59.00");
+    assertThat(readModels.order(id).orElseThrow().carrier()).isEqualTo("ZeroShift Express");
+    assertThat(shippedValue(customer)).isEqualByComparingTo("63.71");
+    assertThat(readModels.customers())
+        .filteredOn(c -> c.customerId().equals(customer))
+        .singleElement()
+        .satisfies(
+            c -> {
+              assertThat(c.customerName()).isEqualTo("Ada Lovelace");
+              assertThat(c.currency()).isEqualTo("USD");
+              assertThat(c.ordersPlaced()).isEqualTo(1);
+              assertThat(c.ordersShipped()).isEqualTo(1);
+            });
 
     rebuild.rebuild();
     assertThat(status(id)).isNull(); // truncated, now replaying from offset 0
     await().atMost(WAIT).until(() -> "SHIPPED".equals(status(id)));
-    assertThat(shippedValue("cust-9")).isEqualByComparingTo("59.00");
+    assertThat(shippedValue(customer)).isEqualByComparingTo("63.71");
+    assertThat(invoiceStatus(id)).isEqualTo("PAID");
     assertThat(
             jdbc.queryForObject(
                 "SELECT events_applied FROM order_view WHERE order_id=?", Integer.class, id))
@@ -72,12 +118,11 @@ class OrderQueryIT {
     var id = UUID.randomUUID();
     var placed =
         Envelope.of(
-            new OrderPlaced(
+            undiscounted(
                 id,
                 "cust-cancel",
-                List.of(new OrderLine("SKU-CABLE", 3, new BigDecimal("9.99"))),
-                new BigDecimal("29.97"),
-                "USD"),
+                "INV-2026-000002",
+                new OrderLine("SKU-CABLE", 3, new BigDecimal("9.99"))),
             UUID.randomUUID(),
             null);
     send(kafka, placed);
@@ -91,13 +136,16 @@ class OrderQueryIT {
     await().atMost(WAIT).until(() -> "CANCELLED".equals(status(id)));
     var row =
         jdbc.queryForMap(
-            "SELECT cancel_reason, compensations::text AS compensations, item_count, events_applied"
-                + " FROM order_view WHERE order_id=?",
+            "SELECT cancel_reason, compensations::text AS compensations, item_count, events_applied,"
+                + " invoice_status FROM order_view WHERE order_id=?",
             id);
     assertThat(row.get("cancel_reason")).isEqualTo("Stock rejected: none left");
     assertThat(row.get("compensations"))
         .isEqualTo("{\"payment refunded | card ending 4242\",\"stock released\"}");
-    assertThat(row).containsEntry("item_count", 3).containsEntry("events_applied", 3);
+    assertThat(row)
+        .containsEntry("item_count", 3)
+        .containsEntry("events_applied", 3)
+        .containsEntry("invoice_status", "VOIDED");
     assertThat(
             jdbc.queryForMap(
                 "SELECT orders_placed, orders_shipped, orders_cancelled, shipped_value"
@@ -119,6 +167,39 @@ class OrderQueryIT {
     assertThat(status(unknown)).isNull();
   }
 
+  @Test
+  void projectsAnOrderPlacedWrittenBeforeTheCommerceModel() {
+    var id = UUID.randomUUID();
+    // Schema v2, as the event store holds it: a free-text customer, bare lines, only a total.
+    var v2 =
+        """
+        {"eventId":"%s","type":"OrderPlaced","schemaVersion":2,"correlationId":"%s",\
+        "causationId":null,"occurredAt":"2026-01-10T09:00:00Z","payload":{"orderId":"%s",\
+        "customerId":"old-customer","lines":[{"sku":"SKU-1","quantity":2,"unitPrice":10.50}],\
+        "total":21.00,"currency":"USD"}}"""
+            .formatted(UUID.randomUUID(), UUID.randomUUID(), id);
+    kafka.send(Topics.ORDER_EVENTS, id.toString(), v2).join();
+    send(kafka, Envelope.of(new OrderPaymentAuthorized(id, UUID.randomUUID()), id, null));
+
+    await().atMost(WAIT).until(() -> "PAID".equals(status(id)));
+    var view = readModels.order(id).orElseThrow();
+    assertThat(view.customerId()).isEqualTo("old-customer");
+    assertThat(view.customerName()).isEqualTo("old-customer");
+    assertThat(view.subtotal()).isEqualByComparingTo("21.00");
+    assertThat(view.discount()).isZero();
+    assertThat(view.tax()).isZero();
+    assertThat(view.total()).isEqualByComparingTo("21.00");
+    assertThat(view.invoiceNumber()).isNull();
+    assertThat(view.invoiceStatus()).isNull(); // no invoice existed, so none was paid
+    assertThat(view.items())
+        .singleElement()
+        .satisfies(
+            line -> {
+              assertThat(line.name()).isEqualTo("SKU-1");
+              assertThat(line.total()).isEqualByComparingTo("21.00");
+            });
+  }
+
   @org.springframework.boot.test.web.server.LocalServerPort int port;
 
   @Test
@@ -126,12 +207,8 @@ class OrderQueryIT {
     var id = UUID.randomUUID();
     var placed =
         Envelope.of(
-            new OrderPlaced(
-                id,
-                "cust-token",
-                List.of(new OrderLine("SKU-CABLE", 1, new BigDecimal("9.99"))),
-                new BigDecimal("9.99"),
-                "USD"),
+            undiscounted(
+                id, "cust-token", null, new OrderLine("SKU-CABLE", 1, new BigDecimal("9.99"))),
             UUID.randomUUID(),
             null);
     send(kafka, placed);
@@ -200,6 +277,33 @@ class OrderQueryIT {
         .startsWith("{\"data\":[")
         .contains("\"meta\":{");
     assertThat(get.apply("/customers").statusCode()).isEqualTo(200);
+  }
+
+  /** A v3 order without voucher or tax. */
+  private static OrderPlaced undiscounted(
+      UUID id, String customer, String invoiceNumber, OrderLine... lines) {
+    var subtotal =
+        java.util.Arrays.stream(lines)
+            .map(OrderLine::subtotal)
+            .reduce(BigDecimal.ZERO, BigDecimal::add);
+    return new OrderPlaced(
+        id,
+        customer,
+        customer,
+        List.of(lines),
+        "USD",
+        subtotal,
+        BigDecimal.ZERO,
+        BigDecimal.ZERO,
+        BigDecimal.ZERO,
+        subtotal,
+        null,
+        invoiceNumber);
+  }
+
+  private String invoiceStatus(UUID id) {
+    return jdbc.queryForObject(
+        "SELECT invoice_status FROM order_view WHERE order_id=?", String.class, id);
   }
 
   private String status(UUID id) {

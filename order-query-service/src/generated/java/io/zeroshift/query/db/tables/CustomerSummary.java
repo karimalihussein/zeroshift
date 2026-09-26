@@ -58,6 +58,16 @@ public class CustomerSummary extends TableImpl<CustomerSummaryRecord> {
     public final TableField<CustomerSummaryRecord, String> CUSTOMER_ID = createField(DSL.name("customer_id"), SQLDataType.CLOB.nullable(false), this, "");
 
     /**
+     * The column <code>public.customer_summary.customer_name</code>.
+     */
+    public final TableField<CustomerSummaryRecord, String> CUSTOMER_NAME = createField(DSL.name("customer_name"), SQLDataType.CLOB.nullable(false), this, "");
+
+    /**
+     * The column <code>public.customer_summary.currency</code>.
+     */
+    public final TableField<CustomerSummaryRecord, String> CURRENCY = createField(DSL.name("currency"), SQLDataType.CHAR(3).nullable(false), this, "");
+
+    /**
      * The column <code>public.customer_summary.orders_placed</code>.
      */
     public final TableField<CustomerSummaryRecord, Integer> ORDERS_PLACED = createField(DSL.name("orders_placed"), SQLDataType.INTEGER.nullable(false).defaultValue(DSL.field(DSL.raw("0"), SQLDataType.INTEGER)), this, "");
@@ -75,7 +85,7 @@ public class CustomerSummary extends TableImpl<CustomerSummaryRecord> {
     /**
      * The column <code>public.customer_summary.shipped_value</code>.
      */
-    public final TableField<CustomerSummaryRecord, BigDecimal> SHIPPED_VALUE = createField(DSL.name("shipped_value"), SQLDataType.NUMERIC(14, 2).nullable(false).defaultValue(DSL.field(DSL.raw("0"), SQLDataType.NUMERIC)), this, "");
+    public final TableField<CustomerSummaryRecord, BigDecimal> SHIPPED_VALUE = createField(DSL.name("shipped_value"), SQLDataType.NUMERIC(12, 2).nullable(false).defaultValue(DSL.field(DSL.raw("0"), SQLDataType.NUMERIC)), this, "");
 
     /**
      * The column <code>public.customer_summary.updated_at</code>.

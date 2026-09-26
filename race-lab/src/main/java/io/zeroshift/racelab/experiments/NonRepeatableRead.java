@@ -27,7 +27,9 @@ public class NonRepeatableRead extends ReadTwice {
         "A report reads the same balance twice inside one transaction. Can it get two different"
             + " answers?",
         "Request A (the reader) reads the balance, does some work, and reads it again. Request B"
-            + " (the writer) deposits " + DEPOSIT + " and commits between A's two reads. At READ"
+            + " (the writer) deposits "
+            + DEPOSIT
+            + " and commits between A's two reads. At READ"
             + " COMMITTED each statement sees whatever is committed when it starts, so A's second"
             + " read differs from its first. At REPEATABLE READ A sees one snapshot for its whole"
             + " transaction. Change the isolation level and run it again.",
@@ -81,7 +83,9 @@ public class NonRepeatableRead extends ReadTwice {
   Write change(Participant p) {
     return Write.update(
         "account #" + p.key("account"),
-        "UPDATE account SET balance = balance + " + DEPOSIT + ", version = version + 1 WHERE id = ?",
+        "UPDATE account SET balance = balance + "
+            + DEPOSIT
+            + ", version = version + 1 WHERE id = ?",
         "balance=balance+" + DEPOSIT,
         p.key("account"));
   }

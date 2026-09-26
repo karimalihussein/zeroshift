@@ -59,7 +59,9 @@ public final class OrderSaga {
             reply,
             new ReserveStock(
                 order.id(),
-                order.lines().stream().map(l -> new StockLine(l.sku(), l.quantity())).toList()));
+                order.lines().stream()
+                    .map(l -> new StockLine(l.productId(), l.sku(), l.quantity()))
+                    .toList()));
         save(saga, saga.advance(SagaState.AWAITING_STOCK, deadline()), reply, "payment authorized");
         yield Handled.processed("Payment " + p.paymentId() + " authorized → ReserveStock sent");
       }

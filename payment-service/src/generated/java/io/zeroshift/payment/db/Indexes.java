@@ -5,6 +5,7 @@ package io.zeroshift.payment.db;
 
 
 import io.zeroshift.payment.db.tables.GatewayCall;
+import io.zeroshift.payment.db.tables.Payment;
 
 import org.jooq.Index;
 import org.jooq.OrderField;
@@ -23,4 +24,5 @@ public class Indexes {
     // -------------------------------------------------------------------------
 
     public static final Index GATEWAY_CALL_ORDER = Internal.createIndex(DSL.name("gateway_call_order"), GatewayCall.GATEWAY_CALL, new OrderField[] { GatewayCall.GATEWAY_CALL.ORDER_ID, GatewayCall.GATEWAY_CALL.ID }, false);
+    public static final Index PAYMENT_ORDER = Internal.createIndex(DSL.name("payment_order"), Payment.PAYMENT, new OrderField[] { Payment.PAYMENT.ORDER_ID }, false);
 }

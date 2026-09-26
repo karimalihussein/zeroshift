@@ -4,18 +4,23 @@
 package io.zeroshift.order.db;
 
 
+import io.zeroshift.order.db.tables.Customer;
 import io.zeroshift.order.db.tables.EventStore;
 import io.zeroshift.order.db.tables.IdempotencyKey;
+import io.zeroshift.order.db.tables.Invoice;
 import io.zeroshift.order.db.tables.Lease;
+import io.zeroshift.order.db.tables.OrderItem;
 import io.zeroshift.order.db.tables.OrderSnapshot;
-import io.zeroshift.order.db.tables.Product;
+import io.zeroshift.order.db.tables.Orders;
 import io.zeroshift.order.db.tables.Saga;
 import io.zeroshift.order.db.tables.SagaTransition;
+import io.zeroshift.order.db.tables.Voucher;
 
 import java.util.Arrays;
 import java.util.List;
 
 import org.jooq.Catalog;
+import org.jooq.Sequence;
 import org.jooq.Table;
 import org.jooq.impl.DSL;
 import org.jooq.impl.SchemaImpl;
@@ -35,6 +40,11 @@ public class Public extends SchemaImpl {
     public static final Public PUBLIC = new Public();
 
     /**
+     * The table <code>public.customer</code>.
+     */
+    public final Customer CUSTOMER = Customer.CUSTOMER;
+
+    /**
      * The table <code>public.event_store</code>.
      */
     public final EventStore EVENT_STORE = EventStore.EVENT_STORE;
@@ -45,9 +55,19 @@ public class Public extends SchemaImpl {
     public final IdempotencyKey IDEMPOTENCY_KEY = IdempotencyKey.IDEMPOTENCY_KEY;
 
     /**
+     * The table <code>public.invoice</code>.
+     */
+    public final Invoice INVOICE = Invoice.INVOICE;
+
+    /**
      * The table <code>public.lease</code>.
      */
     public final Lease LEASE = Lease.LEASE;
+
+    /**
+     * The table <code>public.order_item</code>.
+     */
+    public final OrderItem ORDER_ITEM = OrderItem.ORDER_ITEM;
 
     /**
      * The table <code>public.order_snapshot</code>.
@@ -55,9 +75,9 @@ public class Public extends SchemaImpl {
     public final OrderSnapshot ORDER_SNAPSHOT = OrderSnapshot.ORDER_SNAPSHOT;
 
     /**
-     * The table <code>public.product</code>.
+     * The table <code>public.orders</code>.
      */
-    public final Product PRODUCT = Product.PRODUCT;
+    public final Orders ORDERS = Orders.ORDERS;
 
     /**
      * The table <code>public.saga</code>.
@@ -68,6 +88,11 @@ public class Public extends SchemaImpl {
      * The table <code>public.saga_transition</code>.
      */
     public final SagaTransition SAGA_TRANSITION = SagaTransition.SAGA_TRANSITION;
+
+    /**
+     * The table <code>public.voucher</code>.
+     */
+    public final Voucher VOUCHER = Voucher.VOUCHER;
 
     /**
      * No further instances allowed
@@ -83,15 +108,26 @@ public class Public extends SchemaImpl {
     }
 
     @Override
+    public final List<Sequence<?>> getSequences() {
+        return Arrays.asList(
+            Sequences.INVOICE_NUMBER_SEQ
+        );
+    }
+
+    @Override
     public final List<Table<?>> getTables() {
         return Arrays.asList(
+            Customer.CUSTOMER,
             EventStore.EVENT_STORE,
             IdempotencyKey.IDEMPOTENCY_KEY,
+            Invoice.INVOICE,
             Lease.LEASE,
+            OrderItem.ORDER_ITEM,
             OrderSnapshot.ORDER_SNAPSHOT,
-            Product.PRODUCT,
+            Orders.ORDERS,
             Saga.SAGA,
-            SagaTransition.SAGA_TRANSITION
+            SagaTransition.SAGA_TRANSITION,
+            Voucher.VOUCHER
         );
     }
 }

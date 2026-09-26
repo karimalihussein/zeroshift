@@ -17,7 +17,7 @@ import org.springframework.kafka.config.KafkaListenerEndpointRegistry;
 import org.springframework.transaction.support.TransactionTemplate;
 
 @Configuration(proxyBeanMethods = false)
-@Import(GatewayControl.class)
+@Import({GatewayControl.class, PaymentController.class})
 public class PaymentWiring {
   @Bean
   URI gatewayUri(@Value("${payment.gateway-url}") String url) {
@@ -78,8 +78,11 @@ public class PaymentWiring {
   }
 
   @Bean
-  Payments payments(DSLContext db) {
-    return new PostgresPayments(db);
+  PostgresPayments payments(
+      DSLContext db,
+      TransactionTemplate transactions,
+      @Value("${payment.provider:zeroshift-gateway}") String provider) {
+    return new PostgresPayments(db, transactions, provider);
   }
 
   @Bean

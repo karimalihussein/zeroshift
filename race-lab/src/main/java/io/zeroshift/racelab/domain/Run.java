@@ -32,7 +32,16 @@ public record Run(
 
   public Run withStatus(Status next, Instant started, Instant completed, String trace) {
     return new Run(
-        id, experiment, config, next, createdAt, started, completed, trace, requests, result,
+        id,
+        experiment,
+        config,
+        next,
+        createdAt,
+        started,
+        completed,
+        trace,
+        requests,
+        result,
         error);
   }
 
@@ -53,7 +62,16 @@ public record Run(
 
   public Run failed(String reason, Instant at) {
     return new Run(
-        id, experiment, config, Status.FAILED, createdAt, startedAt, at, traceId, requests, result,
+        id,
+        experiment,
+        config,
+        Status.FAILED,
+        createdAt,
+        startedAt,
+        at,
+        traceId,
+        requests,
+        result,
         reason);
   }
 }

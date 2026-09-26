@@ -24,6 +24,15 @@ server:
 order:
   step-timeout: ${SAGA_STEP_TIMEOUT:30s}
   snapshot-every: 3
+commerce:
+  # One currency and one tax rate for the whole lab; both are copied onto every order.
+  currency: ${COMMERCE_CURRENCY:USD}
+  tax-rate: ${COMMERCE_TAX_RATE:0.0800}
+  # inventory-service, asked for prices on every placement (GET /products?sku=...).
+  catalog-url: ${CATALOG_URL:http://localhost:18084}
+  # Seed customers and vouchers into an empty database (Compose turns it on; tests leave it off).
+  # commerce.demo-seed (COMMERCE_DEMO_SEED) makes the randomized names reproducible.
+  demo-data: ${COMMERCE_DEMO_DATA:false}
 management:
   endpoints:
     web:

@@ -4,13 +4,17 @@
 package io.zeroshift.order.db;
 
 
+import io.zeroshift.order.db.tables.Customer;
 import io.zeroshift.order.db.tables.EventStore;
 import io.zeroshift.order.db.tables.IdempotencyKey;
+import io.zeroshift.order.db.tables.Invoice;
 import io.zeroshift.order.db.tables.Lease;
+import io.zeroshift.order.db.tables.OrderItem;
 import io.zeroshift.order.db.tables.OrderSnapshot;
-import io.zeroshift.order.db.tables.Product;
+import io.zeroshift.order.db.tables.Orders;
 import io.zeroshift.order.db.tables.Saga;
 import io.zeroshift.order.db.tables.SagaTransition;
+import io.zeroshift.order.db.tables.Voucher;
 
 
 /**
@@ -18,6 +22,11 @@ import io.zeroshift.order.db.tables.SagaTransition;
  */
 @SuppressWarnings({ "all", "unchecked", "rawtypes", "this-escape" })
 public class Tables {
+
+    /**
+     * The table <code>public.customer</code>.
+     */
+    public static final Customer CUSTOMER = Customer.CUSTOMER;
 
     /**
      * The table <code>public.event_store</code>.
@@ -30,9 +39,19 @@ public class Tables {
     public static final IdempotencyKey IDEMPOTENCY_KEY = IdempotencyKey.IDEMPOTENCY_KEY;
 
     /**
+     * The table <code>public.invoice</code>.
+     */
+    public static final Invoice INVOICE = Invoice.INVOICE;
+
+    /**
      * The table <code>public.lease</code>.
      */
     public static final Lease LEASE = Lease.LEASE;
+
+    /**
+     * The table <code>public.order_item</code>.
+     */
+    public static final OrderItem ORDER_ITEM = OrderItem.ORDER_ITEM;
 
     /**
      * The table <code>public.order_snapshot</code>.
@@ -40,9 +59,9 @@ public class Tables {
     public static final OrderSnapshot ORDER_SNAPSHOT = OrderSnapshot.ORDER_SNAPSHOT;
 
     /**
-     * The table <code>public.product</code>.
+     * The table <code>public.orders</code>.
      */
-    public static final Product PRODUCT = Product.PRODUCT;
+    public static final Orders ORDERS = Orders.ORDERS;
 
     /**
      * The table <code>public.saga</code>.
@@ -53,4 +72,9 @@ public class Tables {
      * The table <code>public.saga_transition</code>.
      */
     public static final SagaTransition SAGA_TRANSITION = SagaTransition.SAGA_TRANSITION;
+
+    /**
+     * The table <code>public.voucher</code>.
+     */
+    public static final Voucher VOUCHER = Voucher.VOUCHER;
 }

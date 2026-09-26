@@ -3,7 +3,10 @@ package io.zeroshift.payment.application;
 import java.math.BigDecimal;
 import java.util.UUID;
 
-/** The external card processor. Charges carry the order id as idempotency key. */
+/**
+ * The external card processor. Each charge carries its payment's idempotency key, so the gateway
+ * charges a retried request once.
+ */
 public interface PaymentGateway {
   sealed interface Result permits Charged, Declined {}
 
@@ -12,7 +15,7 @@ public interface PaymentGateway {
   record Declined(String reason) implements Result {}
 
   /** Throws {@link Unavailable} when no answer can be trusted: timeout, 5xx, connection refused. */
-  Result charge(UUID orderId, BigDecimal amount, String currency);
+  Result charge(UUID orderId, String idempotencyKey, BigDecimal amount, String currency);
 
   final class Unavailable extends RuntimeException {
     public Unavailable(String message) {

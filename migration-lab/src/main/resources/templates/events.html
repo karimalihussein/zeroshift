@@ -49,7 +49,10 @@
       <p>POST /orders through the control plane. Every send is new data.</p>
     </div>
     <form id="composer" class="composer-form" novalidate>
-      <label class="field customer-field"><span>Customer</span><input id="customer" maxlength="40" autocomplete="off" required></label>
+      <div class="field-stack">
+        <label class="field customer-field"><span>Customer</span><select id="customer" required></select></label>
+        <label class="field voucher-field"><span>Voucher</span><select id="voucher"></select></label>
+      </div>
       <fieldset class="field lines-field"><legend>Items</legend><div id="lines" class="lines"></div><button id="add-line" type="button" class="link-button">Add item</button></fieldset>
       <label class="field scenario-field"><span>What should happen</span><select id="scenario"></select><small id="scenario-note"></small></label>
       <div class="composer-actions">

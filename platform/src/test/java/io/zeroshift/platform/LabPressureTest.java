@@ -12,7 +12,9 @@ class LabPressureTest {
     var meters = new SimpleMeterRegistry();
     var pending = new AtomicInteger(3);
     meters.gauge("hikaricp.connections.pending", pending);
-    meters.gauge("hikaricp.connections.max", new AtomicInteger(10));
+    // Gauges hold their value weakly: keep a strong reference, or GC can turn it into 0.
+    var max = new AtomicInteger(10);
+    meters.gauge("hikaricp.connections.max", max);
     meters
         .counter("zeroshift.consumer.decisions", "consumer", "a", "decision", "PROCESSED")
         .increment(4);
@@ -29,7 +31,7 @@ class LabPressureTest {
     var p = new LabPressure(meters, "payment-service", "payment-1").read();
 
     assertThat(p.pool().pending()).isEqualTo(3);
-    assertThat(p.pool().max()).isEqualTo(10);
+    assertThat(p.pool().max()).isEqualTo(max.get());
     assertThat(p.decisions()).containsEntry("PROCESSED", 6.0).containsEntry("DEAD_LETTERED", 1.0);
     assertThat(p.counters())
         .containsEntry("zeroshift.gateway.attempts{outcome=TIMEOUT}", 7.0)

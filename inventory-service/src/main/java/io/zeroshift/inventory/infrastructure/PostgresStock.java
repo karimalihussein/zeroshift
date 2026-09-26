@@ -1,22 +1,23 @@
 package io.zeroshift.inventory.infrastructure;
 
+import static io.zeroshift.inventory.db.Tables.PRODUCT;
 import static io.zeroshift.inventory.db.Tables.RESERVATION;
-import static io.zeroshift.inventory.db.Tables.STOCK;
+import static io.zeroshift.inventory.db.Tables.RESERVATION_ITEM;
 
-import io.zeroshift.contracts.InventoryCommand.StockLine;
-import io.zeroshift.contracts.MessageCodec;
 import io.zeroshift.inventory.application.Stock;
 import io.zeroshift.platform.PostgresClock;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.jooq.DSLContext;
-import org.jooq.JSONB;
 import org.jooq.impl.DSL;
-import tools.jackson.core.type.TypeReference;
 
 public final class PostgresStock implements Stock {
-  private static final TypeReference<List<StockLine>> LINES = new TypeReference<>() {};
+  /** PostgreSQL's uuid order (Java's UUID.compareTo compares signed longs). */
+  private static final Comparator<Item> PRODUCT_ORDER =
+      Comparator.comparing(i -> i.productId().toString());
+
   private final DSLContext db;
 
   public PostgresStock(DSLContext db) {
@@ -24,87 +25,146 @@ public final class PostgresStock implements Stock {
   }
 
   @Override
-  public Optional<Item> find(String sku) {
-    return db.select(STOCK.SKU, STOCK.ON_HAND, STOCK.RESERVED, STOCK.VERSION)
-        .from(STOCK)
-        .where(STOCK.SKU.eq(sku))
-        .fetchOptional(r -> new Item(r.value1(), r.value2(), r.value3(), r.value4()));
+  public Optional<UUID> productId(String sku) {
+    return db.select(PRODUCT.ID).from(PRODUCT).where(PRODUCT.SKU.eq(sku)).fetchOptional(PRODUCT.ID);
   }
 
-  /** Optimistic lock: matches only if the row is still at the version that was read. */
+  /**
+   * One conditional update per product, in product-id order so two reservations never wait on each
+   * other's rows. The row lock each update takes is held until the delivery commits; a concurrent
+   * reservation of the same product waits, then re-checks {@code stock >= q} against what is left.
+   * A failed item rolls back to the savepoint: nothing was taken.
+   */
   @Override
-  public boolean adjust(Item item, int delta) {
-    return db.update(STOCK)
-            .set(STOCK.RESERVED, STOCK.RESERVED.plus(delta))
-            .set(STOCK.VERSION, STOCK.VERSION.plus(1))
-            .where(STOCK.SKU.eq(item.sku()).and(STOCK.VERSION.eq(item.version())))
-            .execute()
-        == 1;
+  public Optional<String> take(List<Item> items) {
+    try {
+      db.transaction(
+          tx -> {
+            for (var item : items.stream().sorted(PRODUCT_ORDER).toList()) {
+              int updated =
+                  tx.dsl()
+                      .update(PRODUCT)
+                      .set(PRODUCT.STOCK, PRODUCT.STOCK.minus(item.quantity()))
+                      .set(PRODUCT.VERSION, PRODUCT.VERSION.plus(1))
+                      .set(PRODUCT.UPDATED_AT, PostgresClock.NOW)
+                      .where(PRODUCT.ID.eq(item.productId()))
+                      .and(PRODUCT.ACTIVE)
+                      .and(PRODUCT.STOCK.ge(item.quantity()))
+                      .execute();
+              if (updated == 0) throw new Shortage(why(tx.dsl(), item));
+            }
+          });
+      return Optional.empty();
+    } catch (Shortage s) {
+      return Optional.of(s.getMessage());
+    }
+  }
+
+  private static String why(DSLContext db, Item item) {
+    var product =
+        db.select(PRODUCT.SKU, PRODUCT.ACTIVE, PRODUCT.STOCK)
+            .from(PRODUCT)
+            .where(PRODUCT.ID.eq(item.productId()))
+            .fetchOne();
+    if (product == null) return "Unknown product " + item.productId() + " (" + item.sku() + ")";
+    if (!product.value2()) return product.value1() + " is not for sale";
+    return product.value1()
+        + ": "
+        + product.value3()
+        + " available, "
+        + item.quantity()
+        + " requested";
+  }
+
+  private static final class Shortage extends RuntimeException {
+    Shortage(String reason) {
+      super(reason, null, false, false);
+    }
+  }
+
+  @Override
+  public void giveBack(List<Item> items) {
+    for (var item : items.stream().sorted(PRODUCT_ORDER).toList())
+      db.update(PRODUCT)
+          .set(PRODUCT.STOCK, PRODUCT.STOCK.plus(item.quantity()))
+          .set(PRODUCT.VERSION, PRODUCT.VERSION.plus(1))
+          .set(PRODUCT.UPDATED_AT, PostgresClock.NOW)
+          .where(PRODUCT.ID.eq(item.productId()))
+          .execute();
   }
 
   @Override
   public Optional<Reservation> reservation(UUID orderId) {
     var r = RESERVATION;
-    return db.select(r.ORDER_ID, r.RESERVATION_ID, r.STATUS, r.LINES, r.REASON)
+    return db.select(r.ID, r.STATUS, r.REASON)
         .from(r)
         .where(r.ORDER_ID.eq(orderId))
         .fetchOptional(
             row ->
                 new Reservation(
                     row.value1(),
-                    row.value2(),
-                    Status.valueOf(row.value3()),
-                    MessageCodec.json().readValue(row.value4().data(), LINES),
-                    row.value5()));
+                    orderId,
+                    Status.valueOf(row.value2()),
+                    items(row.value1()),
+                    row.value3()));
   }
 
-  /** One row per order; later saves change only its status and reason. */
+  private List<Item> items(UUID reservationId) {
+    return db.select(RESERVATION_ITEM.PRODUCT_ID, PRODUCT.SKU, RESERVATION_ITEM.QUANTITY)
+        .from(RESERVATION_ITEM)
+        .join(PRODUCT)
+        .on(PRODUCT.ID.eq(RESERVATION_ITEM.PRODUCT_ID))
+        .where(RESERVATION_ITEM.RESERVATION_ID.eq(reservationId))
+        .orderBy(PRODUCT.SKU)
+        .fetch(row -> new Item(row.value1(), row.value2(), row.value3()));
+  }
+
   @Override
-  public void save(Reservation reservation) {
+  public void insert(Reservation reservation) {
     var r = RESERVATION;
     db.insertInto(r)
+        .set(r.ID, reservation.id())
         .set(r.ORDER_ID, reservation.orderId())
-        .set(r.RESERVATION_ID, reservation.reservationId())
-        .set(r.STATUS, reservation.status().name())
-        .set(r.LINES, JSONB.valueOf(MessageCodec.json().writeValueAsString(reservation.lines())))
-        .set(r.REASON, reservation.reason())
-        .onConflict(r.ORDER_ID)
-        .doUpdate()
         .set(r.STATUS, reservation.status().name())
         .set(r.REASON, reservation.reason())
+        .set(
+            r.RELEASED_AT,
+            reservation.status() == Status.RELEASED
+                ? PostgresClock.NOW
+                : DSL.castNull(r.RELEASED_AT))
+        .execute();
+    for (var item : reservation.items())
+      db.insertInto(RESERVATION_ITEM)
+          .set(RESERVATION_ITEM.RESERVATION_ID, reservation.id())
+          .set(RESERVATION_ITEM.PRODUCT_ID, item.productId())
+          .set(RESERVATION_ITEM.QUANTITY, item.quantity())
+          .execute();
+  }
+
+  /** The items stay: they record what was reserved, and were given back. */
+  @Override
+  public void released(UUID orderId, String reason) {
+    var r = RESERVATION;
+    db.update(r)
+        .set(r.STATUS, Status.RELEASED.name())
+        .set(r.REASON, reason)
         .set(r.UPDATED_AT, PostgresClock.NOW)
+        .set(r.RELEASED_AT, PostgresClock.NOW)
+        .where(r.ORDER_ID.eq(orderId))
         .execute();
   }
 
   /**
-   * Raises {@code sku}'s on-hand count to at least {@code reserved + available}, as a delivery of
-   * new stock would, bumping the version so a reservation that read the old row retries. Never
-   * lowers stock. Returns whether the SKU exists.
+   * A delivery of new stock: raises {@code sku}'s stock to at least {@code available}. Never lowers
+   * it. Returns whether the SKU exists.
    */
   public boolean restock(String sku, int available) {
-    return db.update(STOCK)
-            .set(STOCK.ON_HAND, DSL.greatest(STOCK.ON_HAND, STOCK.RESERVED.plus(available)))
-            .set(STOCK.VERSION, STOCK.VERSION.plus(1))
-            .where(STOCK.SKU.eq(sku))
+    return db.update(PRODUCT)
+            .set(PRODUCT.STOCK, DSL.greatest(PRODUCT.STOCK, DSL.val(available)))
+            .set(PRODUCT.VERSION, PRODUCT.VERSION.plus(1))
+            .set(PRODUCT.UPDATED_AT, PostgresClock.NOW)
+            .where(PRODUCT.SKU.eq(sku))
             .execute()
         == 1;
-  }
-
-  public record Level(
-      String sku, String name, int onHand, int reserved, int available, int version) {}
-
-  /** For the control plane, by sku. */
-  public List<Level> levels() {
-    return db.selectFrom(STOCK)
-        .orderBy(STOCK.SKU)
-        .fetch(
-            r ->
-                new Level(
-                    r.getSku(),
-                    r.getName(),
-                    r.getOnHand(),
-                    r.getReserved(),
-                    r.getOnHand() - r.getReserved(),
-                    r.getVersion()));
   }
 }

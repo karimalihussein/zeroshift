@@ -24,7 +24,8 @@ public class RaceLabApiErrors {
   public static final String RUN_ALREADY_STARTED = "RUN_ALREADY_STARTED";
 
   @ExceptionHandler(RaceLabErrors.ExperimentNotFound.class)
-  ResponseEntity<ApiError> experiment(RaceLabErrors.ExperimentNotFound e, HttpServletRequest request) {
+  ResponseEntity<ApiError> experiment(
+      RaceLabErrors.ExperimentNotFound e, HttpServletRequest request) {
     return ApiErrors.response(HttpStatus.NOT_FOUND, EXPERIMENT_NOT_FOUND, e.getMessage(), request);
   }
 

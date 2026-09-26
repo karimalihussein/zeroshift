@@ -23,7 +23,10 @@ final class LockMonitor implements AutoCloseable {
     /** The token of the statement in flight, or 0 when none is. */
     long inFlight();
 
-    /** PostgreSQL reports this backend waiting (or no longer waiting) during statement {@code token}. */
+    /**
+     * PostgreSQL reports this backend waiting (or no longer waiting) during statement {@code
+     * token}.
+     */
     void waiting(long token, LabDatabase.Waiting waiting, Map<Integer, String> lanes);
   }
 

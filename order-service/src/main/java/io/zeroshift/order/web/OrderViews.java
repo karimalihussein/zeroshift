@@ -3,6 +3,7 @@ package io.zeroshift.order.web;
 import io.zeroshift.order.application.EventStore;
 import io.zeroshift.order.application.OrderNotFound;
 import io.zeroshift.order.application.OrderRepository;
+import io.zeroshift.order.application.OrderTables;
 import io.zeroshift.order.application.SagaStore;
 import io.zeroshift.order.domain.Order;
 import io.zeroshift.order.domain.Saga;
@@ -24,6 +25,11 @@ public class OrderViews {
       UUID orderId,
       UUID correlationId,
       UUID eventId,
+      String invoiceNumber,
+      String currency,
+      BigDecimal subtotal,
+      BigDecimal discount,
+      BigDecimal tax,
       BigDecimal total,
       long version,
       boolean replayed,
@@ -42,8 +48,10 @@ public class OrderViews {
       Instant recordedAt,
       Object payload) {}
 
+  /** {@code invoice}: from the invoice table; null for an order written around the normal path. */
   public record OrderDetail(
       Order order,
+      OrderTables.Invoice invoice,
       String rebuiltFrom,
       Long snapshotVersion,
       List<EventView> events,
@@ -68,18 +76,21 @@ public class OrderViews {
   private final OrderRepository orders;
   private final EventStore events;
   private final SagaStore sagas;
+  private final OrderTables tables;
 
-  public OrderViews(OrderRepository orders, EventStore events, SagaStore sagas) {
+  public OrderViews(
+      OrderRepository orders, EventStore events, SagaStore sagas, OrderTables tables) {
     this.orders = orders;
     this.events = events;
     this.sagas = sagas;
+    this.tables = tables;
   }
 
   /** Newest first, up to {@code limit + 1}; filtered to one customer among the newest sagas. */
-  List<OrderSummary> recent(int limit, String customerId) {
+  List<OrderSummary> recent(int limit, UUID customerId) {
     return sagas.recent(customerId == null ? limit + 1 : CUSTOMER_SCAN).stream()
         .map(s -> new OrderSummary(s, orders.load(s.orderId())))
-        .filter(o -> customerId == null || customerId.equals(o.order().customerId()))
+        .filter(o -> customerId == null || customerId.toString().equals(o.order().customerId()))
         .limit(limit + 1L)
         .toList();
   }
@@ -94,6 +105,7 @@ public class OrderViews {
             + (loaded.replayed().size() == 1 ? " event" : " events");
     return new OrderDetail(
         loaded.order(),
+        tables.invoice(id).orElse(null),
         rebuiltFrom,
         snapshot == null ? null : snapshot.version(),
         events.load(id, 0).stream().map(OrderViews::view).toList(),

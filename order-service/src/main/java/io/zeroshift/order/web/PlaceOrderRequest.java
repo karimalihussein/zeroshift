@@ -6,13 +6,19 @@ import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
+import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import java.util.List;
+import java.util.UUID;
 
-/** POST /orders. Shape and bounds are checked here; business rules (known SKUs) in PlaceOrder. */
+/**
+ * POST /orders. Shape and bounds are checked here; business rules (a known customer, SKUs the
+ * catalog sells, a usable voucher) in PlaceOrder.
+ */
 public record PlaceOrderRequest(
-    @NotBlank @Size(max = 100) String customerId,
-    @NotEmpty @Size(max = 20) List<@Valid Line> items) {
+    @NotNull UUID customerId,
+    @NotEmpty @Size(max = 20) List<@Valid Line> items,
+    @Size(max = 40) String voucherCode) {
 
   public record Line(@NotBlank @Size(max = 40) String sku, @Min(1) @Max(99) int quantity) {}
 

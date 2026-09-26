@@ -52,31 +52,31 @@ public class OrderViewRecord extends UpdatableRecordImpl<OrderViewRecord> {
     }
 
     /**
+     * Setter for <code>public.order_view.customer_name</code>.
+     */
+    public void setCustomerName(String value) {
+        set(2, value);
+    }
+
+    /**
+     * Getter for <code>public.order_view.customer_name</code>.
+     */
+    public String getCustomerName() {
+        return (String) get(2);
+    }
+
+    /**
      * Setter for <code>public.order_view.status</code>.
      */
     public void setStatus(String value) {
-        set(2, value);
+        set(3, value);
     }
 
     /**
      * Getter for <code>public.order_view.status</code>.
      */
     public String getStatus() {
-        return (String) get(2);
-    }
-
-    /**
-     * Setter for <code>public.order_view.total</code>.
-     */
-    public void setTotal(BigDecimal value) {
-        set(3, value);
-    }
-
-    /**
-     * Getter for <code>public.order_view.total</code>.
-     */
-    public BigDecimal getTotal() {
-        return (BigDecimal) get(3);
+        return (String) get(3);
     }
 
     /**
@@ -94,185 +94,311 @@ public class OrderViewRecord extends UpdatableRecordImpl<OrderViewRecord> {
     }
 
     /**
+     * Setter for <code>public.order_view.subtotal</code>.
+     */
+    public void setSubtotal(BigDecimal value) {
+        set(5, value);
+    }
+
+    /**
+     * Getter for <code>public.order_view.subtotal</code>.
+     */
+    public BigDecimal getSubtotal() {
+        return (BigDecimal) get(5);
+    }
+
+    /**
+     * Setter for <code>public.order_view.discount</code>.
+     */
+    public void setDiscount(BigDecimal value) {
+        set(6, value);
+    }
+
+    /**
+     * Getter for <code>public.order_view.discount</code>.
+     */
+    public BigDecimal getDiscount() {
+        return (BigDecimal) get(6);
+    }
+
+    /**
+     * Setter for <code>public.order_view.tax_rate</code>.
+     */
+    public void setTaxRate(BigDecimal value) {
+        set(7, value);
+    }
+
+    /**
+     * Getter for <code>public.order_view.tax_rate</code>.
+     */
+    public BigDecimal getTaxRate() {
+        return (BigDecimal) get(7);
+    }
+
+    /**
+     * Setter for <code>public.order_view.tax</code>.
+     */
+    public void setTax(BigDecimal value) {
+        set(8, value);
+    }
+
+    /**
+     * Getter for <code>public.order_view.tax</code>.
+     */
+    public BigDecimal getTax() {
+        return (BigDecimal) get(8);
+    }
+
+    /**
+     * Setter for <code>public.order_view.total</code>.
+     */
+    public void setTotal(BigDecimal value) {
+        set(9, value);
+    }
+
+    /**
+     * Getter for <code>public.order_view.total</code>.
+     */
+    public BigDecimal getTotal() {
+        return (BigDecimal) get(9);
+    }
+
+    /**
+     * Setter for <code>public.order_view.voucher_code</code>.
+     */
+    public void setVoucherCode(String value) {
+        set(10, value);
+    }
+
+    /**
+     * Getter for <code>public.order_view.voucher_code</code>.
+     */
+    public String getVoucherCode() {
+        return (String) get(10);
+    }
+
+    /**
+     * Setter for <code>public.order_view.invoice_number</code>.
+     */
+    public void setInvoiceNumber(String value) {
+        set(11, value);
+    }
+
+    /**
+     * Getter for <code>public.order_view.invoice_number</code>.
+     */
+    public String getInvoiceNumber() {
+        return (String) get(11);
+    }
+
+    /**
+     * Setter for <code>public.order_view.invoice_status</code>.
+     */
+    public void setInvoiceStatus(String value) {
+        set(12, value);
+    }
+
+    /**
+     * Getter for <code>public.order_view.invoice_status</code>.
+     */
+    public String getInvoiceStatus() {
+        return (String) get(12);
+    }
+
+    /**
      * Setter for <code>public.order_view.item_count</code>.
      */
     public void setItemCount(Integer value) {
-        set(5, value);
+        set(13, value);
     }
 
     /**
      * Getter for <code>public.order_view.item_count</code>.
      */
     public Integer getItemCount() {
-        return (Integer) get(5);
+        return (Integer) get(13);
     }
 
     /**
-     * Setter for <code>public.order_view.lines</code>.
+     * Setter for <code>public.order_view.items</code>.
      */
-    public void setLines(JSONB value) {
-        set(6, value);
+    public void setItems(JSONB value) {
+        set(14, value);
     }
 
     /**
-     * Getter for <code>public.order_view.lines</code>.
+     * Getter for <code>public.order_view.items</code>.
      */
-    public JSONB getLines() {
-        return (JSONB) get(6);
+    public JSONB getItems() {
+        return (JSONB) get(14);
     }
 
     /**
      * Setter for <code>public.order_view.payment_id</code>.
      */
     public void setPaymentId(UUID value) {
-        set(7, value);
+        set(15, value);
     }
 
     /**
      * Getter for <code>public.order_view.payment_id</code>.
      */
     public UUID getPaymentId() {
-        return (UUID) get(7);
+        return (UUID) get(15);
     }
 
     /**
      * Setter for <code>public.order_view.reservation_id</code>.
      */
     public void setReservationId(UUID value) {
-        set(8, value);
+        set(16, value);
     }
 
     /**
      * Getter for <code>public.order_view.reservation_id</code>.
      */
     public UUID getReservationId() {
-        return (UUID) get(8);
+        return (UUID) get(16);
     }
 
     /**
      * Setter for <code>public.order_view.tracking_number</code>.
      */
     public void setTrackingNumber(String value) {
-        set(9, value);
+        set(17, value);
     }
 
     /**
      * Getter for <code>public.order_view.tracking_number</code>.
      */
     public String getTrackingNumber() {
-        return (String) get(9);
+        return (String) get(17);
+    }
+
+    /**
+     * Setter for <code>public.order_view.carrier</code>.
+     */
+    public void setCarrier(String value) {
+        set(18, value);
+    }
+
+    /**
+     * Getter for <code>public.order_view.carrier</code>.
+     */
+    public String getCarrier() {
+        return (String) get(18);
     }
 
     /**
      * Setter for <code>public.order_view.cancel_reason</code>.
      */
     public void setCancelReason(String value) {
-        set(10, value);
+        set(19, value);
     }
 
     /**
      * Getter for <code>public.order_view.cancel_reason</code>.
      */
     public String getCancelReason() {
-        return (String) get(10);
+        return (String) get(19);
     }
 
     /**
      * Setter for <code>public.order_view.compensations</code>.
      */
     public void setCompensations(String[] value) {
-        set(11, value);
+        set(20, value);
     }
 
     /**
      * Getter for <code>public.order_view.compensations</code>.
      */
     public String[] getCompensations() {
-        return (String[]) get(11);
+        return (String[]) get(20);
     }
 
     /**
      * Setter for <code>public.order_view.events_applied</code>.
      */
     public void setEventsApplied(Integer value) {
-        set(12, value);
+        set(21, value);
     }
 
     /**
      * Getter for <code>public.order_view.events_applied</code>.
      */
     public Integer getEventsApplied() {
-        return (Integer) get(12);
+        return (Integer) get(21);
     }
 
     /**
      * Setter for <code>public.order_view.last_event_type</code>.
      */
     public void setLastEventType(String value) {
-        set(13, value);
+        set(22, value);
     }
 
     /**
      * Getter for <code>public.order_view.last_event_type</code>.
      */
     public String getLastEventType() {
-        return (String) get(13);
+        return (String) get(22);
     }
 
     /**
      * Setter for <code>public.order_view.last_event_id</code>.
      */
     public void setLastEventId(UUID value) {
-        set(14, value);
+        set(23, value);
     }
 
     /**
      * Getter for <code>public.order_view.last_event_id</code>.
      */
     public UUID getLastEventId() {
-        return (UUID) get(14);
+        return (UUID) get(23);
     }
 
     /**
      * Setter for <code>public.order_view.last_offset</code>.
      */
     public void setLastOffset(String value) {
-        set(15, value);
+        set(24, value);
     }
 
     /**
      * Getter for <code>public.order_view.last_offset</code>.
      */
     public String getLastOffset() {
-        return (String) get(15);
+        return (String) get(24);
     }
 
     /**
      * Setter for <code>public.order_view.placed_at</code>.
      */
     public void setPlacedAt(OffsetDateTime value) {
-        set(16, value);
+        set(25, value);
     }
 
     /**
      * Getter for <code>public.order_view.placed_at</code>.
      */
     public OffsetDateTime getPlacedAt() {
-        return (OffsetDateTime) get(16);
+        return (OffsetDateTime) get(25);
     }
 
     /**
      * Setter for <code>public.order_view.projected_at</code>.
      */
     public void setProjectedAt(OffsetDateTime value) {
-        set(17, value);
+        set(26, value);
     }
 
     /**
      * Getter for <code>public.order_view.projected_at</code>.
      */
     public OffsetDateTime getProjectedAt() {
-        return (OffsetDateTime) get(17);
+        return (OffsetDateTime) get(26);
     }
 
     // -------------------------------------------------------------------------
@@ -298,19 +424,28 @@ public class OrderViewRecord extends UpdatableRecordImpl<OrderViewRecord> {
     /**
      * Create a detached, initialised OrderViewRecord
      */
-    public OrderViewRecord(UUID orderId, String customerId, String status, BigDecimal total, String currency, Integer itemCount, JSONB lines, UUID paymentId, UUID reservationId, String trackingNumber, String cancelReason, String[] compensations, Integer eventsApplied, String lastEventType, UUID lastEventId, String lastOffset, OffsetDateTime placedAt, OffsetDateTime projectedAt) {
+    public OrderViewRecord(UUID orderId, String customerId, String customerName, String status, String currency, BigDecimal subtotal, BigDecimal discount, BigDecimal taxRate, BigDecimal tax, BigDecimal total, String voucherCode, String invoiceNumber, String invoiceStatus, Integer itemCount, JSONB items, UUID paymentId, UUID reservationId, String trackingNumber, String carrier, String cancelReason, String[] compensations, Integer eventsApplied, String lastEventType, UUID lastEventId, String lastOffset, OffsetDateTime placedAt, OffsetDateTime projectedAt) {
         super(OrderView.ORDER_VIEW);
 
         setOrderId(orderId);
         setCustomerId(customerId);
+        setCustomerName(customerName);
         setStatus(status);
-        setTotal(total);
         setCurrency(currency);
+        setSubtotal(subtotal);
+        setDiscount(discount);
+        setTaxRate(taxRate);
+        setTax(tax);
+        setTotal(total);
+        setVoucherCode(voucherCode);
+        setInvoiceNumber(invoiceNumber);
+        setInvoiceStatus(invoiceStatus);
         setItemCount(itemCount);
-        setLines(lines);
+        setItems(items);
         setPaymentId(paymentId);
         setReservationId(reservationId);
         setTrackingNumber(trackingNumber);
+        setCarrier(carrier);
         setCancelReason(cancelReason);
         setCompensations(compensations);
         setEventsApplied(eventsApplied);

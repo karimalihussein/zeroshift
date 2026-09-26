@@ -9,7 +9,6 @@ import io.zeroshift.inventory.db.tables.Reservation;
 import java.time.OffsetDateTime;
 import java.util.UUID;
 
-import org.jooq.JSONB;
 import org.jooq.Record1;
 import org.jooq.impl.UpdatableRecordImpl;
 
@@ -23,30 +22,30 @@ public class ReservationRecord extends UpdatableRecordImpl<ReservationRecord> {
     private static final long serialVersionUID = 1L;
 
     /**
+     * Setter for <code>public.reservation.id</code>.
+     */
+    public void setId(UUID value) {
+        set(0, value);
+    }
+
+    /**
+     * Getter for <code>public.reservation.id</code>.
+     */
+    public UUID getId() {
+        return (UUID) get(0);
+    }
+
+    /**
      * Setter for <code>public.reservation.order_id</code>.
      */
     public void setOrderId(UUID value) {
-        set(0, value);
+        set(1, value);
     }
 
     /**
      * Getter for <code>public.reservation.order_id</code>.
      */
     public UUID getOrderId() {
-        return (UUID) get(0);
-    }
-
-    /**
-     * Setter for <code>public.reservation.reservation_id</code>.
-     */
-    public void setReservationId(UUID value) {
-        set(1, value);
-    }
-
-    /**
-     * Getter for <code>public.reservation.reservation_id</code>.
-     */
-    public UUID getReservationId() {
         return (UUID) get(1);
     }
 
@@ -65,58 +64,58 @@ public class ReservationRecord extends UpdatableRecordImpl<ReservationRecord> {
     }
 
     /**
-     * Setter for <code>public.reservation.lines</code>.
-     */
-    public void setLines(JSONB value) {
-        set(3, value);
-    }
-
-    /**
-     * Getter for <code>public.reservation.lines</code>.
-     */
-    public JSONB getLines() {
-        return (JSONB) get(3);
-    }
-
-    /**
      * Setter for <code>public.reservation.reason</code>.
      */
     public void setReason(String value) {
-        set(4, value);
+        set(3, value);
     }
 
     /**
      * Getter for <code>public.reservation.reason</code>.
      */
     public String getReason() {
-        return (String) get(4);
+        return (String) get(3);
     }
 
     /**
      * Setter for <code>public.reservation.created_at</code>.
      */
     public void setCreatedAt(OffsetDateTime value) {
-        set(5, value);
+        set(4, value);
     }
 
     /**
      * Getter for <code>public.reservation.created_at</code>.
      */
     public OffsetDateTime getCreatedAt() {
-        return (OffsetDateTime) get(5);
+        return (OffsetDateTime) get(4);
     }
 
     /**
      * Setter for <code>public.reservation.updated_at</code>.
      */
     public void setUpdatedAt(OffsetDateTime value) {
-        set(6, value);
+        set(5, value);
     }
 
     /**
      * Getter for <code>public.reservation.updated_at</code>.
      */
     public OffsetDateTime getUpdatedAt() {
+        return (OffsetDateTime) get(5);
+    }
+
+    /**
+     * Setter for <code>public.reservation.released_at</code>.
+     */
+    public void setReleasedAt(OffsetDateTime value) {
+        set(6, value);
+    }
+
+    /**
+     * Getter for <code>public.reservation.released_at</code>.
+     */
+    public OffsetDateTime getReleasedAt() {
         return (OffsetDateTime) get(6);
     }
 
@@ -143,16 +142,16 @@ public class ReservationRecord extends UpdatableRecordImpl<ReservationRecord> {
     /**
      * Create a detached, initialised ReservationRecord
      */
-    public ReservationRecord(UUID orderId, UUID reservationId, String status, JSONB lines, String reason, OffsetDateTime createdAt, OffsetDateTime updatedAt) {
+    public ReservationRecord(UUID id, UUID orderId, String status, String reason, OffsetDateTime createdAt, OffsetDateTime updatedAt, OffsetDateTime releasedAt) {
         super(Reservation.RESERVATION);
 
+        setId(id);
         setOrderId(orderId);
-        setReservationId(reservationId);
         setStatus(status);
-        setLines(lines);
         setReason(reason);
         setCreatedAt(createdAt);
         setUpdatedAt(updatedAt);
+        setReleasedAt(releasedAt);
         resetTouchedOnNotNull();
     }
 }

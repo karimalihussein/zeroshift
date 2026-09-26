@@ -55,7 +55,13 @@ public class RunComparison {
       diffs.add(diff("Conflicts", "", l.conflicts(), r.conflicts(), false));
       diffs.add(diff("Retries", "", l.retries(), r.retries(), false));
       diffs.add(diff("Lock waits", "", l.lockWaits(), r.lockWaits(), false));
-      diffs.add(diff("Time waiting for locks", "ms", l.lockWaitMicros() / 1000.0, r.lockWaitMicros() / 1000.0, false));
+      diffs.add(
+          diff(
+              "Time waiting for locks",
+              "ms",
+              l.lockWaitMicros() / 1000.0,
+              r.lockWaitMicros() / 1000.0,
+              false));
       diffs.add(diff("Latency p50", "ms", l.p50Micros() / 1000.0, r.p50Micros() / 1000.0, false));
       diffs.add(diff("Latency p95", "ms", l.p95Micros() / 1000.0, r.p95Micros() / 1000.0, false));
       diffs.add(diff("Latency p99", "ms", l.p99Micros() / 1000.0, r.p99Micros() / 1000.0, false));
@@ -103,9 +109,7 @@ public class RunComparison {
           + " kept the invariant that "
           + unsafe.config().mode().label()
           + " broke"
-          + (extra > 0
-              ? ", at " + TransactionParticipant.ms(extra) + " more p95 latency"
-              : "")
+          + (extra > 0 ? ", at " + TransactionParticipant.ms(extra) + " more p95 latency" : "")
           + (safe.metrics().conflicts() > 0
               ? " and " + safe.metrics().conflicts() + " conflict(s) to absorb"
               : "")

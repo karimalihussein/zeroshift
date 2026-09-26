@@ -9,5 +9,6 @@ public sealed interface InventoryCommand extends Message {
   /** Compensation. Releasing an order with no reservation is a successful no-op. */
   record ReleaseStock(UUID orderId) implements InventoryCommand {}
 
-  record StockLine(String sku, int quantity) {}
+  /** {@code productId} is null only in commands written before products had ids. */
+  record StockLine(UUID productId, String sku, int quantity) {}
 }

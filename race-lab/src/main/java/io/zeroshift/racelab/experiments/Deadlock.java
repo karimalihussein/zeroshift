@@ -20,8 +20,8 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * 7. Two transfers in opposite directions. Each locks its source account, then wants the other's:
- * a wait-for cycle that only PostgreSQL's deadlock detector can break, by aborting one of them.
+ * 7. Two transfers in opposite directions. Each locks its source account, then wants the other's: a
+ * wait-for cycle that only PostgreSQL's deadlock detector can break, by aborting one of them.
  */
 public class Deadlock implements Experiment {
   static final int AMOUNT = 10;
@@ -115,7 +115,9 @@ public class Deadlock implements Experiment {
     var who = name(account, alice);
     return Write.update(
         who + "'s account #" + account,
-        "UPDATE account SET balance = balance " + (debit ? "-" : "+") + " ?, version = version + 1"
+        "UPDATE account SET balance = balance "
+            + (debit ? "-" : "+")
+            + " ?, version = version + 1"
             + " WHERE id = ?",
         who + (debit ? " −" : " +") + AMOUNT,
         AMOUNT,
@@ -167,7 +169,9 @@ public class Deadlock implements Experiment {
             + " of "
             + requests.size()
             + " committed"
-            + (victims.isEmpty() ? "" : " (" + String.join(", ", victims) + " aborted as deadlock victim)")
+            + (victims.isEmpty()
+                ? ""
+                : " (" + String.join(", ", victims) + " aborted as deadlock victim)")
             + ", total "
             + total,
         total == expectedTotal
@@ -178,7 +182,8 @@ public class Deadlock implements Experiment {
   }
 
   @Override
-  public String conclusion(RunContext run, InvariantResult invariant, List<RequestResult> requests) {
+  public String conclusion(
+      RunContext run, InvariantResult invariant, List<RequestResult> requests) {
     if (invariant.holds())
       return run.config().mode() == Mode.ORDERED_LOCKS
           ? "Both transfers asked for the lower account id first. The second transfer waited at"

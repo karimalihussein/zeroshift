@@ -4,20 +4,28 @@
 package io.zeroshift.order.db;
 
 
+import io.zeroshift.order.db.tables.Customer;
 import io.zeroshift.order.db.tables.EventStore;
 import io.zeroshift.order.db.tables.IdempotencyKey;
+import io.zeroshift.order.db.tables.Invoice;
 import io.zeroshift.order.db.tables.Lease;
+import io.zeroshift.order.db.tables.OrderItem;
 import io.zeroshift.order.db.tables.OrderSnapshot;
-import io.zeroshift.order.db.tables.Product;
+import io.zeroshift.order.db.tables.Orders;
 import io.zeroshift.order.db.tables.Saga;
 import io.zeroshift.order.db.tables.SagaTransition;
+import io.zeroshift.order.db.tables.Voucher;
+import io.zeroshift.order.db.tables.records.CustomerRecord;
 import io.zeroshift.order.db.tables.records.EventStoreRecord;
 import io.zeroshift.order.db.tables.records.IdempotencyKeyRecord;
+import io.zeroshift.order.db.tables.records.InvoiceRecord;
 import io.zeroshift.order.db.tables.records.LeaseRecord;
+import io.zeroshift.order.db.tables.records.OrderItemRecord;
 import io.zeroshift.order.db.tables.records.OrderSnapshotRecord;
-import io.zeroshift.order.db.tables.records.ProductRecord;
+import io.zeroshift.order.db.tables.records.OrdersRecord;
 import io.zeroshift.order.db.tables.records.SagaRecord;
 import io.zeroshift.order.db.tables.records.SagaTransitionRecord;
+import io.zeroshift.order.db.tables.records.VoucherRecord;
 
 import org.jooq.ForeignKey;
 import org.jooq.TableField;
@@ -38,19 +46,32 @@ public class Keys {
     // UNIQUE and PRIMARY KEY definitions
     // -------------------------------------------------------------------------
 
+    public static final UniqueKey<CustomerRecord> CUSTOMER_PKEY = Internal.createUniqueKey(Customer.CUSTOMER, DSL.name("customer_pkey"), new TableField[] { Customer.CUSTOMER.ID }, true);
     public static final UniqueKey<EventStoreRecord> EVENT_STORE_EVENT_ID_KEY = Internal.createUniqueKey(EventStore.EVENT_STORE, DSL.name("event_store_event_id_key"), new TableField[] { EventStore.EVENT_STORE.EVENT_ID }, true);
     public static final UniqueKey<EventStoreRecord> EVENT_STORE_PKEY = Internal.createUniqueKey(EventStore.EVENT_STORE, DSL.name("event_store_pkey"), new TableField[] { EventStore.EVENT_STORE.GLOBAL_POSITION }, true);
     public static final UniqueKey<EventStoreRecord> EVENT_STORE_STREAM_ID_VERSION_KEY = Internal.createUniqueKey(EventStore.EVENT_STORE, DSL.name("event_store_stream_id_version_key"), new TableField[] { EventStore.EVENT_STORE.STREAM_ID, EventStore.EVENT_STORE.VERSION }, true);
     public static final UniqueKey<IdempotencyKeyRecord> IDEMPOTENCY_KEY_PKEY = Internal.createUniqueKey(IdempotencyKey.IDEMPOTENCY_KEY, DSL.name("idempotency_key_pkey"), new TableField[] { IdempotencyKey.IDEMPOTENCY_KEY.KEY }, true);
+    public static final UniqueKey<InvoiceRecord> INVOICE_NUMBER_KEY = Internal.createUniqueKey(Invoice.INVOICE, DSL.name("invoice_number_key"), new TableField[] { Invoice.INVOICE.NUMBER }, true);
+    public static final UniqueKey<InvoiceRecord> INVOICE_ORDER_ID_KEY = Internal.createUniqueKey(Invoice.INVOICE, DSL.name("invoice_order_id_key"), new TableField[] { Invoice.INVOICE.ORDER_ID }, true);
+    public static final UniqueKey<InvoiceRecord> INVOICE_PKEY = Internal.createUniqueKey(Invoice.INVOICE, DSL.name("invoice_pkey"), new TableField[] { Invoice.INVOICE.ID }, true);
     public static final UniqueKey<LeaseRecord> LEASE_PKEY = Internal.createUniqueKey(Lease.LEASE, DSL.name("lease_pkey"), new TableField[] { Lease.LEASE.NAME }, true);
+    public static final UniqueKey<OrderItemRecord> ORDER_ITEM_ORDER_ID_LINE_NO_KEY = Internal.createUniqueKey(OrderItem.ORDER_ITEM, DSL.name("order_item_order_id_line_no_key"), new TableField[] { OrderItem.ORDER_ITEM.ORDER_ID, OrderItem.ORDER_ITEM.LINE_NO }, true);
+    public static final UniqueKey<OrderItemRecord> ORDER_ITEM_PKEY = Internal.createUniqueKey(OrderItem.ORDER_ITEM, DSL.name("order_item_pkey"), new TableField[] { OrderItem.ORDER_ITEM.ID }, true);
     public static final UniqueKey<OrderSnapshotRecord> ORDER_SNAPSHOT_PKEY = Internal.createUniqueKey(OrderSnapshot.ORDER_SNAPSHOT, DSL.name("order_snapshot_pkey"), new TableField[] { OrderSnapshot.ORDER_SNAPSHOT.STREAM_ID }, true);
-    public static final UniqueKey<ProductRecord> PRODUCT_PKEY = Internal.createUniqueKey(Product.PRODUCT, DSL.name("product_pkey"), new TableField[] { Product.PRODUCT.SKU }, true);
+    public static final UniqueKey<OrdersRecord> ORDERS_PKEY = Internal.createUniqueKey(Orders.ORDERS, DSL.name("orders_pkey"), new TableField[] { Orders.ORDERS.ID }, true);
     public static final UniqueKey<SagaRecord> SAGA_PKEY = Internal.createUniqueKey(Saga.SAGA, DSL.name("saga_pkey"), new TableField[] { Saga.SAGA.ORDER_ID }, true);
     public static final UniqueKey<SagaTransitionRecord> SAGA_TRANSITION_PKEY = Internal.createUniqueKey(SagaTransition.SAGA_TRANSITION, DSL.name("saga_transition_pkey"), new TableField[] { SagaTransition.SAGA_TRANSITION.ID }, true);
+    public static final UniqueKey<VoucherRecord> VOUCHER_CODE_KEY = Internal.createUniqueKey(Voucher.VOUCHER, DSL.name("voucher_code_key"), new TableField[] { Voucher.VOUCHER.CODE }, true);
+    public static final UniqueKey<VoucherRecord> VOUCHER_PKEY = Internal.createUniqueKey(Voucher.VOUCHER, DSL.name("voucher_pkey"), new TableField[] { Voucher.VOUCHER.ID }, true);
 
     // -------------------------------------------------------------------------
     // FOREIGN KEY definitions
     // -------------------------------------------------------------------------
 
+    public static final ForeignKey<IdempotencyKeyRecord, OrdersRecord> IDEMPOTENCY_KEY__IDEMPOTENCY_KEY_ORDER_ID_FKEY = Internal.createForeignKey(IdempotencyKey.IDEMPOTENCY_KEY, DSL.name("idempotency_key_order_id_fkey"), new TableField[] { IdempotencyKey.IDEMPOTENCY_KEY.ORDER_ID }, Keys.ORDERS_PKEY, new TableField[] { Orders.ORDERS.ID }, true, ForeignKeyRule.NO_ACTION, ForeignKeyRule.NO_ACTION);
+    public static final ForeignKey<InvoiceRecord, OrdersRecord> INVOICE__INVOICE_ORDER_ID_FKEY = Internal.createForeignKey(Invoice.INVOICE, DSL.name("invoice_order_id_fkey"), new TableField[] { Invoice.INVOICE.ORDER_ID }, Keys.ORDERS_PKEY, new TableField[] { Orders.ORDERS.ID }, true, ForeignKeyRule.NO_ACTION, ForeignKeyRule.NO_ACTION);
+    public static final ForeignKey<OrderItemRecord, OrdersRecord> ORDER_ITEM__ORDER_ITEM_ORDER_ID_FKEY = Internal.createForeignKey(OrderItem.ORDER_ITEM, DSL.name("order_item_order_id_fkey"), new TableField[] { OrderItem.ORDER_ITEM.ORDER_ID }, Keys.ORDERS_PKEY, new TableField[] { Orders.ORDERS.ID }, true, ForeignKeyRule.CASCADE, ForeignKeyRule.NO_ACTION);
+    public static final ForeignKey<OrdersRecord, CustomerRecord> ORDERS__ORDERS_CUSTOMER_ID_FKEY = Internal.createForeignKey(Orders.ORDERS, DSL.name("orders_customer_id_fkey"), new TableField[] { Orders.ORDERS.CUSTOMER_ID }, Keys.CUSTOMER_PKEY, new TableField[] { Customer.CUSTOMER.ID }, true, ForeignKeyRule.NO_ACTION, ForeignKeyRule.NO_ACTION);
+    public static final ForeignKey<OrdersRecord, VoucherRecord> ORDERS__ORDERS_VOUCHER_ID_FKEY = Internal.createForeignKey(Orders.ORDERS, DSL.name("orders_voucher_id_fkey"), new TableField[] { Orders.ORDERS.VOUCHER_ID }, Keys.VOUCHER_PKEY, new TableField[] { Voucher.VOUCHER.ID }, true, ForeignKeyRule.NO_ACTION, ForeignKeyRule.NO_ACTION);
     public static final ForeignKey<SagaTransitionRecord, SagaRecord> SAGA_TRANSITION__SAGA_TRANSITION_ORDER_ID_FKEY = Internal.createForeignKey(SagaTransition.SAGA_TRANSITION, DSL.name("saga_transition_order_id_fkey"), new TableField[] { SagaTransition.SAGA_TRANSITION.ORDER_ID }, Keys.SAGA_PKEY, new TableField[] { Saga.SAGA.ORDER_ID }, true, ForeignKeyRule.NO_ACTION, ForeignKeyRule.NO_ACTION);
 }

@@ -27,5 +27,6 @@ public class Keys {
     // -------------------------------------------------------------------------
 
     public static final UniqueKey<GatewayCallRecord> GATEWAY_CALL_PKEY = Internal.createUniqueKey(GatewayCall.GATEWAY_CALL, DSL.name("gateway_call_pkey"), new TableField[] { GatewayCall.GATEWAY_CALL.ID }, true);
-    public static final UniqueKey<PaymentRecord> PAYMENT_PKEY = Internal.createUniqueKey(Payment.PAYMENT, DSL.name("payment_pkey"), new TableField[] { Payment.PAYMENT.ORDER_ID }, true);
+    public static final UniqueKey<PaymentRecord> PAYMENT_IDEMPOTENCY_KEY_KEY = Internal.createUniqueKey(Payment.PAYMENT, DSL.name("payment_idempotency_key_key"), new TableField[] { Payment.PAYMENT.IDEMPOTENCY_KEY }, true);
+    public static final UniqueKey<PaymentRecord> PAYMENT_PKEY = Internal.createUniqueKey(Payment.PAYMENT, DSL.name("payment_pkey"), new TableField[] { Payment.PAYMENT.ID }, true);
 }

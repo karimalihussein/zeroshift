@@ -47,8 +47,8 @@ public final class HttpPaymentGateway implements PaymentGateway {
   }
 
   @Override
-  public Result charge(UUID orderId, BigDecimal amount, String currency) {
-    Supplier<Result> call = () -> attempt(orderId, amount, currency);
+  public Result charge(UUID orderId, String idempotencyKey, BigDecimal amount, String currency) {
+    Supplier<Result> call = () -> attempt(orderId, idempotencyKey, amount, currency);
     if (policy.breakerEnabled()) call = CircuitBreaker.decorateSupplier(breaker, call);
     try {
       var result = Retry.decorateSupplier(policy.retry(), call).get();
@@ -64,7 +64,7 @@ public final class HttpPaymentGateway implements PaymentGateway {
     }
   }
 
-  private Result attempt(UUID orderId, BigDecimal amount, String currency) {
+  private Result attempt(UUID orderId, String idempotencyKey, BigDecimal amount, String currency) {
     var timeout = policy.timeout();
     long started = System.nanoTime();
     try {
@@ -77,7 +77,7 @@ public final class HttpPaymentGateway implements PaymentGateway {
                   .timeout(timeout)
                   .header("Content-Type", "application/json")
                   // A retried charge must not charge twice: the gateway dedupes on this key.
-                  .header("Idempotency-Key", orderId.toString())
+                  .header("Idempotency-Key", idempotencyKey)
                   .POST(HttpRequest.BodyPublishers.ofString(body))
                   .build(),
               HttpResponse.BodyHandlers.ofString());

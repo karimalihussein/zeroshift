@@ -23,7 +23,7 @@ import java.util.Map;
 
 /** 1. Several customers reserve the last item at once. */
 public class Oversell extends ReadDecideWrite {
-  static final String READ = "SELECT stock, version FROM item WHERE id = ?";
+  static final String READ = "SELECT stock, version FROM product WHERE id = ?";
 
   @Override
   public ExperimentInfo info() {
@@ -45,8 +45,8 @@ public class Oversell extends ReadDecideWrite {
                 "Each request reads the stock, checks stock > 0 in the application, and writes back"
                     + " the value it computed from its own read. Nothing ties the write to what was"
                     + " read.",
-                "SELECT stock FROM item WHERE id = ?;\n-- application: if (stock > 0) …\n"
-                    + "UPDATE item SET stock = :stock_read - 1 WHERE id = ?;\n"
+                "SELECT stock FROM product WHERE id = ?;\n-- application: if (stock > 0) …\n"
+                    + "UPDATE product SET stock = :stock_read - 1 WHERE id = ?;\n"
                     + "INSERT INTO reservation …;",
                 Isolation.READ_COMMITTED,
                 false),
@@ -55,7 +55,7 @@ public class Oversell extends ReadDecideWrite {
                 "The check moves into the UPDATE's WHERE clause. A second UPDATE waits for the first"
                     + " one's row lock, then PostgreSQL re-evaluates WHERE stock > 0 against the"
                     + " newly committed row (READ COMMITTED) and matches nothing: sold out.",
-                "UPDATE item SET stock = stock - 1\n WHERE id = ? AND stock > 0;\n"
+                "UPDATE product SET stock = stock - 1\n WHERE id = ? AND stock > 0;\n"
                     + "-- 1 row: reserved · 0 rows: sold out",
                 Isolation.READ_COMMITTED,
                 true),
@@ -64,8 +64,8 @@ public class Oversell extends ReadDecideWrite {
                 "SELECT … FOR UPDATE locks the row as it reads it. The next request's SELECT blocks"
                     + " inside PostgreSQL until the first commits, then reads the new stock and"
                     + " declines. Correct, but every request waits in line.",
-                "SELECT stock FROM item WHERE id = ? FOR UPDATE;\n-- others block here\n"
-                    + "UPDATE item SET stock = :stock_read - 1 WHERE id = ?;",
+                "SELECT stock FROM product WHERE id = ? FOR UPDATE;\n-- others block here\n"
+                    + "UPDATE product SET stock = :stock_read - 1 WHERE id = ?;",
                 Isolation.READ_COMMITTED,
                 true),
             mode(
@@ -73,8 +73,8 @@ public class Oversell extends ReadDecideWrite {
                 "No lock while thinking: each request remembers the version it read and writes only"
                     + " if it is unchanged. The loser's UPDATE matches no row; it rolls back and"
                     + " retries from a fresh read, which now shows the new stock.",
-                "SELECT stock, version FROM item WHERE id = ?;\n"
-                    + "UPDATE item SET stock = ?, version = :v + 1\n WHERE id = ? AND version = :v;\n"
+                "SELECT stock, version FROM product WHERE id = ?;\n"
+                    + "UPDATE product SET stock = ?, version = :v + 1\n WHERE id = ? AND version = :v;\n"
                     + "-- 0 rows: someone was first → retry",
                 Isolation.READ_COMMITTED,
                 true),
@@ -101,22 +101,28 @@ public class Oversell extends ReadDecideWrite {
 
   @Override
   public Map<String, Object> seed(LabDatabase db, RunContext run) {
-    var sku = "SKU-" + java.util.HexFormat.of().withUpperCase().toHexDigits((short) java.util.concurrent.ThreadLocalRandom.current().nextInt());
-    long item =
-        db.insert(
-            "INSERT INTO item(run_id, sku, stock, version) VALUES (?, ?, ?, 1) RETURNING id",
-            run.runId(),
-            sku,
-            run.config().initialValue());
-    return Map.of("run", run.runId(), "item", item, "sku", sku);
+    var sku =
+        "SKU-"
+            + java.util.HexFormat.of()
+                .withUpperCase()
+                .toHexDigits((short) java.util.concurrent.ThreadLocalRandom.current().nextInt());
+    var product = java.util.UUID.randomUUID();
+    db.update(
+        "INSERT INTO product(id, run_id, sku, name, price, stock) VALUES (?, ?, ?, ?, 59.00, ?)",
+        product,
+        run.runId(),
+        sku,
+        "Wireless headphones",
+        run.config().initialValue());
+    return Map.of("run", run.runId(), "product", product, "sku", sku);
   }
 
   @Override
   public Map<String, Object> observe(LabDatabase db, RunContext run) {
     return db.one(
-        "SELECT i.stock, i.version, (SELECT count(*) FROM reservation r WHERE r.item_id = i.id)"
-            + " AS reservations FROM item i WHERE i.id = ?",
-        run.key("item"));
+        "SELECT p.stock, p.version, (SELECT count(*) FROM reservation r WHERE r.product_id = p.id)"
+            + " AS reservations FROM product p WHERE p.id = ?",
+        run.uuid("product"));
   }
 
   @Override
@@ -126,12 +132,12 @@ public class Oversell extends ReadDecideWrite {
 
   @Override
   String target(Participant p) {
-    return "item #" + p.key("item");
+    return "product " + p.uuid("product").toString().substring(0, 8);
   }
 
   @Override
   Read read(Participant p, boolean lock) {
-    return Read.of(target(p), READ + (lock ? " FOR UPDATE" : ""), "stock", p.key("item"))
+    return Read.of(target(p), READ + (lock ? " FOR UPDATE" : ""), "stock", p.uuid("product"))
         .versioned("version");
   }
 
@@ -150,10 +156,10 @@ public class Oversell extends ReadDecideWrite {
     int next = row.integer("stock") - 1;
     return Write.update(
             target(p),
-            "UPDATE item SET stock = ?, version = version + 1 WHERE id = ?",
+            "UPDATE product SET stock = ?, version = version + 1 WHERE id = ?",
             "stock=" + next,
             next,
-            p.key("item"))
+            p.uuid("product"))
         .version(row.number("version") + 1);
   }
 
@@ -161,9 +167,9 @@ public class Oversell extends ReadDecideWrite {
   Write conditionalWrite(Participant p, Row row) {
     return Write.update(
         target(p),
-        "UPDATE item SET stock = stock - 1, version = version + 1 WHERE id = ? AND stock > 0",
+        "UPDATE product SET stock = stock - 1, version = version + 1 WHERE id = ? AND stock > 0",
         "stock=stock-1",
-        p.key("item"));
+        p.uuid("product"));
   }
 
   @Override
@@ -172,11 +178,11 @@ public class Oversell extends ReadDecideWrite {
     long v = row.number("version");
     return Write.update(
             target(p),
-            "UPDATE item SET stock = ?, version = ? WHERE id = ? AND version = ?",
+            "UPDATE product SET stock = ?, version = ? WHERE id = ? AND version = ?",
             "stock=" + next,
             next,
             v + 1,
-            p.key("item"),
+            p.uuid("product"),
             v)
         .version(v + 1);
   }
@@ -191,19 +197,19 @@ public class Oversell extends ReadDecideWrite {
     var id = p.identity();
     return Write.insert(
         "reservation",
-        "INSERT INTO reservation(run_id, item_id, request_id, order_id, customer_id)"
+        "INSERT INTO reservation(run_id, product_id, request_id, order_id, customer_id)"
             + " VALUES (?, ?, ?, ?, ?)",
-        "reservation for " + id.orderId(),
+        "reservation for order " + id.orderId().substring(0, 8),
         p.key("run"),
-        p.key("item"),
+        p.uuid("product"),
         id.requestId(),
-        id.orderId(),
-        id.customerId());
+        java.util.UUID.fromString(id.orderId()),
+        java.util.UUID.fromString(id.customerId()));
   }
 
   @Override
   String succeeded(Participant p, Row row) {
-    return "reserved 1 item for " + p.identity().orderId();
+    return "reserved 1 unit for order " + p.identity().orderId().substring(0, 8);
   }
 
   @Override
@@ -220,8 +226,16 @@ public class Oversell extends ReadDecideWrite {
     return new InvariantResult(
         info().invariant(),
         holds,
-        "at most " + plural(available, "reservation") + ", final stock = " + available + " − reservations",
-        plural(reservations, "reservation") + " for " + available + " in stock, final stock " + stock,
+        "at most "
+            + plural(available, "reservation")
+            + ", final stock = "
+            + available
+            + " − reservations",
+        plural(reservations, "reservation")
+            + " for "
+            + available
+            + " in stock, final stock "
+            + stock,
         holds
             ? "Every reservation matches one unit of stock."
             : (reservations - available)
@@ -233,7 +247,8 @@ public class Oversell extends ReadDecideWrite {
   }
 
   @Override
-  public String conclusion(RunContext run, InvariantResult invariant, List<RequestResult> requests) {
+  public String conclusion(
+      RunContext run, InvariantResult invariant, List<RequestResult> requests) {
     int ok = Texts.count(requests, Outcome.SUCCEEDED);
     if (invariant.holds()) return Texts.preserved(run.config(), requests);
     return "Every successful request read the stock before any of them committed, each decided an"

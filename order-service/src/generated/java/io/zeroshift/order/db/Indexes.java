@@ -4,6 +4,7 @@
 package io.zeroshift.order.db;
 
 
+import io.zeroshift.order.db.tables.Orders;
 import io.zeroshift.order.db.tables.Saga;
 import io.zeroshift.order.db.tables.SagaTransition;
 
@@ -23,6 +24,9 @@ public class Indexes {
     // INDEX definitions
     // -------------------------------------------------------------------------
 
+    public static final Index ORDERS_CUSTOMER = Internal.createIndex(DSL.name("orders_customer"), Orders.ORDERS, new OrderField[] { Orders.ORDERS.CUSTOMER_ID, Orders.ORDERS.PLACED_AT.desc() }, false);
+    public static final Index ORDERS_PLACED = Internal.createIndex(DSL.name("orders_placed"), Orders.ORDERS, new OrderField[] { Orders.ORDERS.PLACED_AT.desc() }, false);
+    public static final Index ORDERS_STATUS = Internal.createIndex(DSL.name("orders_status"), Orders.ORDERS, new OrderField[] { Orders.ORDERS.STATUS }, false);
     public static final Index SAGA_DUE = Internal.createIndex(DSL.name("saga_due"), Saga.SAGA, new OrderField[] { Saga.SAGA.DEADLINE }, false);
     public static final Index SAGA_RECENT = Internal.createIndex(DSL.name("saga_recent"), Saga.SAGA, new OrderField[] { Saga.SAGA.STARTED_AT.desc() }, false);
     public static final Index SAGA_TRANSITION_ORDER = Internal.createIndex(DSL.name("saga_transition_order"), SagaTransition.SAGA_TRANSITION, new OrderField[] { SagaTransition.SAGA_TRANSITION.ORDER_ID, SagaTransition.SAGA_TRANSITION.ID }, false);

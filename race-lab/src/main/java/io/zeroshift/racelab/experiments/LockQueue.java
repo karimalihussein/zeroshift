@@ -39,8 +39,8 @@ public class LockQueue extends Oversell {
                 "Each request locks the row with SELECT … FOR UPDATE and keeps it through its"
                     + " application work until COMMIT. The others block in their SELECT, one"
                     + " behind the other.",
-                "SELECT stock FROM item WHERE id = ? FOR UPDATE;\n-- application work (delay)\n"
-                    + "UPDATE item SET stock = :stock_read - 1 WHERE id = ?;\nCOMMIT;",
+                "SELECT stock FROM product WHERE id = ? FOR UPDATE;\n-- application work (delay)\n"
+                    + "UPDATE product SET stock = :stock_read - 1 WHERE id = ?;\nCOMMIT;",
                 Isolation.READ_COMMITTED,
                 true),
             mode(
@@ -48,22 +48,22 @@ public class LockQueue extends Oversell {
                 "The application work happens before the UPDATE, without a lock. The row is locked"
                     + " only from the UPDATE to COMMIT, so waits are short.",
                 "-- application work (delay), no lock\n"
-                    + "UPDATE item SET stock = stock - 1 WHERE id = ? AND stock > 0;",
+                    + "UPDATE product SET stock = stock - 1 WHERE id = ? AND stock > 0;",
                 Isolation.READ_COMMITTED,
                 true),
             mode(
                 Mode.OPTIMISTIC,
                 "No lock while working. Everyone reads the same version; one write wins per round,"
                     + " the rest conflict and retry: waits become retries.",
-                "UPDATE item SET stock = ?, version = :v + 1\n WHERE id = ? AND version = :v;",
+                "UPDATE product SET stock = ?, version = :v + 1\n WHERE id = ? AND version = :v;",
                 Isolation.READ_COMMITTED,
                 true),
             mode(
                 Mode.UNSAFE,
                 "No lock, no check at write time: fast, and every reservation after the first"
                     + " overwrites the stock computed by the others.",
-                "SELECT stock FROM item WHERE id = ?;\n"
-                    + "UPDATE item SET stock = :stock_read - 1 WHERE id = ?;",
+                "SELECT stock FROM product WHERE id = ?;\n"
+                    + "UPDATE product SET stock = :stock_read - 1 WHERE id = ?;",
                 Isolation.READ_COMMITTED,
                 false)),
         Mode.PESSIMISTIC,

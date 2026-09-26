@@ -34,6 +34,8 @@ public interface LabDatabase {
   /** Deletes every row of the lab's scenario tables; returns rows deleted per table. */
   Map<String, Integer> resetScenarios();
 
-  /** A backend blocked by others, as {@code pg_stat_activity} and {@code pg_blocking_pids} see it. */
+  /**
+   * A backend blocked by others, as {@code pg_stat_activity} and {@code pg_blocking_pids} see it.
+   */
   record Waiting(List<Integer> blockedBy, String waitEventType, String waitEvent) {}
 }

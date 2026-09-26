@@ -7,17 +7,35 @@ import io.zeroshift.platform.Inbox;
 import io.zeroshift.platform.Outbox;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.jooq.DSLContext;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.ApplicationRunner;
 import org.springframework.context.annotation.*;
 import org.springframework.kafka.annotation.KafkaListener;
 
 @Configuration(proxyBeanMethods = false)
-@Import(StockController.class)
+@Import({ProductController.class, StockController.class})
 public class InventoryWiring {
   public static final String CONSUMER = "inventory-service";
 
   @Bean
   PostgresStock stock(DSLContext db) {
     return new PostgresStock(db);
+  }
+
+  @Bean
+  ProductCatalog productCatalog(DSLContext db, @Value("${commerce.currency:USD}") String currency) {
+    return new ProductCatalog(db, currency);
+  }
+
+  /** Off in tests, on in Compose: tests insert the products they need. */
+  @Bean
+  ApplicationRunner demoCatalog(
+      DSLContext db,
+      @Value("${commerce.demo-data:false}") boolean enabled,
+      @Value("${commerce.demo-seed:#{null}}") Long seed) {
+    return args -> {
+      if (enabled) new DemoCatalog(db, seed).seedIfEmpty();
+    };
   }
 
   @Bean

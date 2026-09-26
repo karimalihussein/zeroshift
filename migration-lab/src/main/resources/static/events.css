@@ -88,6 +88,7 @@ a { color: var(--blue-deep); text-underline-offset: 3px; }
 .remove-line { min-height: 0; width: 28px; height: 28px; padding: 0; display: grid; place-items: center; border: 0; background: none; box-shadow: none; color: var(--quiet); }
 .remove-line:hover:enabled { background: var(--red-soft); color: var(--red); }
 .composer-actions { display: flex; gap: 8px; align-self: end; }
+.field-stack { display: grid; gap: 12px; align-content: start; }
 .icon-button { display: inline-flex; align-items: center; gap: 7px; min-height: 40px; padding: 8px 13px; font-size: 13px; }
 .send-button { display: inline-flex; align-items: center; gap: 8px; min-height: 40px; padding: 8px 18px; font-size: 13px; font-weight: 700; white-space: nowrap; }
 .send-button.arms { background: var(--ink); border-color: var(--ink); }
