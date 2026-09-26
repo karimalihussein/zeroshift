@@ -159,7 +159,24 @@ final class Codes {
             "KAFKA_LAB_NOT_CONFIGURED",
             503,
             "kafka-lab",
-            "The kafka-lab profile is not configured."));
+            "The kafka-lab profile is not configured."),
+        code("EXPERIMENT_NOT_FOUND", 404, "race-lab", "No race lab experiment with that id."),
+        code("RUN_NOT_FOUND", 404, "race-lab", "No race lab run with that id."),
+        code(
+            "INVALID_RUN_CONFIG",
+            400,
+            "race-lab",
+            "The experiment does not support the mode, or a value is outside its limits."),
+        code(
+            "RACE_LAB_BUSY",
+            409,
+            "race-lab",
+            "Another run is executing; context.runningRunId names it. One run at a time."),
+        code(
+            "RUN_ALREADY_STARTED",
+            409,
+            "race-lab",
+            "The run was already started; create a new run to race again."));
   }
 
   private static CodeDoc code(String code, int status, String scope, String when) {

@@ -19,6 +19,8 @@ ZeroShift is a small Spring Boot application with a single dashboard. It copies 
 
 A second lab, on **http://localhost:8080/events**, runs an event-driven order system on Kafka and shows the mechanisms distributed systems rely on, with the same rule: every value on screen comes from a table, a Kafka offset or a connector status. See [Event-driven lab](#event-driven-lab).
 
+A third lab, on **http://localhost:8080/race**, runs concurrency bugs (overselling, lost updates, double payments, deadlocks, isolation anomalies) as real PostgreSQL transactions and draws each run as a timeline of lanes: which transaction read what, who waited for whose lock, which version was stale, which abort came from PostgreSQL. See [Race condition lab](docs/race-lab.md).
+
 ## Quick start
 
 Requires Docker with about 8–10 GB of memory for everything (SQL Server alone needs 2 GB; the event lab and its observability stack about 5 GB).
@@ -132,9 +134,10 @@ All Java packages are under `src/main/java/io/zeroshift/`.
 
 - [How consistency is kept](docs/consistency.md): transaction boundaries, the change window, crash recovery and the fence
 - [Live Data Changes](docs/live-changes.md): the interactive CDC experiment and its API
-- [Design decisions](docs/decisions/): change capture, snapshot boundary, batching, checkpointing, cutover, rollback; outbox, idempotency, saga, event sourcing, retries, lease and fencing, observability, jOOQ, HTTP API conventions, the Kafka lab cluster
+- [Design decisions](docs/decisions/): change capture, snapshot boundary, batching, checkpointing, cutover, rollback; outbox, idempotency, saga, event sourcing, retries, lease and fencing, observability, jOOQ, HTTP API conventions, the Kafka lab cluster, the race condition lab
 - [Event lab failure drills](docs/event-lab-drills.md): what each drill breaks and what to watch
 - [Experiments](docs/labs.md): the learning labs (Learn → Trigger → Observe → Break → Understand → Fix → Recover)
+- [Race condition lab](docs/race-lab.md): the ten experiments, the event model, the API and how races are reproduced on real transactions
 - [Explaining the migration](docs/interview-notes.md): a talk track and common follow-up questions
 - [Verification](docs/verification.md): what was tested and measured
 
@@ -150,6 +153,7 @@ All Java packages are under `src/main/java/io/zeroshift/`.
 | Java, `application*.yml`, `db/source.sql`, `db/target.sql` | Recompiled within ~1s of saving; DevTools restarts the app once the compile succeeds. A failed compile is logged and the last good build keeps running |
 | `db/migration/*.sql` (Flyway) | Hot reload pauses so a half-written migration is never applied. Run `docker compose restart app` when it is ready |
 | `pom.xml` | Maven restarts with the new classpath |
+| `platform-web`, `race-lab`, `contracts` (modules the app depends on) | Installed into the container's Maven cache at startup: run `docker compose restart app` |
 
 `docker compose logs -f app` shows the compile and restart output. The Maven cache and compiled classes live in named volumes, and the SQL Server and PostgreSQL data volumes are unchanged. To run the production image instead, bypass the override:
 

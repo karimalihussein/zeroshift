@@ -251,6 +251,8 @@ class PortalCatalogTest {
               path ->
                   path.toString().contains("/src/main/java/") && path.toString().endsWith(".java"))
           .filter(path -> !path.toString().contains("/generated/"))
+          // Git worktrees of other branches (.claude/worktrees/…) are not this repository's code.
+          .filter(path -> !root.relativize(path).startsWith(".claude"))
           .forEach(
               path -> {
                 try {

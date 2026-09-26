@@ -9,6 +9,8 @@
   <dependencies>
     <dependency><groupId>io.zeroshift</groupId><artifactId>platform-web</artifactId><version>${project.version}</version></dependency>
     <dependency><groupId>io.zeroshift</groupId><artifactId>contracts</artifactId><version>${project.version}</version></dependency>
+    <!-- The race condition lab (/race): its engine, experiments and API; the page and assets live here. -->
+    <dependency><groupId>io.zeroshift</groupId><artifactId>race-lab</artifactId><version>${project.version}</version></dependency>
     <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-webmvc</artifactId></dependency>
     <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-thymeleaf</artifactId></dependency>
     <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-jdbc</artifactId></dependency>

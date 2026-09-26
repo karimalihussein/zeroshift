@@ -59,3 +59,7 @@ kafka-lab:
   bootstrap: ${KAFKA_LAB_BOOTSTRAP:}
   docker-url: ${KAFKA_LAB_DOCKER:}
   cluster: ${KAFKA_LAB_CLUSTER:compose}
+# Race condition lab (/race): its runs and scenario rows live in schema race_lab of the datasource
+# above. Traces of its runs open in Grafana (Tempo).
+race-lab:
+  grafana-url: ${RACE_LAB_GRAFANA:http://localhost:3000}

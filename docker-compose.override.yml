@@ -9,11 +9,20 @@ services:
     image: maven:3.9.11-eclipse-temurin-25
     working_dir: /workspace/migration-lab
     command: ["sh", "/workspace/scripts/dev-server.sh"]
+    environment:
+      # The Maven JVM must not load the agent (it is not in this image): dev-server.sh fetches it and
+      # attaches it to the application JVM only.
+      JAVA_TOOL_OPTIONS: ''
+      OTEL_JAVAAGENT_JAR: /root/.m2/otel/opentelemetry-javaagent-2.31.1.jar
     volumes:
       - ./pom.xml:/workspace/pom.xml:ro
       - ./migration-lab/pom.xml:/workspace/migration-lab/pom.xml:ro
       - ./migration-lab/src:/workspace/migration-lab/src:ro
       - ./platform-web:/workspace/platform-web:ro
+      - ./race-lab:/workspace/race-lab:ro
+      - ./contracts:/workspace/contracts:ro
+      # The docs portal packages infra/kafka/topics.sh and the Debezium connector files as resources.
+      - ./infra:/workspace/infra:ro
       - ./scripts/dev-server.sh:/workspace/scripts/dev-server.sh:ro
       # Container-owned: dependency cache and compiled classes survive restarts and never
       # collide with a host IDE's target/.

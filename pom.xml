@@ -13,6 +13,7 @@
     <module>inventory-service</module>
     <module>shipping-service</module>
     <module>order-query-service</module>
+    <module>race-lab</module>
     <module>migration-lab</module>
   </modules>
   <properties>

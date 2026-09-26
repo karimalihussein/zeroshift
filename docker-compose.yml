@@ -148,6 +148,17 @@ services:
       INVENTORY_SERVICE_URL: http://inventory-service:8080
       SHIPPING_SERVICE_URL: http://shipping-service:8080
       ORDER_QUERY_SERVICE_URL: http://order-query-service:8080
+      RACE_LAB_GRAFANA: ${RACE_LAB_GRAFANA:-http://localhost:3000}
+      # OpenTelemetry agent for the race lab's spans only: a run, each request's transaction and
+      # each statement with its lock waits, exported to the collector (Tempo). Every automatic
+      # instrumentation stays off, so the migration lab's polling never floods Tempo with traces.
+      JAVA_TOOL_OPTIONS: -javaagent:/app/opentelemetry-javaagent.jar
+      OTEL_SERVICE_NAME: zeroshift-control-plane
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+      OTEL_METRICS_EXPORTER: none
+      OTEL_LOGS_EXPORTER: none
+      OTEL_INSTRUMENTATION_COMMON_DEFAULT_ENABLED: 'false'
+      OTEL_INSTRUMENTATION_OPENTELEMETRY_API_ENABLED: 'true'
     ports: ['127.0.0.1:${JAVA_APP_PORT:-8080}:8080']
     depends_on:
       sqlserver: {condition: service_healthy}
