@@ -1,10 +1,7 @@
 package io.zeroshift.payment.infrastructure;
 
 import io.github.resilience4j.circuitbreaker.*;
-import io.github.resilience4j.core.IntervalFunction;
 import io.github.resilience4j.micrometer.tagged.TaggedCircuitBreakerMetrics;
-import io.github.resilience4j.micrometer.tagged.TaggedRetryMetrics;
-import io.github.resilience4j.retry.*;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.zeroshift.payment.application.*;
 import io.zeroshift.platform.Faults;
@@ -16,6 +13,7 @@ import java.time.Duration;
 import org.jooq.DSLContext;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.*;
+import org.springframework.kafka.config.KafkaListenerEndpointRegistry;
 import org.springframework.transaction.support.TransactionTemplate;
 
 @Configuration(proxyBeanMethods = false)
@@ -43,24 +41,23 @@ public class PaymentWiring {
     return registry.circuitBreaker("payment-gateway");
   }
 
+  /** Timeout, retry schedule and breaker use: three attempts backing off from 200 ms by default. */
   @Bean
-  Retry gatewayRetry(MeterRegistry meters) {
-    var registry =
-        RetryRegistry.of(
-            RetryConfig.custom()
-                .maxAttempts(3)
-                .intervalFunction(IntervalFunction.ofExponentialBackoff(200, 2))
-                .retryExceptions(PaymentGateway.Unavailable.class)
-                // An open breaker is a decision, not a glitch: do not hammer it again.
-                .ignoreExceptions(CallNotPermittedException.class)
-                .build());
-    TaggedRetryMetrics.ofRetryRegistry(registry).bindTo(meters);
-    return registry.retry("payment-gateway");
+  GatewayPolicy gatewayPolicy(
+      CircuitBreaker gatewayBreaker,
+      MeterRegistry meters,
+      KafkaListenerEndpointRegistry consumers) {
+    return new GatewayPolicy(gatewayBreaker, meters, consumers);
   }
 
+  /**
+   * Operator levers go to WireMock's admin API directly, never through the chaos proxy that charges
+   * may be sent through, so making the network slow does not slow the levers.
+   */
   @Bean
-  GatewaySimulator gatewaySimulator(URI gatewayUri) {
-    return new GatewaySimulator(gatewayUri);
+  GatewaySimulator gatewaySimulator(
+      URI gatewayUri, @Value("${payment.gateway-admin-url:}") String adminUrl) {
+    return new GatewaySimulator(adminUrl.isBlank() ? gatewayUri : URI.create(adminUrl));
   }
 
   @Bean
@@ -71,11 +68,13 @@ public class PaymentWiring {
   @Bean
   PaymentGateway paymentGateway(
       URI gatewayUri,
-      @Value("${payment.gateway-timeout:1500ms}") Duration timeout,
+      @Value("${payment.gateway-timeout:1500ms}") Duration connectTimeout,
+      GatewayPolicy policy,
       CircuitBreaker gatewayBreaker,
-      Retry gatewayRetry,
-      GatewayCalls calls) {
-    return new HttpPaymentGateway(gatewayUri, timeout, gatewayBreaker, gatewayRetry, calls);
+      GatewayCalls calls,
+      MeterRegistry meters) {
+    return new HttpPaymentGateway(
+        gatewayUri, connectTimeout, policy, gatewayBreaker, calls, meters);
   }
 
   @Bean

@@ -20,6 +20,8 @@ server:
   port: ${PORT:18082}
 payment:
   gateway-url: ${GATEWAY_URL:http://localhost:18090}
+  # WireMock's admin API for the lab's gateway levers; blank means gateway-url.
+  gateway-admin-url: ${GATEWAY_ADMIN_URL:}
   gateway-timeout: 1500ms
   limit: 1000.00
 management:

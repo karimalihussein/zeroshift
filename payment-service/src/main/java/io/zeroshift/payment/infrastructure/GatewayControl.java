@@ -19,16 +19,21 @@ public class GatewayControl {
       int bufferedCalls,
       int failedCalls,
       long notPermittedCalls,
+      GatewayPolicy.Settings policy,
+      long consumerPauses,
       List<GatewayCalls.Call> recentCalls) {}
 
   private final GatewaySimulator gateway;
   private final CircuitBreaker breaker;
   private final GatewayCalls calls;
+  private final GatewayPolicy policy;
 
-  public GatewayControl(GatewaySimulator gateway, CircuitBreaker breaker, GatewayCalls calls) {
+  public GatewayControl(
+      GatewaySimulator gateway, CircuitBreaker breaker, GatewayCalls calls, GatewayPolicy policy) {
     this.gateway = gateway;
     this.breaker = breaker;
     this.calls = calls;
+    this.policy = policy;
   }
 
   @GetMapping
@@ -41,6 +46,8 @@ public class GatewayControl {
         m.getNumberOfBufferedCalls(),
         m.getNumberOfFailedCalls(),
         m.getNumberOfNotPermittedCalls(),
+        policy.settings(),
+        policy.pauses(),
         calls.recent(null, 30));
   }
 
@@ -49,6 +56,13 @@ public class GatewayControl {
       @RequestParam(required = false) UUID orderId,
       @RequestParam(defaultValue = "100") @Min(1) @Max(500) int limit) {
     return ApiResponse.list(calls.recent(orderId, limit));
+  }
+
+  /** Replaces the whole call policy: timeout, retry schedule, breaker use, pause on open. */
+  @PutMapping("/policy")
+  public State policy(@RequestBody GatewayPolicy.Settings settings) {
+    policy.apply(settings);
+    return state();
   }
 
   @PostMapping("/{mode}")
