@@ -6,7 +6,6 @@ package io.zeroshift.order.db.tables.records;
 
 import io.zeroshift.order.db.tables.IdempotencyKey;
 
-import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 import java.util.UUID;
 
@@ -93,31 +92,17 @@ public class IdempotencyKeyRecord extends UpdatableRecordImpl<IdempotencyKeyReco
     }
 
     /**
-     * Setter for <code>public.idempotency_key.total</code>.
-     */
-    public void setTotal(BigDecimal value) {
-        set(5, value);
-    }
-
-    /**
-     * Getter for <code>public.idempotency_key.total</code>.
-     */
-    public BigDecimal getTotal() {
-        return (BigDecimal) get(5);
-    }
-
-    /**
      * Setter for <code>public.idempotency_key.created_at</code>.
      */
     public void setCreatedAt(OffsetDateTime value) {
-        set(6, value);
+        set(5, value);
     }
 
     /**
      * Getter for <code>public.idempotency_key.created_at</code>.
      */
     public OffsetDateTime getCreatedAt() {
-        return (OffsetDateTime) get(6);
+        return (OffsetDateTime) get(5);
     }
 
     // -------------------------------------------------------------------------
@@ -143,7 +128,7 @@ public class IdempotencyKeyRecord extends UpdatableRecordImpl<IdempotencyKeyReco
     /**
      * Create a detached, initialised IdempotencyKeyRecord
      */
-    public IdempotencyKeyRecord(String key, String requestHash, UUID orderId, UUID correlationId, UUID eventId, BigDecimal total, OffsetDateTime createdAt) {
+    public IdempotencyKeyRecord(String key, String requestHash, UUID orderId, UUID correlationId, UUID eventId, OffsetDateTime createdAt) {
         super(IdempotencyKey.IDEMPOTENCY_KEY);
 
         setKey(key);
@@ -151,7 +136,6 @@ public class IdempotencyKeyRecord extends UpdatableRecordImpl<IdempotencyKeyReco
         setOrderId(orderId);
         setCorrelationId(correlationId);
         setEventId(eventId);
-        setTotal(total);
         setCreatedAt(createdAt);
         resetTouchedOnNotNull();
     }

@@ -17,13 +17,21 @@ import org.junit.jupiter.api.Test;
  * already stored in the event store and on order.events, which are kept forever.
  */
 class ContractCompatibilityTest {
+  /** The frozen order: v1 and v2 knew no discount or tax, so they read with neutral amounts. */
   private static final OrderPlaced EXPECTED =
       new OrderPlaced(
           UUID.fromString("00000000-0000-0000-0000-00000000000a"),
           "customer-1",
+          "customer-1",
           List.of(new OrderLine("SKU-1", 2, new BigDecimal("10.50"))),
+          "USD",
           new BigDecimal("21.00"),
-          "USD");
+          Money.ZERO,
+          BigDecimal.ZERO,
+          Money.ZERO,
+          new BigDecimal("21.00"),
+          null,
+          null);
 
   @Test
   void everyStoredVersionOfOrderPlacedStillReadsAsTheSameOrder() throws IOException {
@@ -67,7 +75,19 @@ class ContractCompatibilityTest {
   void aV1WriterCannotExpressAnotherCurrency() {
     var eur =
         Envelope.of(
-            new OrderPlaced(EXPECTED.orderId(), "c", EXPECTED.lines(), EXPECTED.total(), "EUR"),
+            new OrderPlaced(
+                EXPECTED.orderId(),
+                "c",
+                "c",
+                EXPECTED.lines(),
+                "EUR",
+                EXPECTED.subtotal(),
+                EXPECTED.discount(),
+                EXPECTED.taxRate(),
+                EXPECTED.tax(),
+                EXPECTED.total(),
+                null,
+                null),
             UUID.randomUUID(),
             null);
     assertThatThrownBy(() -> MessageCodec.writingAs(1, () -> MessageCodec.encode(eur)))
@@ -88,6 +108,75 @@ class ContractCompatibilityTest {
         fixture("OrderPlaced.v2.json")
             .replace("\"currency\":\"USD\"", "\"currency\":\"USD\",\"channel\":\"web\"");
     assertThat(MessageCodec.decode(extended).payload()).isEqualTo(EXPECTED);
+  }
+
+  @Test
+  void aDiscountedTaxedOrderRoundTripsAndAnEarlierPayloadReadsWithNeutralAmounts()
+      throws Exception {
+    var line =
+        OrderLine.of(UUID.randomUUID(), "SKU-1", "Cable", 3, new BigDecimal("10.00"))
+            .withDiscount(new BigDecimal("3.00"));
+    var sold =
+        new OrderPlaced(
+            UUID.randomUUID(),
+            UUID.randomUUID().toString(),
+            "Ada Lovelace",
+            List.of(line),
+            "USD",
+            new BigDecimal("30.00"),
+            new BigDecimal("3.00"),
+            new BigDecimal("0.0800"),
+            new BigDecimal("2.16"),
+            new BigDecimal("29.16"),
+            "SAVE10",
+            "INV-2026-000001");
+    var envelope = Envelope.of(sold, UUID.randomUUID(), null);
+    assertThat(MessageCodec.decode(MessageCodec.encode(envelope)).payload()).isEqualTo(sold);
+    // The commerce fields are additions (no version bump): a payload written before them, still
+    // v2, reads with neutral amounts, and the total it carried is kept.
+    var json = MessageCodec.json();
+    var tree =
+        (tools.jackson.databind.node.ObjectNode) json.readTree(MessageCodec.encode(envelope));
+    assertThat(tree.path("schemaVersion").asInt()).isEqualTo(2);
+    var payload = (tools.jackson.databind.node.ObjectNode) tree.get("payload");
+    List.of("subtotal", "discount", "taxRate", "tax", "customerName").forEach(payload::remove);
+    var earlier = (OrderPlaced) MessageCodec.decode(json.writeValueAsString(tree)).payload();
+    assertThat(earlier.total()).isEqualByComparingTo("29.16");
+    assertThat(earlier.subtotal()).isEqualByComparingTo("29.16");
+    assertThat(earlier.discount()).isEqualByComparingTo("0");
+    assertThat(earlier.customerName()).isEqualTo(sold.customerId());
+  }
+
+  @Test
+  void aLineOrAnOrderWhoseAmountsDoNotAddUpIsRefused() {
+    assertThatThrownBy(
+            () ->
+                new OrderLine(
+                    null,
+                    "SKU-1",
+                    "x",
+                    2,
+                    new BigDecimal("1.00"),
+                    new BigDecimal("3.00"),
+                    null,
+                    null))
+        .hasMessageContaining("unitPrice × quantity");
+    assertThatThrownBy(
+            () ->
+                new OrderPlaced(
+                    UUID.randomUUID(),
+                    "c",
+                    "c",
+                    EXPECTED.lines(),
+                    "USD",
+                    new BigDecimal("21.00"),
+                    Money.ZERO,
+                    BigDecimal.ZERO,
+                    Money.ZERO,
+                    new BigDecimal("20.00"),
+                    null,
+                    null))
+        .hasMessageContaining("total must be");
   }
 
   private static String fixture(String name) throws IOException {

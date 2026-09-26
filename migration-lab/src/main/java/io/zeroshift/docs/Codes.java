@@ -64,7 +64,7 @@ final class Codes {
             400,
             "payment-service",
             "Gateway timeout or attempts outside the allowed range."),
-        code("UNKNOWN_SKU", 404, "inventory-service", "Restock of a SKU that does not exist."),
+        code("UNKNOWN_SKU", 404, "inventory-service", "Restock of a SKU that is not a product."),
         code(
             "INVALID_LOAD_PROFILE",
             400,
@@ -120,6 +120,30 @@ final class Codes {
             409,
             "order-service",
             "An optimistic version check lost. Retry the request."),
+        code(
+            "UNKNOWN_CUSTOMER",
+            422,
+            "order-service",
+            "POST /orders for a customerId that is not a customer of order-service."),
+        code(
+            "VOUCHER_NOT_APPLICABLE",
+            422,
+            "order-service",
+            "The voucher code does not exist, is inactive, is outside its validity, or the subtotal is below its minimum."),
+        code(
+            "VOUCHER_EXHAUSTED",
+            409,
+            "order-service",
+            "The voucher's usage limit is used up, possibly by a concurrent order. The same request will not succeed later."),
+        code(
+            "CATALOG_UNAVAILABLE",
+            503,
+            "order-service",
+            "POST /orders could not price its items because inventory-service did not answer. Retry-After says when to retry."),
+        code("CUSTOMER_NOT_FOUND", 404, "order-service", "GET /customers/{id} for an unknown id."),
+        code(
+            "PRODUCT_NOT_FOUND", 404, "inventory-service", "GET /products/{id} for an unknown id."),
+        code("PAYMENT_NOT_FOUND", 404, "payment-service", "GET /payments/{id} for an unknown id."),
         code(
             "ORDER_NOT_PROJECTED",
             404,

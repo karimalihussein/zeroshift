@@ -26,7 +26,8 @@ import java.util.Map;
  * commit. Only SERIALIZABLE (or locking every row the decision read) sees the conflict.
  */
 public class WriteSkew implements Experiment {
-  static final List<String> DOCTORS = List.of("Dr. Alice", "Dr. Bob", "Dr. Chen", "Dr. Diaz", "Dr. Evans");
+  static final List<String> DOCTORS =
+      List.of("Dr. Alice", "Dr. Bob", "Dr. Chen", "Dr. Diaz", "Dr. Evans");
   static final String COUNT =
       "SELECT count(*) AS on_call FROM doctor WHERE run_id = ? AND shift = 'night' AND on_call";
   static final String COUNT_LOCKED =
@@ -124,13 +125,18 @@ public class WriteSkew implements Experiment {
             "read",
             () ->
                 p.mode() == Mode.PESSIMISTIC
-                    ? p.lockRead(Read.of(shift, COUNT_LOCKED, "on_call", run), "row locks on every on-call doctor")
+                    ? p.lockRead(
+                        Read.of(shift, COUNT_LOCKED, "on_call", run),
+                        "row locks on every on-call doctor")
                     : p.read(Read.of(shift, COUNT, "on_call", run)));
     p.sync("read");
     long onCall = row.number("on_call");
     if (p.mode() != Mode.ATOMIC) {
       boolean ok = onCall >= 2;
-      p.decide(ok, "on_call ≥ 2", ok ? onCall + " on call: someone else stays" : "only " + onCall + " on call");
+      p.decide(
+          ok,
+          "on_call ≥ 2",
+          ok ? onCall + " on call: someone else stays" : "only " + onCall + " on call");
       if (!ok) {
         p.reject(p.role() + " must stay: the last doctor on call");
         return;
@@ -147,7 +153,9 @@ public class WriteSkew implements Experiment {
                         ? Write.update(
                             target,
                             "UPDATE doctor SET on_call = false, version = version + 1 WHERE id = ?"
-                                + " AND (" + COUNT + ") >= 2",
+                                + " AND ("
+                                + COUNT
+                                + ") >= 2",
                             "on_call=false",
                             me,
                             run)
@@ -190,11 +198,14 @@ public class WriteSkew implements Experiment {
         holds,
         "≥ 1 doctor on call",
         onCall + " doctor(s) on call",
-        holds ? "The ward is covered." : "Nobody is on call: every request's check passed on its own snapshot.");
+        holds
+            ? "The ward is covered."
+            : "Nobody is on call: every request's check passed on its own snapshot.");
   }
 
   @Override
-  public String conclusion(RunContext run, InvariantResult invariant, List<RequestResult> requests) {
+  public String conclusion(
+      RunContext run, InvariantResult invariant, List<RequestResult> requests) {
     if (invariant.holds()) return Texts.preserved(run.config(), requests);
     return "Each doctor's transaction counted the others on call in its own snapshot and changed"
         + " only its own row. Because the writes touched different rows, no lock conflicted and no"

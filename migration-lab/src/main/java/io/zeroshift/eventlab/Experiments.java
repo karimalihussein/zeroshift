@@ -52,11 +52,16 @@ public class Experiments {
    * one, the retry gets the first order back.
    */
   public ObjectNode clientRetry(JsonNode order, boolean withKey, int slowAnswers) {
-    var run = UUID.randomUUID().toString().substring(0, 4);
     var body = json.createObjectNode();
-    // A run-specific customer, so the orders this run caused can be found again afterwards.
-    body.put("customerId", order.path("customerId").asString("Client") + " (run " + run + ")");
+    var customer = order.path("customerId").asString("");
+    body.put("customerId", customer);
     body.set("items", order.path("items"));
+    if (order.hasNonNull("voucherCode") && !order.path("voucherCode").asString().isBlank())
+      body.set("voucherCode", order.get("voucherCode"));
+    // The customer's orders before the run: whatever appears besides them, this run caused.
+    var before = json.createArrayNode();
+    for (var existing : customerOrders(customer))
+      before.add(existing.path("order").path("id").asString());
     services.send(
         url("order-service")
             + "/lab/faults/slow-response?mode="
@@ -107,7 +112,8 @@ public class Experiments {
       }
     }
     var result = json.createObjectNode();
-    result.put("customerId", body.path("customerId").asString());
+    result.put("customerId", customer);
+    result.set("ordersBefore", before);
     result.put("withKey", withKey);
     if (key != null) result.put("idempotencyKey", key);
     result.put("clientTimeoutMs", CLIENT_TIMEOUT_MS);
@@ -228,23 +234,31 @@ public class Experiments {
     }
     var latest = result.path(IDEMPOTENCY).path(0).path("result");
     if (!latest.isMissingNode())
-      result.set("idempotencyOrders", ordersOf(latest.path("customerId").asString()));
+      result.set(
+          "idempotencyOrders",
+          ordersOf(latest.path("customerId").asString(), latest.path("ordersBefore")));
     return result;
   }
 
-  /** What really happened: every order the customer has, and what payment-service charged. */
-  private ArrayNode ordersOf(String customerId) {
-    var orders = json.createArrayNode();
+  private JsonNode customerOrders(String customerId) {
     var found =
         LabServices.data(
             services.tryGetAnyReplica(
                 "order-service",
                 // RestClient encodes the URI template itself: pass the raw value.
-                "/orders?limit=10&customerId=" + customerId));
-    if (!found.isArray()) return orders;
-    for (var summary : found) {
-      var row = orders.addObject();
+                "/orders?limit=50&customerId=" + customerId));
+    return found.isArray() ? found : json.createArrayNode();
+  }
+
+  /** What really happened: every order the run created, and what payment-service charged. */
+  private ArrayNode ordersOf(String customerId, JsonNode before) {
+    var orders = json.createArrayNode();
+    var known = new java.util.HashSet<String>();
+    before.forEach(id -> known.add(id.asString()));
+    for (var summary : customerOrders(customerId)) {
       var orderId = summary.path("order").path("id").asString();
+      if (known.contains(orderId)) continue;
+      var row = orders.addObject();
       row.put("orderId", orderId);
       row.put("total", summary.path("order").path("total").decimalValue());
       row.put("status", summary.path("order").path("status").asString());

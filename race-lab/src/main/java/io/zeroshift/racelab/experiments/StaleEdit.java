@@ -209,7 +209,8 @@ public class StaleEdit extends ReadDecideWrite {
   }
 
   @Override
-  public String conclusion(RunContext run, InvariantResult invariant, List<RequestResult> requests) {
+  public String conclusion(
+      RunContext run, InvariantResult invariant, List<RequestResult> requests) {
     if (invariant.holds()) return Texts.preserved(run.config(), requests);
     return "Both editors started from the same version and both saves wrote the next version"
         + " number. The document shows only the last save; the revision table shows two saves"

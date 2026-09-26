@@ -10,10 +10,7 @@ public class Experiments {
   private final List<Experiment> all;
 
   public Experiments(List<Experiment> experiments) {
-    all =
-        experiments.stream()
-            .sorted(Comparator.comparingInt(e -> e.info().number()))
-            .toList();
+    all = experiments.stream().sorted(Comparator.comparingInt(e -> e.info().number())).toList();
   }
 
   public List<ExperimentInfo> catalog() {

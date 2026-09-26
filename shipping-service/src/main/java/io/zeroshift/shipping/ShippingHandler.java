@@ -38,7 +38,7 @@ public final class ShippingHandler {
       return shipment.scheduled()
           ? reply(
               command,
-              new ShipmentScheduled(s.orderId(), shipment.trackingNumber(), CARRIER),
+              new ShipmentScheduled(s.orderId(), shipment.trackingNumber(), shipment.carrier()),
               "Already scheduled " + shipment.trackingNumber())
           : reply(command, new ShipmentFailed(s.orderId(), shipment.reason()), "Already failed");
     }

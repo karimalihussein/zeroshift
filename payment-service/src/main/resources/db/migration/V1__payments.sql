@@ -1,15 +1,28 @@
--- One row per order. VOID records a refund that arrived before any authorization, so a late
--- authorization is refused instead of charging a cancelled order.
+-- One row per charge attempt, identified by its idempotency key: the same key never charges twice.
+-- A key is claimed (PENDING) before the gateway is called, then AUTHORIZED or DECLINED; an authorized
+-- payment can be REFUNDED. VOIDED records a refund that arrived before the order's authorization,
+-- under the saga's key, so a late authorization is refused instead of charging a cancelled order:
+-- such a row never had an amount, the only one allowed without.
 CREATE TABLE payment(
-  order_id UUID PRIMARY KEY,
-  payment_id UUID,
-  status TEXT NOT NULL CHECK(status IN ('AUTHORIZED','DECLINED','REFUNDED','VOID')),
-  amount NUMERIC(12,2) NOT NULL,
-  currency TEXT NOT NULL,
-  gateway_reference TEXT,
-  reason TEXT,
+  id UUID PRIMARY KEY,
+  order_id UUID NOT NULL,
+  idempotency_key TEXT NOT NULL UNIQUE,
+  status TEXT NOT NULL CHECK (status IN ('PENDING','AUTHORIZED','DECLINED','REFUNDED','VOIDED')),
+  method TEXT NOT NULL DEFAULT 'CARD' CHECK (method IN ('CARD')),
+  amount NUMERIC(12,2) CHECK (amount > 0),
+  currency CHAR(3) CHECK (currency ~ '^[A-Z]{3}$'),
+  provider TEXT NOT NULL,
+  provider_reference TEXT,
+  failure_reason TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp(),
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp());
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp(),
+  authorized_at TIMESTAMPTZ,
+  declined_at TIMESTAMPTZ,
+  refunded_at TIMESTAMPTZ,
+  voided_at TIMESTAMPTZ,
+  CHECK ((amount IS NULL) = (currency IS NULL)),
+  CHECK (amount IS NOT NULL OR status = 'VOIDED'));
+CREATE INDEX payment_order ON payment(order_id);
 
 -- Every gateway attempt, including those the circuit breaker refused. Written in its own
 -- transaction so a failed delivery still leaves its attempts visible.

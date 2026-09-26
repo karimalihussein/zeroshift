@@ -16,9 +16,16 @@ import java.util.UUID;
 public record Order(
     UUID id,
     String customerId,
+    String customerName,
     List<OrderLine> lines,
-    BigDecimal total,
     String currency,
+    BigDecimal subtotal,
+    BigDecimal discount,
+    BigDecimal taxRate,
+    BigDecimal tax,
+    BigDecimal total,
+    String voucherCode,
+    String invoiceNumber,
     OrderStatus status,
     UUID paymentId,
     UUID reservationId,
@@ -28,15 +35,53 @@ public record Order(
 
   public static Order empty(UUID id) {
     return new Order(
-        id, null, List.of(), BigDecimal.ZERO, null, OrderStatus.NEW, null, null, null, null, 0);
+        id,
+        null,
+        null,
+        List.of(),
+        null,
+        BigDecimal.ZERO,
+        BigDecimal.ZERO,
+        BigDecimal.ZERO,
+        BigDecimal.ZERO,
+        BigDecimal.ZERO,
+        null,
+        null,
+        OrderStatus.NEW,
+        null,
+        null,
+        null,
+        null,
+        0);
   }
 
-  public static OrderPlaced place(UUID id, String customerId, List<OrderLine> lines) {
+  /**
+   * The order as sold: {@code priced} holds every amount and line snapshot, so nothing about this
+   * order depends on the catalog or the voucher after this event.
+   */
+  public static OrderPlaced place(
+      UUID id,
+      String customerId,
+      String customerName,
+      Pricing.Priced priced,
+      String voucherCode,
+      String invoiceNumber) {
     if (customerId == null || customerId.isBlank())
       throw new OrderRuleViolation("An order needs a customer");
-    if (lines == null || lines.isEmpty()) throw new OrderRuleViolation("An order needs a line");
-    var total = lines.stream().map(OrderLine::subtotal).reduce(BigDecimal.ZERO, BigDecimal::add);
-    return new OrderPlaced(id, customerId, List.copyOf(lines), total, "USD");
+    if (priced.lines().isEmpty()) throw new OrderRuleViolation("An order needs a line");
+    return new OrderPlaced(
+        id,
+        customerId,
+        customerName,
+        priced.lines(),
+        priced.currency(),
+        priced.subtotal(),
+        priced.discount(),
+        priced.taxRate(),
+        priced.tax(),
+        priced.total(),
+        voucherCode,
+        invoiceNumber);
   }
 
   public OrderPaymentAuthorized authorizePayment(UUID paymentId) {
@@ -73,9 +118,16 @@ public record Order(
           new Order(
               id,
               e.customerId(),
+              e.customerName(),
               e.lines(),
-              e.total(),
               e.currency(),
+              e.subtotal(),
+              e.discount(),
+              e.taxRate(),
+              e.tax(),
+              e.total(),
+              e.voucherCode(),
+              e.invoiceNumber(),
               OrderStatus.PLACED,
               null,
               null,
@@ -83,25 +135,9 @@ public record Order(
               null,
               next);
       case OrderPaymentAuthorized e ->
-          new Order(
-              id,
-              customerId,
-              lines,
-              total,
-              currency,
-              OrderStatus.PAID,
-              e.paymentId(),
-              reservationId,
-              trackingNumber,
-              cancelReason,
-              next);
+          with(OrderStatus.PAID, e.paymentId(), reservationId, trackingNumber, cancelReason, next);
       case OrderStockReserved e ->
-          new Order(
-              id,
-              customerId,
-              lines,
-              total,
-              currency,
+          with(
               OrderStatus.RESERVED,
               paymentId,
               e.reservationId(),
@@ -109,12 +145,7 @@ public record Order(
               cancelReason,
               next);
       case OrderShipped e ->
-          new Order(
-              id,
-              customerId,
-              lines,
-              total,
-              currency,
+          with(
               OrderStatus.SHIPPED,
               paymentId,
               reservationId,
@@ -122,19 +153,37 @@ public record Order(
               cancelReason,
               next);
       case OrderCancelled e ->
-          new Order(
-              id,
-              customerId,
-              lines,
-              total,
-              currency,
-              OrderStatus.CANCELLED,
-              paymentId,
-              reservationId,
-              trackingNumber,
-              e.reason(),
-              next);
+          with(OrderStatus.CANCELLED, paymentId, reservationId, trackingNumber, e.reason(), next);
     };
+  }
+
+  /** After placement only the lifecycle changes; what was sold never does. */
+  private Order with(
+      OrderStatus status,
+      UUID paymentId,
+      UUID reservationId,
+      String trackingNumber,
+      String cancelReason,
+      long version) {
+    return new Order(
+        id,
+        customerId,
+        customerName,
+        lines,
+        currency,
+        subtotal,
+        discount,
+        taxRate,
+        tax,
+        total,
+        voucherCode,
+        invoiceNumber,
+        status,
+        paymentId,
+        reservationId,
+        trackingNumber,
+        cancelReason,
+        version);
   }
 
   private void require(boolean allowed, String action) {

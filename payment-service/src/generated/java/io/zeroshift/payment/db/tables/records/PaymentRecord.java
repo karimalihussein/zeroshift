@@ -23,129 +23,227 @@ public class PaymentRecord extends UpdatableRecordImpl<PaymentRecord> {
     private static final long serialVersionUID = 1L;
 
     /**
+     * Setter for <code>public.payment.id</code>.
+     */
+    public void setId(UUID value) {
+        set(0, value);
+    }
+
+    /**
+     * Getter for <code>public.payment.id</code>.
+     */
+    public UUID getId() {
+        return (UUID) get(0);
+    }
+
+    /**
      * Setter for <code>public.payment.order_id</code>.
      */
     public void setOrderId(UUID value) {
-        set(0, value);
+        set(1, value);
     }
 
     /**
      * Getter for <code>public.payment.order_id</code>.
      */
     public UUID getOrderId() {
-        return (UUID) get(0);
-    }
-
-    /**
-     * Setter for <code>public.payment.payment_id</code>.
-     */
-    public void setPaymentId(UUID value) {
-        set(1, value);
-    }
-
-    /**
-     * Getter for <code>public.payment.payment_id</code>.
-     */
-    public UUID getPaymentId() {
         return (UUID) get(1);
+    }
+
+    /**
+     * Setter for <code>public.payment.idempotency_key</code>.
+     */
+    public void setIdempotencyKey(String value) {
+        set(2, value);
+    }
+
+    /**
+     * Getter for <code>public.payment.idempotency_key</code>.
+     */
+    public String getIdempotencyKey() {
+        return (String) get(2);
     }
 
     /**
      * Setter for <code>public.payment.status</code>.
      */
     public void setStatus(String value) {
-        set(2, value);
+        set(3, value);
     }
 
     /**
      * Getter for <code>public.payment.status</code>.
      */
     public String getStatus() {
-        return (String) get(2);
+        return (String) get(3);
+    }
+
+    /**
+     * Setter for <code>public.payment.method</code>.
+     */
+    public void setMethod(String value) {
+        set(4, value);
+    }
+
+    /**
+     * Getter for <code>public.payment.method</code>.
+     */
+    public String getMethod() {
+        return (String) get(4);
     }
 
     /**
      * Setter for <code>public.payment.amount</code>.
      */
     public void setAmount(BigDecimal value) {
-        set(3, value);
+        set(5, value);
     }
 
     /**
      * Getter for <code>public.payment.amount</code>.
      */
     public BigDecimal getAmount() {
-        return (BigDecimal) get(3);
+        return (BigDecimal) get(5);
     }
 
     /**
      * Setter for <code>public.payment.currency</code>.
      */
     public void setCurrency(String value) {
-        set(4, value);
+        set(6, value);
     }
 
     /**
      * Getter for <code>public.payment.currency</code>.
      */
     public String getCurrency() {
-        return (String) get(4);
-    }
-
-    /**
-     * Setter for <code>public.payment.gateway_reference</code>.
-     */
-    public void setGatewayReference(String value) {
-        set(5, value);
-    }
-
-    /**
-     * Getter for <code>public.payment.gateway_reference</code>.
-     */
-    public String getGatewayReference() {
-        return (String) get(5);
-    }
-
-    /**
-     * Setter for <code>public.payment.reason</code>.
-     */
-    public void setReason(String value) {
-        set(6, value);
-    }
-
-    /**
-     * Getter for <code>public.payment.reason</code>.
-     */
-    public String getReason() {
         return (String) get(6);
+    }
+
+    /**
+     * Setter for <code>public.payment.provider</code>.
+     */
+    public void setProvider(String value) {
+        set(7, value);
+    }
+
+    /**
+     * Getter for <code>public.payment.provider</code>.
+     */
+    public String getProvider() {
+        return (String) get(7);
+    }
+
+    /**
+     * Setter for <code>public.payment.provider_reference</code>.
+     */
+    public void setProviderReference(String value) {
+        set(8, value);
+    }
+
+    /**
+     * Getter for <code>public.payment.provider_reference</code>.
+     */
+    public String getProviderReference() {
+        return (String) get(8);
+    }
+
+    /**
+     * Setter for <code>public.payment.failure_reason</code>.
+     */
+    public void setFailureReason(String value) {
+        set(9, value);
+    }
+
+    /**
+     * Getter for <code>public.payment.failure_reason</code>.
+     */
+    public String getFailureReason() {
+        return (String) get(9);
     }
 
     /**
      * Setter for <code>public.payment.created_at</code>.
      */
     public void setCreatedAt(OffsetDateTime value) {
-        set(7, value);
+        set(10, value);
     }
 
     /**
      * Getter for <code>public.payment.created_at</code>.
      */
     public OffsetDateTime getCreatedAt() {
-        return (OffsetDateTime) get(7);
+        return (OffsetDateTime) get(10);
     }
 
     /**
      * Setter for <code>public.payment.updated_at</code>.
      */
     public void setUpdatedAt(OffsetDateTime value) {
-        set(8, value);
+        set(11, value);
     }
 
     /**
      * Getter for <code>public.payment.updated_at</code>.
      */
     public OffsetDateTime getUpdatedAt() {
-        return (OffsetDateTime) get(8);
+        return (OffsetDateTime) get(11);
+    }
+
+    /**
+     * Setter for <code>public.payment.authorized_at</code>.
+     */
+    public void setAuthorizedAt(OffsetDateTime value) {
+        set(12, value);
+    }
+
+    /**
+     * Getter for <code>public.payment.authorized_at</code>.
+     */
+    public OffsetDateTime getAuthorizedAt() {
+        return (OffsetDateTime) get(12);
+    }
+
+    /**
+     * Setter for <code>public.payment.declined_at</code>.
+     */
+    public void setDeclinedAt(OffsetDateTime value) {
+        set(13, value);
+    }
+
+    /**
+     * Getter for <code>public.payment.declined_at</code>.
+     */
+    public OffsetDateTime getDeclinedAt() {
+        return (OffsetDateTime) get(13);
+    }
+
+    /**
+     * Setter for <code>public.payment.refunded_at</code>.
+     */
+    public void setRefundedAt(OffsetDateTime value) {
+        set(14, value);
+    }
+
+    /**
+     * Getter for <code>public.payment.refunded_at</code>.
+     */
+    public OffsetDateTime getRefundedAt() {
+        return (OffsetDateTime) get(14);
+    }
+
+    /**
+     * Setter for <code>public.payment.voided_at</code>.
+     */
+    public void setVoidedAt(OffsetDateTime value) {
+        set(15, value);
+    }
+
+    /**
+     * Getter for <code>public.payment.voided_at</code>.
+     */
+    public OffsetDateTime getVoidedAt() {
+        return (OffsetDateTime) get(15);
     }
 
     // -------------------------------------------------------------------------
@@ -171,18 +269,25 @@ public class PaymentRecord extends UpdatableRecordImpl<PaymentRecord> {
     /**
      * Create a detached, initialised PaymentRecord
      */
-    public PaymentRecord(UUID orderId, UUID paymentId, String status, BigDecimal amount, String currency, String gatewayReference, String reason, OffsetDateTime createdAt, OffsetDateTime updatedAt) {
+    public PaymentRecord(UUID id, UUID orderId, String idempotencyKey, String status, String method, BigDecimal amount, String currency, String provider, String providerReference, String failureReason, OffsetDateTime createdAt, OffsetDateTime updatedAt, OffsetDateTime authorizedAt, OffsetDateTime declinedAt, OffsetDateTime refundedAt, OffsetDateTime voidedAt) {
         super(Payment.PAYMENT);
 
+        setId(id);
         setOrderId(orderId);
-        setPaymentId(paymentId);
+        setIdempotencyKey(idempotencyKey);
         setStatus(status);
+        setMethod(method);
         setAmount(amount);
         setCurrency(currency);
-        setGatewayReference(gatewayReference);
-        setReason(reason);
+        setProvider(provider);
+        setProviderReference(providerReference);
+        setFailureReason(failureReason);
         setCreatedAt(createdAt);
         setUpdatedAt(updatedAt);
+        setAuthorizedAt(authorizedAt);
+        setDeclinedAt(declinedAt);
+        setRefundedAt(refundedAt);
+        setVoidedAt(voidedAt);
         resetTouchedOnNotNull();
     }
 }

@@ -91,15 +91,18 @@ public class HistoryController {
 
   /**
    * Places an order through the normal path, but as the previous deployment wrote it: OrderPlaced
-   * at schema v1 (no currency field) in the event store and the outbox alike. Everything that reads
-   * it afterwards, here and in other services, goes through the v1 → v2 upcaster.
+   * at schema v1 (no currency, no commerce amounts) in the event store and the outbox alike.
+   * Everything that reads it afterwards, here and in other services, goes through the v1 → v2
+   * upcaster and sees neutral amounts (no discount, no tax). The orders and invoice tables are
+   * written from the event as placed, before encoding, so they keep what v1 cannot say: the lab can
+   * compare the two.
    */
   @PostMapping("/lab/history/legacy-order")
   @ResponseStatus(HttpStatus.ACCEPTED)
   public PlaceOrder.Placed legacyOrder(@Valid @RequestBody PlaceOrderRequest request)
       throws Exception {
     return MessageCodec.writingAs(
-        1, () -> placeOrder.place(request.customerId(), request.toItems()));
+        1, () -> placeOrder.place(request.customerId(), request.toItems(), request.voucherCode()));
   }
 
   static StoredEvent view(EventStore.Recorded r) {

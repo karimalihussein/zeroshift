@@ -4,8 +4,9 @@
 package io.zeroshift.inventory.db;
 
 
+import io.zeroshift.inventory.db.tables.Product;
 import io.zeroshift.inventory.db.tables.Reservation;
-import io.zeroshift.inventory.db.tables.Stock;
+import io.zeroshift.inventory.db.tables.ReservationItem;
 
 import java.util.Arrays;
 import java.util.List;
@@ -30,14 +31,19 @@ public class Public extends SchemaImpl {
     public static final Public PUBLIC = new Public();
 
     /**
+     * The table <code>public.product</code>.
+     */
+    public final Product PRODUCT = Product.PRODUCT;
+
+    /**
      * The table <code>public.reservation</code>.
      */
     public final Reservation RESERVATION = Reservation.RESERVATION;
 
     /**
-     * The table <code>public.stock</code>.
+     * The table <code>public.reservation_item</code>.
      */
-    public final Stock STOCK = Stock.STOCK;
+    public final ReservationItem RESERVATION_ITEM = ReservationItem.RESERVATION_ITEM;
 
     /**
      * No further instances allowed
@@ -55,8 +61,9 @@ public class Public extends SchemaImpl {
     @Override
     public final List<Table<?>> getTables() {
         return Arrays.asList(
+            Product.PRODUCT,
             Reservation.RESERVATION,
-            Stock.STOCK
+            ReservationItem.RESERVATION_ITEM
         );
     }
 }

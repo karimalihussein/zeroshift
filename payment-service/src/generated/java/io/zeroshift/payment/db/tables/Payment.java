@@ -4,6 +4,7 @@
 package io.zeroshift.payment.db.tables;
 
 
+import io.zeroshift.payment.db.Indexes;
 import io.zeroshift.payment.db.Keys;
 import io.zeroshift.payment.db.Public;
 import io.zeroshift.payment.db.tables.records.PaymentRecord;
@@ -18,6 +19,7 @@ import java.util.UUID;
 import org.jooq.Check;
 import org.jooq.Condition;
 import org.jooq.Field;
+import org.jooq.Index;
 import org.jooq.Name;
 import org.jooq.PlainSQL;
 import org.jooq.QueryPart;
@@ -57,14 +59,19 @@ public class Payment extends TableImpl<PaymentRecord> {
     }
 
     /**
+     * The column <code>public.payment.id</code>.
+     */
+    public final TableField<PaymentRecord, UUID> ID = createField(DSL.name("id"), SQLDataType.UUID.nullable(false), this, "");
+
+    /**
      * The column <code>public.payment.order_id</code>.
      */
     public final TableField<PaymentRecord, UUID> ORDER_ID = createField(DSL.name("order_id"), SQLDataType.UUID.nullable(false), this, "");
 
     /**
-     * The column <code>public.payment.payment_id</code>.
+     * The column <code>public.payment.idempotency_key</code>.
      */
-    public final TableField<PaymentRecord, UUID> PAYMENT_ID = createField(DSL.name("payment_id"), SQLDataType.UUID, this, "");
+    public final TableField<PaymentRecord, String> IDEMPOTENCY_KEY = createField(DSL.name("idempotency_key"), SQLDataType.CLOB.nullable(false), this, "");
 
     /**
      * The column <code>public.payment.status</code>.
@@ -72,24 +79,34 @@ public class Payment extends TableImpl<PaymentRecord> {
     public final TableField<PaymentRecord, String> STATUS = createField(DSL.name("status"), SQLDataType.CLOB.nullable(false), this, "");
 
     /**
+     * The column <code>public.payment.method</code>.
+     */
+    public final TableField<PaymentRecord, String> METHOD = createField(DSL.name("method"), SQLDataType.CLOB.nullable(false).defaultValue(DSL.field(DSL.raw("'CARD'::text"), SQLDataType.CLOB)), this, "");
+
+    /**
      * The column <code>public.payment.amount</code>.
      */
-    public final TableField<PaymentRecord, BigDecimal> AMOUNT = createField(DSL.name("amount"), SQLDataType.NUMERIC(12, 2).nullable(false), this, "");
+    public final TableField<PaymentRecord, BigDecimal> AMOUNT = createField(DSL.name("amount"), SQLDataType.NUMERIC(12, 2), this, "");
 
     /**
      * The column <code>public.payment.currency</code>.
      */
-    public final TableField<PaymentRecord, String> CURRENCY = createField(DSL.name("currency"), SQLDataType.CLOB.nullable(false), this, "");
+    public final TableField<PaymentRecord, String> CURRENCY = createField(DSL.name("currency"), SQLDataType.CHAR(3), this, "");
 
     /**
-     * The column <code>public.payment.gateway_reference</code>.
+     * The column <code>public.payment.provider</code>.
      */
-    public final TableField<PaymentRecord, String> GATEWAY_REFERENCE = createField(DSL.name("gateway_reference"), SQLDataType.CLOB, this, "");
+    public final TableField<PaymentRecord, String> PROVIDER = createField(DSL.name("provider"), SQLDataType.CLOB.nullable(false), this, "");
 
     /**
-     * The column <code>public.payment.reason</code>.
+     * The column <code>public.payment.provider_reference</code>.
      */
-    public final TableField<PaymentRecord, String> REASON = createField(DSL.name("reason"), SQLDataType.CLOB, this, "");
+    public final TableField<PaymentRecord, String> PROVIDER_REFERENCE = createField(DSL.name("provider_reference"), SQLDataType.CLOB, this, "");
+
+    /**
+     * The column <code>public.payment.failure_reason</code>.
+     */
+    public final TableField<PaymentRecord, String> FAILURE_REASON = createField(DSL.name("failure_reason"), SQLDataType.CLOB, this, "");
 
     /**
      * The column <code>public.payment.created_at</code>.
@@ -100,6 +117,26 @@ public class Payment extends TableImpl<PaymentRecord> {
      * The column <code>public.payment.updated_at</code>.
      */
     public final TableField<PaymentRecord, OffsetDateTime> UPDATED_AT = createField(DSL.name("updated_at"), SQLDataType.TIMESTAMPWITHTIMEZONE(6).nullable(false).defaultValue(DSL.field(DSL.raw("clock_timestamp()"), SQLDataType.TIMESTAMPWITHTIMEZONE)), this, "");
+
+    /**
+     * The column <code>public.payment.authorized_at</code>.
+     */
+    public final TableField<PaymentRecord, OffsetDateTime> AUTHORIZED_AT = createField(DSL.name("authorized_at"), SQLDataType.TIMESTAMPWITHTIMEZONE(6), this, "");
+
+    /**
+     * The column <code>public.payment.declined_at</code>.
+     */
+    public final TableField<PaymentRecord, OffsetDateTime> DECLINED_AT = createField(DSL.name("declined_at"), SQLDataType.TIMESTAMPWITHTIMEZONE(6), this, "");
+
+    /**
+     * The column <code>public.payment.refunded_at</code>.
+     */
+    public final TableField<PaymentRecord, OffsetDateTime> REFUNDED_AT = createField(DSL.name("refunded_at"), SQLDataType.TIMESTAMPWITHTIMEZONE(6), this, "");
+
+    /**
+     * The column <code>public.payment.voided_at</code>.
+     */
+    public final TableField<PaymentRecord, OffsetDateTime> VOIDED_AT = createField(DSL.name("voided_at"), SQLDataType.TIMESTAMPWITHTIMEZONE(6), this, "");
 
     private Payment(Name alias, Table<PaymentRecord> aliased) {
         this(alias, aliased, (Field<?>[]) null, null);
@@ -136,14 +173,29 @@ public class Payment extends TableImpl<PaymentRecord> {
     }
 
     @Override
+    public List<Index> getIndexes() {
+        return Arrays.asList(Indexes.PAYMENT_ORDER);
+    }
+
+    @Override
     public UniqueKey<PaymentRecord> getPrimaryKey() {
         return Keys.PAYMENT_PKEY;
     }
 
     @Override
+    public List<UniqueKey<PaymentRecord>> getUniqueKeys() {
+        return Arrays.asList(Keys.PAYMENT_IDEMPOTENCY_KEY_KEY);
+    }
+
+    @Override
     public List<Check<PaymentRecord>> getChecks() {
         return Arrays.asList(
-            Internal.createCheck(this, DSL.name("payment_status_check"), "((status = ANY (ARRAY['AUTHORIZED'::text, 'DECLINED'::text, 'REFUNDED'::text, 'VOID'::text])))", true)
+            Internal.createCheck(this, DSL.name("payment_amount_check"), "((amount > (0)::numeric))", true),
+            Internal.createCheck(this, DSL.name("payment_check"), "(((amount IS NULL) = (currency IS NULL)))", true),
+            Internal.createCheck(this, DSL.name("payment_check1"), "(((amount IS NOT NULL) OR (status = 'VOIDED'::text)))", true),
+            Internal.createCheck(this, DSL.name("payment_currency_check"), "((currency ~ '^[A-Z]{3}$'::text))", true),
+            Internal.createCheck(this, DSL.name("payment_method_check"), "((method = 'CARD'::text))", true),
+            Internal.createCheck(this, DSL.name("payment_status_check"), "((status = ANY (ARRAY['PENDING'::text, 'AUTHORIZED'::text, 'DECLINED'::text, 'REFUNDED'::text, 'VOIDED'::text])))", true)
         );
     }
 

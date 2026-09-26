@@ -4,8 +4,9 @@
 package io.zeroshift.inventory.db;
 
 
+import io.zeroshift.inventory.db.tables.Product;
 import io.zeroshift.inventory.db.tables.Reservation;
-import io.zeroshift.inventory.db.tables.Stock;
+import io.zeroshift.inventory.db.tables.ReservationItem;
 
 
 /**
@@ -15,12 +16,17 @@ import io.zeroshift.inventory.db.tables.Stock;
 public class Tables {
 
     /**
+     * The table <code>public.product</code>.
+     */
+    public static final Product PRODUCT = Product.PRODUCT;
+
+    /**
      * The table <code>public.reservation</code>.
      */
     public static final Reservation RESERVATION = Reservation.RESERVATION;
 
     /**
-     * The table <code>public.stock</code>.
+     * The table <code>public.reservation_item</code>.
      */
-    public static final Stock STOCK = Stock.STOCK;
+    public static final ReservationItem RESERVATION_ITEM = ReservationItem.RESERVATION_ITEM;
 }

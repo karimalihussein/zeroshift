@@ -29,6 +29,9 @@ public interface Participant {
 
   long key(String name);
 
+  /** A seeded row's UUID (products, orders). */
+  java.util.UUID uuid(String name);
+
   /** The run's configured starting value (stock, balance…). */
   int initialValue();
 
@@ -41,8 +44,8 @@ public interface Participant {
   Row lockRead(Read read, String lock);
 
   /**
-   * An INSERT or UPDATE. An UPDATE row-locks what it matches until the transaction ends, so a
-   * write that could wait records its lock like {@link #lockRead}.
+   * An INSERT or UPDATE. An UPDATE row-locks what it matches until the transaction ends, so a write
+   * that could wait records its lock like {@link #lockRead}.
    */
   int write(Write write);
 
@@ -80,8 +83,8 @@ public interface Participant {
   void reject(String reason);
 
   /**
-   * An optimistic write matched no row: reads the current version, records the conflict, rolls
-   * back and throws {@link Aborted}.
+   * An optimistic write matched no row: reads the current version, records the conflict, rolls back
+   * and throws {@link Aborted}.
    */
   Aborted versionConflict(String target, long expected, Read current);
 

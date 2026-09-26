@@ -73,7 +73,8 @@ public class RaceLabController {
   public ApiResponse<List<RaceLabDtos.RunSummary>> runs(
       @RequestParam(required = false) @Pattern(regexp = "[a-z-]{1,40}") String experiment,
       @RequestParam(defaultValue = "20") @Min(1) @Max(100) int limit) {
-    var fetched = runs.recent(experiment, limit + 1).stream().map(RaceLabDtos.RunSummary::of).toList();
+    var fetched =
+        runs.recent(experiment, limit + 1).stream().map(RaceLabDtos.RunSummary::of).toList();
     return ApiResponse.page(fetched, limit);
   }
 

@@ -23,3 +23,8 @@ management:
     web:
       exposure:
         include: health,info,metrics,prometheus
+commerce:
+  currency: USD
+  # Seeds the demo catalog into an empty product table (COMMERCE_DEMO_DATA=true in Compose).
+  # commerce.demo-seed, if set, makes its stock repeatable.
+  demo-data: false

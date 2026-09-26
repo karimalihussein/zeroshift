@@ -77,10 +77,17 @@ def drill_time_travel():
     ok(f'Kafka time index → partition {kafka["partition"]} offset {own["from"]}: the same {len(ids)} events in order at offsets {offsets[:len(ids)]}')
 
 
+def a_customer():
+    """A seeded customer of order-service: orders need a real one."""
+    customers = call(f'{ORDER_A}/customers?limit=1')['data']
+    assert customers, 'order-service has no customers: start it with COMMERCE_DEMO_DATA=true'
+    return customers[0]['id']
+
+
 def drill_legacy_v1():
     """An order written as schema v1 is stored as v1 and read as v2 everywhere."""
     placed = call(f'{ORDER_A}/lab/history/legacy-order', 'POST',
-                  {'customerId': 'drill-legacy', 'items': [{'sku': 'SKU-CABLE', 'quantity': 1}]})
+                  {'customerId': a_customer(), 'items': [{'sku': 'SKU-CABLE', 'quantity': 1}]})
     order = placed['orderId']
     first = call(f'{LAB}/api/history/orders/{order}')[0]['event']
     assert first['storedVersion'] == 1 and 'currency' not in first['stored']['payload'], first['stored']

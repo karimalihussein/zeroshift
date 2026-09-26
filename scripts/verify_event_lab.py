@@ -7,6 +7,7 @@ Run all drills, or name some: scripts/verify_event_lab.py happy failover lease
 ("kafka" names the Phase 2 drills, which need the kafka-lab Compose profile.)
 """
 import json
+import random
 import subprocess
 import sys
 import time
@@ -57,8 +58,21 @@ def act(action, **params):
     return call(f'{LAB}/api/events/actions/{action}', 'POST', params, timeout=60)
 
 
-def place(customer='drill', sku='SKU-CABLE', quantity=1, base=ORDER_A):
-    return call(f'{base}/orders', 'POST', {'customerId': customer, 'items': [{'sku': sku, 'quantity': quantity}]})
+_customers = []
+
+
+def customer():
+    """A random seeded customer of order-service (orders need a real one)."""
+    global _customers
+    if not _customers:
+        _customers = call(f'{ORDER_A}/customers?limit=100')['data']
+        assert _customers, 'order-service has no customers: start it with COMMERCE_DEMO_DATA=true'
+    return random.choice(_customers)['id']
+
+
+def place(label='drill', sku='SKU-CABLE', quantity=1, base=ORDER_A):
+    """{label} names what the drill does in its own messages; the buyer is a seeded customer."""
+    return call(f'{base}/orders', 'POST', {'customerId': customer(), 'items': [{'sku': sku, 'quantity': quantity}]})
 
 
 def order(order_id):
@@ -319,7 +333,7 @@ def labs():
 
 
 def lab_order():
-    return {'customerId': f'Drill {int(time.time()) % 100000}', 'items': [{'sku': 'SKU-CABLE', 'quantity': 1}]}
+    return {'customerId': customer(), 'items': [{'sku': 'SKU-CABLE', 'quantity': 1}]}
 
 
 def drill_lab_idempotency():

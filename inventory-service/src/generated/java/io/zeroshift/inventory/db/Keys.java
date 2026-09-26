@@ -4,15 +4,19 @@
 package io.zeroshift.inventory.db;
 
 
+import io.zeroshift.inventory.db.tables.Product;
 import io.zeroshift.inventory.db.tables.Reservation;
-import io.zeroshift.inventory.db.tables.Stock;
+import io.zeroshift.inventory.db.tables.ReservationItem;
+import io.zeroshift.inventory.db.tables.records.ProductRecord;
+import io.zeroshift.inventory.db.tables.records.ReservationItemRecord;
 import io.zeroshift.inventory.db.tables.records.ReservationRecord;
-import io.zeroshift.inventory.db.tables.records.StockRecord;
 
+import org.jooq.ForeignKey;
 import org.jooq.TableField;
 import org.jooq.UniqueKey;
 import org.jooq.impl.DSL;
 import org.jooq.impl.Internal;
+import org.jooq.impl.QOM.ForeignKeyRule;
 
 
 /**
@@ -26,6 +30,16 @@ public class Keys {
     // UNIQUE and PRIMARY KEY definitions
     // -------------------------------------------------------------------------
 
-    public static final UniqueKey<ReservationRecord> RESERVATION_PKEY = Internal.createUniqueKey(Reservation.RESERVATION, DSL.name("reservation_pkey"), new TableField[] { Reservation.RESERVATION.ORDER_ID }, true);
-    public static final UniqueKey<StockRecord> STOCK_PKEY = Internal.createUniqueKey(Stock.STOCK, DSL.name("stock_pkey"), new TableField[] { Stock.STOCK.SKU }, true);
+    public static final UniqueKey<ProductRecord> PRODUCT_PKEY = Internal.createUniqueKey(Product.PRODUCT, DSL.name("product_pkey"), new TableField[] { Product.PRODUCT.ID }, true);
+    public static final UniqueKey<ProductRecord> PRODUCT_SKU_KEY = Internal.createUniqueKey(Product.PRODUCT, DSL.name("product_sku_key"), new TableField[] { Product.PRODUCT.SKU }, true);
+    public static final UniqueKey<ReservationRecord> RESERVATION_ORDER_ID_KEY = Internal.createUniqueKey(Reservation.RESERVATION, DSL.name("reservation_order_id_key"), new TableField[] { Reservation.RESERVATION.ORDER_ID }, true);
+    public static final UniqueKey<ReservationRecord> RESERVATION_PKEY = Internal.createUniqueKey(Reservation.RESERVATION, DSL.name("reservation_pkey"), new TableField[] { Reservation.RESERVATION.ID }, true);
+    public static final UniqueKey<ReservationItemRecord> RESERVATION_ITEM_PKEY = Internal.createUniqueKey(ReservationItem.RESERVATION_ITEM, DSL.name("reservation_item_pkey"), new TableField[] { ReservationItem.RESERVATION_ITEM.RESERVATION_ID, ReservationItem.RESERVATION_ITEM.PRODUCT_ID }, true);
+
+    // -------------------------------------------------------------------------
+    // FOREIGN KEY definitions
+    // -------------------------------------------------------------------------
+
+    public static final ForeignKey<ReservationItemRecord, ProductRecord> RESERVATION_ITEM__RESERVATION_ITEM_PRODUCT_ID_FKEY = Internal.createForeignKey(ReservationItem.RESERVATION_ITEM, DSL.name("reservation_item_product_id_fkey"), new TableField[] { ReservationItem.RESERVATION_ITEM.PRODUCT_ID }, Keys.PRODUCT_PKEY, new TableField[] { Product.PRODUCT.ID }, true, ForeignKeyRule.NO_ACTION, ForeignKeyRule.NO_ACTION);
+    public static final ForeignKey<ReservationItemRecord, ReservationRecord> RESERVATION_ITEM__RESERVATION_ITEM_RESERVATION_ID_FKEY = Internal.createForeignKey(ReservationItem.RESERVATION_ITEM, DSL.name("reservation_item_reservation_id_fkey"), new TableField[] { ReservationItem.RESERVATION_ITEM.RESERVATION_ID }, Keys.RESERVATION_PKEY, new TableField[] { Reservation.RESERVATION.ID }, true, ForeignKeyRule.CASCADE, ForeignKeyRule.NO_ACTION);
 }

@@ -18,7 +18,7 @@ import org.springframework.dao.DuplicateKeyException;
 
 public final class PostgresEventStore implements EventStore {
   /** Bump when {@link Order}'s shape changes: older snapshots are then ignored, not misread. */
-  static final int SNAPSHOT_FORMAT = 1;
+  static final int SNAPSHOT_FORMAT = 2;
 
   private final DSLContext db;
 

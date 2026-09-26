@@ -2,13 +2,17 @@ package io.zeroshift.order.infrastructure;
 
 import io.micrometer.core.instrument.MeterRegistry;
 import io.zeroshift.order.application.*;
+import io.zeroshift.order.domain.Pricing;
 import io.zeroshift.platform.Faults;
 import io.zeroshift.platform.Inbox;
 import io.zeroshift.platform.Outbox;
+import java.math.BigDecimal;
+import java.net.URI;
 import java.time.Clock;
 import java.time.Duration;
 import org.jooq.DSLContext;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnBooleanProperty;
 import org.springframework.context.annotation.*;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -41,14 +45,49 @@ public class OrderWiring {
   }
 
   @Bean
-  Catalog catalog(DSLContext db) {
-    return new PostgresCatalog(db);
+  Catalog catalog(@Value("${commerce.catalog-url:http://localhost:18084}") URI catalogUrl) {
+    return new HttpCatalog(catalogUrl);
+  }
+
+  @Bean
+  Customers customers(DSLContext db) {
+    return new PostgresCustomers(db);
+  }
+
+  @Bean
+  Vouchers vouchers(DSLContext db) {
+    return new PostgresVouchers(db);
+  }
+
+  @Bean
+  OrderTables orderTables(DSLContext db) {
+    return new PostgresOrderTables(db);
+  }
+
+  /** The lab sells in one currency at one tax rate; both are copied onto every order. */
+  @Bean
+  Pricing pricing(
+      @Value("${commerce.currency:USD}") String currency,
+      @Value("${commerce.tax-rate:0.0800}") BigDecimal taxRate) {
+    return new Pricing(currency, taxRate);
+  }
+
+  @Bean
+  @ConditionalOnBooleanProperty("commerce.demo-data")
+  DemoData demoData(
+      DSLContext db,
+      TransactionTemplate transactions,
+      @Value("${commerce.demo-seed:#{null}}") Long seed) {
+    return new DemoData(db, transactions, seed);
   }
 
   @Bean
   OrderRepository orderRepository(
-      EventStore events, Outbox outbox, @Value("${order.snapshot-every:3}") int snapshotEvery) {
-    return new OrderRepository(events, outbox, snapshotEvery);
+      EventStore events,
+      Outbox outbox,
+      OrderTables tables,
+      @Value("${order.snapshot-every:3}") int snapshotEvery) {
+    return new OrderRepository(events, outbox, tables, snapshotEvery);
   }
 
   @Bean
@@ -64,6 +103,10 @@ public class OrderWiring {
   @Bean
   PlaceOrder placeOrder(
       Catalog catalog,
+      Customers customers,
+      Vouchers vouchers,
+      OrderTables tables,
+      Pricing pricing,
       IdempotencyKeys keys,
       OrderRepository orders,
       SagaStore sagas,
@@ -71,7 +114,19 @@ public class OrderWiring {
       OrderSaga saga,
       TransactionTemplate transactions,
       Clock clock) {
-    return new PlaceOrder(catalog, keys, orders, sagas, outbox, saga, transactions, clock);
+    return new PlaceOrder(
+        catalog,
+        customers,
+        vouchers,
+        tables,
+        pricing,
+        keys,
+        orders,
+        sagas,
+        outbox,
+        saga,
+        transactions,
+        clock);
   }
 
   @Bean
@@ -109,10 +164,11 @@ public class OrderWiring {
 
   @Bean
   DualWriteDemo dualWriteDemo(
-      PlaceOrder pricing,
+      PlaceOrder placeOrder,
       EventStore events,
+      OrderTables tables,
       KafkaTemplate<String, String> kafka,
       TransactionTemplate transactions) {
-    return new DualWriteDemo(pricing, events, kafka, transactions);
+    return new DualWriteDemo(placeOrder, events, tables, kafka, transactions);
   }
 }

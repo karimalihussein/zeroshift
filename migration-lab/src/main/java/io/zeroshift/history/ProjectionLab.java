@@ -6,7 +6,6 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
-import java.util.UUID;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
@@ -22,17 +21,20 @@ public class ProjectionLab implements HistoryLab {
   private final KafkaHistory kafka;
   private final LabServices services;
   private final OrderHistory orders;
+  private final io.zeroshift.eventlab.LabCustomers customers;
   private final JsonMapper json = JsonMapper.builder().build();
 
   public ProjectionLab(
       SkuSalesProjection projection,
       KafkaHistory kafka,
       LabServices services,
-      OrderHistory orders) {
+      OrderHistory orders,
+      io.zeroshift.eventlab.LabCustomers customers) {
     this.projection = projection;
     this.kafka = kafka;
     this.services = services;
     this.orders = orders;
+    this.customers = customers;
   }
 
   @Override
@@ -89,13 +91,13 @@ public class ProjectionLab implements HistoryLab {
       }
       case 3 -> {
         var placed = json.createArrayNode();
-        var run = UUID.randomUUID().toString().substring(0, 6);
+        var customer = customers.any(java.util.concurrent.ThreadLocalRandom.current()).id();
         for (var body :
             List.of(
-                order("history-" + run, "SKU-CABLE", 2),
-                order("history-" + run, "SKU-MOUSE", 1),
-                // 12 keyboards = 1068.00, over the payment service's 1000.00 limit: declined.
-                order("history-" + run, "SKU-KEYBOARD", 12))) {
+                order(customer, "SKU-CABLE", 2),
+                order(customer, "SKU-MOUSE", 1),
+                // 12 keyboards (with tax over 1,100), over the payment service's 1000.00 limit.
+                order(customer, "SKU-KEYBOARD", 12))) {
           var answer = services.post(OrderHistory.ORDERS, "/orders", body);
           placed.add(answer.path("orderId").asString());
         }

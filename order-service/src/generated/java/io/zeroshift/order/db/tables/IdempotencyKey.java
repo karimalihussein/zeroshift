@@ -6,18 +6,24 @@ package io.zeroshift.order.db.tables;
 
 import io.zeroshift.order.db.Keys;
 import io.zeroshift.order.db.Public;
+import io.zeroshift.order.db.tables.Orders.OrdersPath;
 import io.zeroshift.order.db.tables.records.IdempotencyKeyRecord;
 
-import java.math.BigDecimal;
 import java.time.OffsetDateTime;
+import java.util.Arrays;
 import java.util.Collection;
+import java.util.List;
 import java.util.UUID;
 
 import org.jooq.Condition;
 import org.jooq.Field;
+import org.jooq.ForeignKey;
+import org.jooq.InverseForeignKey;
 import org.jooq.Name;
+import org.jooq.Path;
 import org.jooq.PlainSQL;
 import org.jooq.QueryPart;
+import org.jooq.Record;
 import org.jooq.SQL;
 import org.jooq.Schema;
 import org.jooq.Stringly;
@@ -79,11 +85,6 @@ public class IdempotencyKey extends TableImpl<IdempotencyKeyRecord> {
     public final TableField<IdempotencyKeyRecord, UUID> EVENT_ID = createField(DSL.name("event_id"), SQLDataType.UUID.nullable(false), this, "");
 
     /**
-     * The column <code>public.idempotency_key.total</code>.
-     */
-    public final TableField<IdempotencyKeyRecord, BigDecimal> TOTAL = createField(DSL.name("total"), SQLDataType.NUMERIC(12, 2).nullable(false), this, "");
-
-    /**
      * The column <code>public.idempotency_key.created_at</code>.
      */
     public final TableField<IdempotencyKeyRecord, OffsetDateTime> CREATED_AT = createField(DSL.name("created_at"), SQLDataType.TIMESTAMPWITHTIMEZONE(6).nullable(false).defaultValue(DSL.field(DSL.raw("clock_timestamp()"), SQLDataType.TIMESTAMPWITHTIMEZONE)), this, "");
@@ -117,6 +118,39 @@ public class IdempotencyKey extends TableImpl<IdempotencyKeyRecord> {
         this(DSL.name("idempotency_key"), null);
     }
 
+    public <O extends Record> IdempotencyKey(Table<O> path, ForeignKey<O, IdempotencyKeyRecord> childPath, InverseForeignKey<O, IdempotencyKeyRecord> parentPath) {
+        super(path, childPath, parentPath, IDEMPOTENCY_KEY);
+    }
+
+    /**
+     * A subtype implementing {@link Path} for simplified path-based joins.
+     */
+    public static class IdempotencyKeyPath extends IdempotencyKey implements Path<IdempotencyKeyRecord> {
+
+        private static final long serialVersionUID = 1L;
+        public <O extends Record> IdempotencyKeyPath(Table<O> path, ForeignKey<O, IdempotencyKeyRecord> childPath, InverseForeignKey<O, IdempotencyKeyRecord> parentPath) {
+            super(path, childPath, parentPath);
+        }
+        private IdempotencyKeyPath(Name alias, Table<IdempotencyKeyRecord> aliased) {
+            super(alias, aliased);
+        }
+
+        @Override
+        public IdempotencyKeyPath as(String alias) {
+            return new IdempotencyKeyPath(DSL.name(alias), this);
+        }
+
+        @Override
+        public IdempotencyKeyPath as(Name alias) {
+            return new IdempotencyKeyPath(alias, this);
+        }
+
+        @Override
+        public IdempotencyKeyPath as(Table<?> alias) {
+            return new IdempotencyKeyPath(alias.getQualifiedName(), this);
+        }
+    }
+
     @Override
     public Schema getSchema() {
         return aliased() ? null : Public.PUBLIC;
@@ -125,6 +159,23 @@ public class IdempotencyKey extends TableImpl<IdempotencyKeyRecord> {
     @Override
     public UniqueKey<IdempotencyKeyRecord> getPrimaryKey() {
         return Keys.IDEMPOTENCY_KEY_PKEY;
+    }
+
+    @Override
+    public List<ForeignKey<IdempotencyKeyRecord, ?>> getReferences() {
+        return Arrays.asList(Keys.IDEMPOTENCY_KEY__IDEMPOTENCY_KEY_ORDER_ID_FKEY);
+    }
+
+    private transient OrdersPath _orders;
+
+    /**
+     * Get the implicit join path to the <code>public.orders</code> table.
+     */
+    public OrdersPath orders() {
+        if (_orders == null)
+            _orders = new OrdersPath(this, Keys.IDEMPOTENCY_KEY__IDEMPOTENCY_KEY_ORDER_ID_FKEY, null);
+
+        return _orders;
     }
 
     @Override

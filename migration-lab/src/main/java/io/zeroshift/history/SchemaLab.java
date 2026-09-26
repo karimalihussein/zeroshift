@@ -24,17 +24,20 @@ public class SchemaLab implements HistoryLab {
   private final OrderHistory orders;
   private final KafkaHistory kafka;
   private final SkuSalesProjection projection;
+  private final io.zeroshift.eventlab.LabCustomers customers;
   private final JsonMapper json = JsonMapper.builder().build();
 
   public SchemaLab(
       LabServices services,
       OrderHistory orders,
       KafkaHistory kafka,
-      SkuSalesProjection projection) {
+      SkuSalesProjection projection,
+      io.zeroshift.eventlab.LabCustomers customers) {
     this.services = services;
     this.orders = orders;
     this.kafka = kafka;
     this.projection = projection;
+    this.customers = customers;
   }
 
   @Override
@@ -102,7 +105,7 @@ public class SchemaLab implements HistoryLab {
                 "/lab/history/legacy-order",
                 Map.of(
                     "customerId",
-                    "legacy-client",
+                    customers.any(java.util.concurrent.ThreadLocalRandom.current()).id(),
                     "items",
                     List.of(Map.of("sku", "SKU-CABLE", "quantity", 1))));
         var id = UUID.fromString(placed.path("orderId").asString());

@@ -1,16 +1,12 @@
 package io.zeroshift.inventory.application;
 
-import io.zeroshift.contracts.InventoryCommand.StockLine;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
+/** Each product's sellable stock, and one reservation per order. */
 public interface Stock {
-  record Item(String sku, int onHand, int reserved, int version) {
-    public int available() {
-      return onHand - reserved;
-    }
-  }
+  record Item(UUID productId, String sku, int quantity) {}
 
   enum Status {
     RESERVED,
@@ -18,15 +14,25 @@ public interface Stock {
     RELEASED
   }
 
-  record Reservation(
-      UUID orderId, UUID reservationId, Status status, List<StockLine> lines, String reason) {}
+  /** {@code items} is empty unless the reservation is (or was) {@code RESERVED}. */
+  record Reservation(UUID id, UUID orderId, Status status, List<Item> items, String reason) {}
 
-  Optional<Item> find(String sku);
+  Optional<UUID> productId(String sku);
 
-  /** Adds {@code delta} to reserved if the row is still at {@code item.version()}. */
-  boolean adjust(Item item, int delta);
+  /**
+   * Takes every item's quantity from stock, all or none. Returns why not when some product is
+   * unknown, inactive or short; then nothing was taken.
+   */
+  Optional<String> take(List<Item> items);
+
+  /** Returns the quantities to stock. */
+  void giveBack(List<Item> items);
 
   Optional<Reservation> reservation(UUID orderId);
 
-  void save(Reservation reservation);
+  /** Records a new reservation with its items. */
+  void insert(Reservation reservation);
+
+  /** Marks the order's reservation released. */
+  void released(UUID orderId, String reason);
 }

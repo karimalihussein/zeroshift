@@ -130,6 +130,7 @@ public class LoadGenerator {
 
   private final EventLabSettings settings;
   private final LabServices services;
+  private final io.zeroshift.eventlab.LabCustomers customers;
   private final Stats stats = new Stats();
   private final RetryThrottle throttle = new RetryThrottle();
   private final AtomicInteger inFlight = new AtomicInteger();
@@ -151,9 +152,14 @@ public class LoadGenerator {
   private volatile Instant startedAt;
   private Thread arrivals;
 
-  public LoadGenerator(EventLabSettings settings, LabServices services, MeterRegistry meters) {
+  public LoadGenerator(
+      EventLabSettings settings,
+      LabServices services,
+      MeterRegistry meters,
+      io.zeroshift.eventlab.LabCustomers customers) {
     this.settings = settings;
     this.services = services;
+    this.customers = customers;
     this.meters = meters;
     droppedCounter =
         Counter.builder("zeroshift.load.dropped")
@@ -389,7 +395,7 @@ public class LoadGenerator {
         items.add(Map.of("sku", sku, "quantity", 1 + random.nextInt(3)));
     }
     return json.writeValueAsString(
-        Map.of("customerId", "load-" + (1 + random.nextInt(500)), "items", items));
+        Map.of("customerId", customers.any(random).id(), "items", items));
   }
 
   private UUID orderId(String body) {

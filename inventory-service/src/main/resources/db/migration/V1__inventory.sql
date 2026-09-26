@@ -1,24 +1,31 @@
--- version is the optimistic lock: a reservation reads a row, decides, and writes back only if
--- nobody changed it in between.
-CREATE TABLE stock(
-  sku TEXT PRIMARY KEY,
+-- The catalog and its stock, one row per product. stock is what can still be sold: reserving
+-- takes from it with one conditional UPDATE (WHERE stock >= :q), releasing gives it back.
+-- version counts every change.
+CREATE TABLE product(
+  id UUID PRIMARY KEY,
+  sku TEXT NOT NULL UNIQUE CHECK(sku ~ '^[A-Z0-9][A-Z0-9-]{2,39}$'),
   name TEXT NOT NULL,
-  on_hand INT NOT NULL CHECK(on_hand >= 0),
-  reserved INT NOT NULL DEFAULT 0 CHECK(reserved >= 0 AND reserved <= on_hand),
-  version INT NOT NULL DEFAULT 1);
-INSERT INTO stock(sku,name,on_hand) VALUES
-  ('SKU-KEYBOARD', 'Mechanical keyboard', 25),
-  ('SKU-MOUSE', 'Wireless mouse', 100),
-  ('SKU-MONITOR', '27" monitor', 3),
-  ('SKU-CABLE', 'USB-C cable', 500);
-
--- RELEASED without a prior reservation records a release that arrived first, so a late
--- reservation for a cancelled order is refused.
-CREATE TABLE reservation(
-  order_id UUID PRIMARY KEY,
-  reservation_id UUID,
-  status TEXT NOT NULL CHECK(status IN ('RESERVED','REJECTED','RELEASED')),
-  lines JSONB NOT NULL,
-  reason TEXT,
+  description TEXT NOT NULL DEFAULT '',
+  price NUMERIC(12,2) NOT NULL CHECK(price >= 0),
+  stock INT NOT NULL CHECK(stock >= 0),
+  version BIGINT NOT NULL DEFAULT 1,
+  active BOOLEAN NOT NULL DEFAULT true,
   created_at TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp());
+
+-- One per order. REJECTED has no items. RELEASED without items records a release that arrived
+-- before the reservation, so a late reservation for a cancelled order is refused.
+CREATE TABLE reservation(
+  id UUID PRIMARY KEY,
+  order_id UUID NOT NULL UNIQUE,
+  status TEXT NOT NULL CHECK(status IN ('RESERVED','REJECTED','RELEASED')),
+  reason TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp(),
+  released_at TIMESTAMPTZ);
+
+CREATE TABLE reservation_item(
+  reservation_id UUID NOT NULL REFERENCES reservation(id) ON DELETE CASCADE,
+  product_id UUID NOT NULL REFERENCES product(id),
+  quantity INT NOT NULL CHECK(quantity > 0),
+  PRIMARY KEY(reservation_id, product_id));

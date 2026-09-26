@@ -45,6 +45,7 @@ final class TransactionParticipant implements Participant, LockMonitor.Watched {
   private final LockMonitor monitor;
   private final Consumer<String> committedOrRolledBack;
   private final String instance;
+
   /** Every request's backend pid, shared by the run's requests (deadlock details name them). */
   private final Map<Integer, String> backends;
 
@@ -144,6 +145,11 @@ final class TransactionParticipant implements Participant, LockMonitor.Watched {
   }
 
   @Override
+  public java.util.UUID uuid(String name) {
+    return run.uuid(name);
+  }
+
+  @Override
   public int initialValue() {
     return run.config().initialValue();
   }
@@ -208,7 +214,12 @@ final class TransactionParticipant implements Participant, LockMonitor.Watched {
 
   @Override
   public Row read(Read read) {
-    var t = statement(read.target(), null, SqlText.render(read.sql(), read.params()), () -> session.query(read.sql(), read.params()));
+    var t =
+        statement(
+            read.target(),
+            null,
+            SqlText.render(read.sql(), read.params()),
+            () -> session.query(read.sql(), read.params()));
     var row = first(t.value());
     rec.record(readEvent(read, row, t).message(row.present() ? null : "no row"));
     return row;
@@ -222,7 +233,12 @@ final class TransactionParticipant implements Participant, LockMonitor.Watched {
             .target(read.target())
             .lock(lock)
             .sql(SqlText.render(read.sql(), read.params())));
-    var t = statement(read.target(), lock, SqlText.render(read.sql(), read.params()), () -> session.query(read.sql(), read.params()));
+    var t =
+        statement(
+            read.target(),
+            lock,
+            SqlText.render(read.sql(), read.params()),
+            () -> session.query(read.sql(), read.params()));
     var row = first(t.value());
     held.add(lock);
     rec.record(acquired(lock, read.target(), requested, t.waited()));
@@ -239,7 +255,12 @@ final class TransactionParticipant implements Participant, LockMonitor.Watched {
               .target(write.target())
               .lock(write.lock())
               .sql(SqlText.render(write.sql(), write.params())));
-    var t = statement(write.target(), write.lock(), SqlText.render(write.sql(), write.params()), () -> session.update(write.sql(), write.params()));
+    var t =
+        statement(
+            write.target(),
+            write.lock(),
+            SqlText.render(write.sql(), write.params()),
+            () -> session.update(write.sql(), write.params()));
     int rows = t.value();
     if (write.lock() != null && rows > 0) {
       held.add(write.lock());
@@ -283,7 +304,8 @@ final class TransactionParticipant implements Participant, LockMonitor.Watched {
         event(EventType.DELAY)
             .startedAt(rec.wall(start), start)
             .durationMicros(rec.micros() - start)
-            .message("application work between read and write (configured delay " + delay + " ms)"));
+            .message(
+                "application work between read and write (configured delay " + delay + " ms)"));
   }
 
   @Override
@@ -355,7 +377,12 @@ final class TransactionParticipant implements Participant, LockMonitor.Watched {
 
   @Override
   public Aborted versionConflict(String target, long expected, Read current) {
-    var t = statement(current.target(), null, SqlText.render(current.sql(), current.params()), () -> session.query(current.sql(), current.params()));
+    var t =
+        statement(
+            current.target(),
+            null,
+            SqlText.render(current.sql(), current.params()),
+            () -> session.query(current.sql(), current.params()));
     var row = first(t.value());
     long actual = row.number(current.version() != null ? current.version() : current.value());
     rec.record(
@@ -465,7 +492,11 @@ final class TransactionParticipant implements Participant, LockMonitor.Watched {
       if (s != null)
         s.event(
             "lock wait",
-            Map.of("race.blocked_by", String.join(",", by), "db.lock", Objects.toString(currentLock, "")));
+            Map.of(
+                "race.blocked_by",
+                String.join(",", by),
+                "db.lock",
+                Objects.toString(currentLock, "")));
       choreography.blocked(index, true);
     } else if (blockedToken == token) {
       unblocked(token, "lock granted");
@@ -509,10 +540,14 @@ final class TransactionParticipant implements Participant, LockMonitor.Watched {
         tracing.start(
             sql == null ? "postgresql" : sql.split(" ", 2)[0] + " " + Objects.toString(target, ""),
             Map.of(
-                "db.system", "postgresql",
-                "db.statement", Objects.toString(sql, ""),
-                "race.lane", lane,
-                "db.pg_backend_pid", String.valueOf(pid)));
+                "db.system",
+                "postgresql",
+                "db.statement",
+                Objects.toString(sql, ""),
+                "race.lane",
+                lane,
+                "db.pg_backend_pid",
+                String.valueOf(pid)));
     statementSpan = span;
     inFlight = token;
     T value;
@@ -617,8 +652,7 @@ final class TransactionParticipant implements Participant, LockMonitor.Watched {
         .target(read.target())
         .sql(SqlText.render(read.sql(), read.params()))
         .valueRead(row.present() ? read.value() + "=" + value : null)
-        .versionRead(
-            read.version() != null && row.present() ? row.number(read.version()) : null);
+        .versionRead(read.version() != null && row.present() ? row.number(read.version()) : null);
   }
 
   private static Row first(List<Map<String, Object>> rows) {

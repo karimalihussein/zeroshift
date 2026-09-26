@@ -113,7 +113,9 @@ final class RunAnalysis {
                       + String.join(", ", e.blockedBy()),
                   unblocked == null
                       ? "PostgreSQL reports the backend waiting (pg_blocking_pids)."
-                      : "It waited " + ms(unblocked.waitMicros()) + ", until the lock was released."));
+                      : "It waited "
+                          + ms(unblocked.waitMicros())
+                          + ", until the lock was released."));
         }
         case VERSION_CONFLICT ->
             out.add(
@@ -158,12 +160,11 @@ final class RunAnalysis {
                   null,
                   lanes(e.lane(), partners),
                   List.of(e.seq()),
-                  "Deadlock: "
-                      + cycle(e.lane(), partners)
-                      + ". PostgreSQL aborted "
-                      + e.lane(),
+                  "Deadlock: " + cycle(e.lane(), partners) + ". PostgreSQL aborted " + e.lane(),
                   String.valueOf(
-                      e.data() == null ? e.message() : e.data().getOrDefault("postgresDetail", e.message()))));
+                      e.data() == null
+                          ? e.message()
+                          : e.data().getOrDefault("postgresDetail", e.message()))));
         }
         default -> {}
       }
@@ -189,7 +190,8 @@ final class RunAnalysis {
       List<RaceEvent> events, InvariantResult invariant, List<Highlight> out) {
     var byValue = new LinkedHashMap<String, List<RaceEvent>>();
     for (var e : events)
-      if (isRead(e)) byValue.computeIfAbsent(e.target() + "|" + e.valueRead(), k -> new ArrayList<>()).add(e);
+      if (isRead(e))
+        byValue.computeIfAbsent(e.target() + "|" + e.valueRead(), k -> new ArrayList<>()).add(e);
     for (var reads : byValue.values()) {
       var concurrent = new ArrayList<RaceEvent>();
       for (var r : reads) {
@@ -260,7 +262,16 @@ final class RunAnalysis {
         if (!e.lane().equals(lane) || !Objects.equals(e.attempt(), commit.attempt())) continue;
         if (e.type() != EventType.WRITE_PERFORMED || e.rows() == null || e.rows() == 0) continue;
         var target = e.target();
-        var source = last(events, e, r -> r.lane().equals(lane) && isRead(r) && Objects.equals(r.attempt(), commit.attempt()) && target != null && target.equals(r.target()));
+        var source =
+            last(
+                events,
+                e,
+                r ->
+                    r.lane().equals(lane)
+                        && isRead(r)
+                        && Objects.equals(r.attempt(), commit.attempt())
+                        && target != null
+                        && target.equals(r.target()));
         if (source != null) {
           write = e;
           read = source;
@@ -318,7 +329,10 @@ final class RunAnalysis {
       var head = new ArrayList<>(steps.subList(0, MAX_STEPS - 1));
       head.add(
           new Explanation.Step(
-              0, "", "… " + (steps.size() - MAX_STEPS + 1) + " more steps on the timeline", "info"));
+              0,
+              "",
+              "… " + (steps.size() - MAX_STEPS + 1) + " more steps on the timeline",
+              "info"));
       steps = head;
     }
     var headline =
@@ -341,8 +355,7 @@ final class RunAnalysis {
                   + (e.ok() ? "✓ " : "✗ ")
                   + e.target()
                   + (e.message() == null ? "" : " (" + e.message() + ")");
-          case TRANSACTION_BLOCKED ->
-              e.lane() + " blocked: " + e.message();
+          case TRANSACTION_BLOCKED -> e.lane() + " blocked: " + e.message();
           case LOCK_ACQUIRED ->
               e.waitMicros() != null && e.waitMicros() > 0
                   ? e.lane() + " got " + e.lock() + " after " + ms(e.waitMicros())
@@ -353,8 +366,7 @@ final class RunAnalysis {
                   : e.lane() + "'s write " + e.message();
           case VERSION_CONFLICT -> e.lane() + " was rejected: " + e.message();
           case SERIALIZATION_FAILURE -> e.lane() + " was aborted by PostgreSQL: " + e.message();
-          case DEADLOCK_DETECTED ->
-              e.lane() + " was chosen as deadlock victim: " + e.message();
+          case DEADLOCK_DETECTED -> e.lane() + " was chosen as deadlock victim: " + e.message();
           case TRANSACTION_COMMITTED -> e.lane() + " committed" + suffix(e.message());
           case TRANSACTION_ROLLED_BACK -> e.lane() + " rolled back" + suffix(e.message());
           case RETRY_SCHEDULED -> e.lane() + " retried: " + e.message();
@@ -470,8 +482,7 @@ final class RunAnalysis {
         .map(
             e ->
                 switch (e.type()) {
-                  case READ_PERFORMED ->
-                      isRead(e) ? e.lane() + " READ " + e.valueRead() : null;
+                  case READ_PERFORMED -> isRead(e) ? e.lane() + " READ " + e.valueRead() : null;
                   case LOCK_ACQUIRED ->
                       e.waitMicros() != null && e.waitMicros() > 0
                           ? e.lane() + " WAKES, gets lock"
@@ -485,11 +496,7 @@ final class RunAnalysis {
                           ? e.lane() + " WRITE " + e.valueWritten()
                           : e.lane() + " WRITE matched 0 rows";
                   case VERSION_CONFLICT ->
-                      e.lane()
-                          + " STALE v"
-                          + e.expectedVersion()
-                          + " ≠ v"
-                          + e.actualVersion();
+                      e.lane() + " STALE v" + e.expectedVersion() + " ≠ v" + e.actualVersion();
                   case SERIALIZATION_FAILURE -> e.lane() + " SERIALIZATION FAILURE";
                   case DEADLOCK_DETECTED -> e.lane() + " DEADLOCK VICTIM";
                   case DECISION_MADE -> e.ok() ? null : e.lane() + " DECLINES";

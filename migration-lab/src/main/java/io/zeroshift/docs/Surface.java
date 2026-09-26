@@ -28,7 +28,7 @@ final class Surface {
             .group("Orders")
             .title("Create order")
             .summary(
-                "Places an order. The order and its OrderPlaced event commit in one database transaction; Debezium publishes the outbox row. The response version is the read-your-writes token for the query service.")
+                "Places an order for a known customer. The service prices each item from the inventory catalog (GET /products?sku=…, a synchronous call), applies and redeems the voucher, and issues the invoice. The order, its invoice, the voucher's use and its OrderPlaced event commit in one database transaction; Debezium publishes the outbox row. The response version is the read-your-writes token for the query service.")
             .header(
                 "Idempotency-Key",
                 false,
@@ -37,27 +37,14 @@ final class Surface {
                 "Idempotent-Replayed",
                 false,
                 "Response header. true when this answer was stored for an earlier Idempotency-Key.")
-            .body(
-                schema(
-                    "PlaceOrderRequest",
-                    "order-service/src/main/java/io/zeroshift/order/web/PlaceOrderRequest.java",
-                    """
-                    {
-                      "customerId": "ada",
-                      "items": [
-                        { "sku": "SKU-CABLE", "quantity": 1 }
-                      ]
-                    }
-                    """,
-                    field("customerId", "string", true, "1–100 characters."),
-                    field(
-                        "items",
-                        "Line[]",
-                        true,
-                        "1–20 lines. Line is sku (1–40 characters) and quantity (1–99). SKUs must exist in the order service catalog.")))
+            .header(
+                "Retry-After",
+                false,
+                "Response header on 503 CATALOG_UNAVAILABLE (and the edge guards' 429 and 503). Seconds to wait before retrying.")
+            .body(placeOrder())
             .response(
                 202,
-                "Accepted. The body is the OrderAccepted record, not an envelope.",
+                "Accepted. The body is the OrderAccepted record, not an envelope. Every amount is in currency with 2 decimals; total = subtotal − discount + tax.",
                 schema(
                     "OrderAccepted",
                     "order-service/src/main/java/io/zeroshift/order/web/OrderViews.java",
@@ -66,7 +53,12 @@ final class Surface {
                       "orderId": "3f1c0b2e-7a4d-4e1a-9c3b-6d8e2f0a1b44",
                       "correlationId": "8a2e1c44-1b6f-4d0a-9e77-2c5b8f0d11aa",
                       "eventId": "11111111-1111-4111-8111-111111111111",
-                      "total": 9.99,
+                      "invoiceNumber": "INV-2026-000042",
+                      "currency": "USD",
+                      "subtotal": 25.98,
+                      "discount": 2.60,
+                      "tax": 1.87,
+                      "total": 25.25,
                       "version": 1,
                       "replayed": false,
                       "traceId": "5a3057b3f1f7a1e0c0ffee0000000001"
@@ -80,10 +72,31 @@ final class Surface {
                         "Shared by every message this request causes."),
                     field("eventId", "uuid", true, "The OrderPlaced event id."),
                     field(
-                        "total",
+                        "invoiceNumber",
+                        "string",
+                        true,
+                        "The invoice issued with the order: INV-{year}-{6 digits}."),
+                    field(
+                        "currency",
+                        "string",
+                        true,
+                        "ISO 4217 code, commerce.currency (default USD)."),
+                    field(
+                        "subtotal",
                         "decimal",
                         true,
-                        "Sum of line subtotals, priced from the catalog."),
+                        "Sum of item subtotals (catalog unit price × quantity), scale 2."),
+                    field(
+                        "discount",
+                        "decimal",
+                        true,
+                        "The voucher's discount, 0.00 without one. Never above subtotal."),
+                    field(
+                        "tax",
+                        "decimal",
+                        true,
+                        "(subtotal − discount) × the tax rate, rounded HALF_EVEN to 2 decimals."),
+                    field("total", "decimal", true, "subtotal − discount + tax."),
                     field(
                         "version",
                         "long",
@@ -99,14 +112,44 @@ final class Surface {
                         "string",
                         true,
                         "OpenTelemetry trace id, when the agent is attached.")))
-            .error(400, "VALIDATION_FAILED", "customerId or a line fails its constraint.")
+            .error(
+                400,
+                "VALIDATION_FAILED",
+                "customerId is missing, items is empty or has more than 20 lines, a line fails its constraint, or voucherCode is longer than 40.")
             .error(400, "MALFORMED_REQUEST", "The body is not JSON the record can bind.")
             .error(
-                422, "ORDER_RULE_VIOLATION", "Unknown SKU, or an order rule rejected the command.")
+                422,
+                "ORDER_RULE_VIOLATION",
+                "A SKU the catalog does not sell, an inactive product, a product priced in another currency, or another order rule.")
+            .error(422, "UNKNOWN_CUSTOMER", "No customer with this customerId.")
+            .error(
+                422,
+                "VOUCHER_NOT_APPLICABLE",
+                "No voucher with this code, or it is inactive, outside its validity or below its minimum amount.")
+            .error(
+                409,
+                "VOUCHER_EXHAUSTED",
+                "The voucher's usage limit is used up, possibly by a concurrent order.")
+            .error(
+                503,
+                "CATALOG_UNAVAILABLE",
+                "inventory-service did not answer the price lookup. Retry-After says when to retry.")
             .error(
                 422,
                 "IDEMPOTENCY_KEY_REUSED",
                 "This Idempotency-Key was already used for a different body.")
+            .error(
+                429,
+                "RATE_LIMITED",
+                "Edge rate limit of this replica, when switched on. Retry-After says when to retry.")
+            .error(
+                503,
+                "LOAD_SHED",
+                "Too many unfinished orders, when load shedding is on. Retry-After says when to retry.")
+            .error(
+                503,
+                "BULKHEAD_FULL",
+                "Too many concurrent placements, when the bulkhead is on. Retry-After says when to retry.")
             .idempotency(
                 "Optional Idempotency-Key. A retry with the same key and body returns the stored 202 and Idempotent-Replayed: true. Without a key, a retry places a second order.")
             .events("OrderPlaced")
@@ -117,7 +160,7 @@ final class Surface {
             .group("Orders")
             .title("Dual-write demo")
             .summary(
-                "The anti-pattern the outbox replaces. The database and Kafka are written separately, and the call then crashes or rolls back. It starts no saga.")
+                "The anti-pattern the outbox replaces. The order is priced like POST /orders, then the database and Kafka are written separately, and the call crashes or rolls back. It starts no saga.")
             .query("mode", "enum", true, null, "COMMIT_THEN_CRASH or PUBLISH_THEN_ROLLBACK.")
             .body(placeOrder())
             .response(
@@ -144,22 +187,20 @@ final class Surface {
             .group("Orders")
             .title("List orders")
             .summary(
-                "Newest sagas, each with the order folded from its event stream. A customer filter searches the newest 100 sagas, then keeps that customer.")
+                "Newest sagas, each with the order folded from its event stream. A customer filter searches the newest 100 sagas, then keeps that customer. OrderSummary is saga plus order; order has the fields listed under Get order.")
             .query(
                 "limit",
                 "integer",
                 false,
                 "20",
                 "1–100. The service reads one extra row and sets meta.hasMore.")
-            .query("customerId", "string", false, null, "Optional, at most 100 characters.")
+            .query("customerId", "uuid", false, null, "Optional. Only this customer's orders.")
             .response(
                 200,
                 "ApiResponse of OrderSummary. data is the page; meta carries count, limit and hasMore.",
                 listMeta())
-            .error(
-                400,
-                "VALIDATION_FAILED",
-                "limit is outside 1–100, or customerId is longer than 100.")
+            .error(400, "VALIDATION_FAILED", "limit is outside 1–100.")
+            .error(400, "INVALID_PARAMETER", "customerId is not a UUID.")
             .idempotency("Safe read.")
             .source(order)
             .done("order-get-orders"));
@@ -178,7 +219,7 @@ final class Surface {
                 "false rebuilds the aggregate from the first event.")
             .response(
                 200,
-                "OrderDetail: order, rebuiltFrom, snapshotVersion, events, saga, transitions.",
+                "OrderDetail: order, invoice, rebuiltFrom, snapshotVersion, events, saga, transitions.",
                 schema(
                     "OrderDetail",
                     "order-service/src/main/java/io/zeroshift/order/web/OrderViews.java",
@@ -187,7 +228,12 @@ final class Surface {
                         "order",
                         "Order",
                         true,
-                        "id, customerId, lines, total, currency, status, paymentId, reservationId, trackingNumber, cancelReason, version."),
+                        "id, customerId, customerName, lines, currency, subtotal, discount, taxRate, tax, total, voucherCode, invoiceNumber, status, paymentId, reservationId, trackingNumber, cancelReason, version. Each line is productId, sku, name, quantity, unitPrice, subtotal, discount, total, snapshotted when the order was placed."),
+                    field(
+                        "invoice",
+                        "Invoice",
+                        false,
+                        "id, number, status (ISSUED, PAID or VOIDED), currency, subtotal, discount, tax, total, issuedAt, paidAt, voidedAt. Paid on PaymentAuthorized, voided on cancellation. Null for an order written around the normal path."),
                     field(
                         "rebuiltFrom",
                         "string",
@@ -289,26 +335,78 @@ final class Surface {
             .idempotency("Safe read.")
             .source(order)
             .done("order-get-lease"));
+    var commerce = "order-service/src/main/java/io/zeroshift/order/web/CommerceController.java";
     ops.add(
-        Op.api("order-service", "order-service", "GET", "/catalog")
-            .group("Orders")
-            .title("Product catalog")
-            .summary("The prices the order service charges. Stock lives in the inventory service.")
+        Op.api("order-service", "order-service", "GET", "/customers")
+            .group("Customers")
+            .title("List customers")
+            .summary(
+                "The customers orders can be placed for, by name. Seeded by order-service when commerce.demo-data is on.")
+            .query(
+                "limit",
+                "integer",
+                false,
+                "50",
+                "1–500. The service reads one extra row and sets meta.hasMore.")
+            .response(200, "ApiResponse of Customer.", customer())
+            .error(400, "VALIDATION_FAILED", "limit is outside 1–500.")
+            .idempotency("Safe read.")
+            .source(commerce)
+            .done("order-get-customers"));
+    ops.add(
+        Op.api("order-service", "order-service", "GET", "/customers/{id}")
+            .group("Customers")
+            .title("Get customer")
+            .summary(
+                "One customer. An order keeps the name it was placed under; a later edit here never rewrites it.")
+            .path("id", "uuid", "Customer id.")
+            .response(200, "Customer.", customer())
+            .error(404, "CUSTOMER_NOT_FOUND", "No customer with this id.")
+            .error(400, "INVALID_PARAMETER", "id is not a UUID.")
+            .idempotency("Safe read.")
+            .source(commerce)
+            .done("order-get-customer"));
+    ops.add(
+        Op.api("order-service", "order-service", "GET", "/vouchers")
+            .group("Customers")
+            .title("List vouchers")
+            .summary(
+                "Every voucher, usable or not. usageCount against usageLimit shows what is left; a cancelled order gives its use back.")
             .response(
                 200,
-                "ApiResponse of Catalog.Product. A complete list, so meta.hasMore is null.",
+                "ApiResponse of Voucher. A complete list, so meta.hasMore is null.",
                 schema(
-                    "Product",
-                    "order-service/src/main/java/io/zeroshift/order/application/Catalog.java",
+                    "Voucher",
+                    "order-service/src/main/java/io/zeroshift/order/domain/Voucher.java",
                     """
-                    { "data": [ { "sku": "SKU-CABLE", "name": "USB-C cable", "price": 9.99 } ], "meta": { "count": 1, "limit": null, "hasMore": null } }
+                    { "data": [ { "id": "0c6f2a1e-8b3d-4f5a-9e7c-2d1b0a9f8e7d", "code": "WELCOME10", "discountType": "PERCENTAGE", "value": 10.00, "minimumAmount": 0.00, "maximumDiscount": null, "usageLimit": null, "usageCount": 3, "validFrom": "2026-08-27T00:00:00Z", "validUntil": null, "active": true } ], "meta": { "count": 1, "limit": null, "hasMore": null } }
                     """,
-                    field("sku", "string", true, ""),
-                    field("name", "string", true, ""),
-                    field("price", "decimal", true, "")))
+                    field("id", "uuid", true, ""),
+                    field("code", "string", true, "Stored upper case; accepted in any case."),
+                    field("discountType", "enum", true, "FIXED or PERCENTAGE."),
+                    field(
+                        "value",
+                        "decimal",
+                        true,
+                        "An amount for FIXED, a percentage (at most 100) for PERCENTAGE."),
+                    field(
+                        "minimumAmount",
+                        "decimal",
+                        true,
+                        "The order subtotal it needs. Below it the voucher is VOUCHER_NOT_APPLICABLE."),
+                    field("maximumDiscount", "decimal", false, "A cap on the discount, when set."),
+                    field("usageLimit", "integer", false, "Null means unlimited."),
+                    field(
+                        "usageCount",
+                        "integer",
+                        true,
+                        "Placed orders holding a use. At the limit, placing is VOUCHER_EXHAUSTED."),
+                    field("validFrom", "datetime", true, ""),
+                    field("validUntil", "datetime", false, "Exclusive. Null means no end."),
+                    field("active", "boolean", true, "An inactive voucher is not applicable.")))
             .idempotency("Safe read.")
-            .source(order)
-            .done("order-get-catalog"));
+            .source(commerce)
+            .done("order-get-vouchers"));
 
     var query = "order-query-service/src/main/java/io/zeroshift/query/QueryController.java";
     ops.add(
@@ -359,15 +457,36 @@ final class Surface {
                     "order-query-service/src/main/java/io/zeroshift/query/ReadModels.java",
                     null,
                     field("orderId", "uuid", true, ""),
-                    field("customerId", "string", true, ""),
+                    field("customerId", "string", true, "The customer's UUID, as text."),
+                    field(
+                        "customerName",
+                        "string",
+                        true,
+                        "The name the order was placed under. Orders written before the commerce model carry the customer id."),
                     field("status", "string", true, ""),
-                    field("total", "decimal", true, ""),
                     field("currency", "string", true, ""),
-                    field("itemCount", "integer", true, ""),
-                    field("lines", "OrderLine[]", true, "sku, quantity, unitPrice."),
+                    field("subtotal", "decimal", true, "Scale 2, in currency."),
+                    field("discount", "decimal", true, "0.00 without a voucher."),
+                    field("taxRate", "decimal", true, "The rate snapshotted on the order."),
+                    field("tax", "decimal", true, ""),
+                    field("total", "decimal", true, "subtotal − discount + tax."),
+                    field("voucherCode", "string", false, ""),
+                    field("invoiceNumber", "string", false, ""),
+                    field(
+                        "invoiceStatus",
+                        "string",
+                        false,
+                        "ISSUED, PAID or VOIDED, as the projection derives it from the events."),
+                    field("itemCount", "integer", true, "Sum of quantities."),
+                    field(
+                        "items",
+                        "OrderLine[]",
+                        true,
+                        "productId, sku, name, quantity, unitPrice, subtotal, discount, total."),
                     field("paymentId", "uuid", false, ""),
                     field("reservationId", "uuid", false, ""),
                     field("trackingNumber", "string", false, ""),
+                    field("carrier", "string", false, ""),
                     field("cancelReason", "string", false, ""),
                     field("compensations", "string[]", true, ""),
                     field("eventsApplied", "integer", true, "Read-side version."),
@@ -399,11 +518,13 @@ final class Surface {
                     "CustomerView",
                     "order-query-service/src/main/java/io/zeroshift/query/ReadModels.java",
                     null,
-                    field("customerId", "string", true, ""),
+                    field("customerId", "string", true, "The customer's UUID, as text."),
+                    field("customerName", "string", true, "From the customer's latest order."),
+                    field("currency", "string", true, "The currency of shippedValue."),
                     field("ordersPlaced", "integer", true, ""),
                     field("ordersShipped", "integer", true, ""),
                     field("ordersCancelled", "integer", true, ""),
-                    field("shippedValue", "decimal", true, ""),
+                    field("shippedValue", "decimal", true, "Sum of shipped orders' totals."),
                     field("updatedAt", "datetime", true, "")))
             .idempotency("Safe read.")
             .source(query)
@@ -449,29 +570,159 @@ final class Surface {
             .source(query)
             .done("query-post-rebuild"));
 
+    var catalog =
+        "inventory-service/src/main/java/io/zeroshift/inventory/infrastructure/ProductCatalog.java";
+    var products =
+        "inventory-service/src/main/java/io/zeroshift/inventory/infrastructure/ProductController.java";
+    ops.add(
+        Op.api("inventory-service", "inventory-service", "GET", "/products")
+            .group("Inventory")
+            .title("List products")
+            .summary(
+                "The catalog: what is sold, at what price, and how many are left. inventory-service owns products; order-service prices every order from here.")
+            .query(
+                "sku",
+                "string[]",
+                false,
+                null,
+                "Repeatable, at most 100. Exactly those products, unknown SKUs left out; the answer is a complete list and limit is ignored. This is how order-service prices an order.")
+            .query(
+                "active",
+                "boolean",
+                false,
+                null,
+                "Only active (true) or inactive (false) products. Omitted means all.")
+            .query(
+                "limit",
+                "integer",
+                false,
+                "100",
+                "1–500, without sku. The service reads one extra row and sets meta.hasMore.")
+            .response(
+                200,
+                "ApiResponse of ProductCatalog.ProductView, by SKU.",
+                schema(
+                    "ProductView",
+                    catalog,
+                    """
+                    { "data": [ { "id": "7d9f3b2a-4c1e-5a6b-8d7e-9f0a1b2c3d4e", "sku": "SKU-CABLE", "name": "USB-C cable, 2 m", "description": "Braided USB 3.2 cable rated for 100 W charging and 10 Gbps data.", "price": 12.99, "currency": "USD", "stock": 512, "version": 1, "active": true, "createdAt": "2026-09-26T00:00:00Z", "updatedAt": "2026-09-26T00:00:00Z" } ], "meta": { "count": 1, "limit": 100, "hasMore": false } }
+                    """,
+                    field("id", "uuid", true, "Product id, carried on order lines as productId."),
+                    field(
+                        "sku",
+                        "string",
+                        true,
+                        "Unique. Upper-case letters, digits and hyphens, 3–40 characters."),
+                    field("name", "string", true, ""),
+                    field("description", "string", true, ""),
+                    field("price", "decimal", true, "Unit price, scale 2."),
+                    field(
+                        "currency",
+                        "string",
+                        true,
+                        "commerce.currency; the lab sells in one currency."),
+                    field("stock", "integer", true, "Units that can still be sold."),
+                    field(
+                        "version",
+                        "long",
+                        true,
+                        "Optimistic version, incremented by every update."),
+                    field("active", "boolean", true, "An inactive product cannot be ordered."),
+                    field("createdAt", "datetime", true, ""),
+                    field("updatedAt", "datetime", true, "")))
+            .error(400, "VALIDATION_FAILED", "limit is outside 1–500, or more than 100 sku values.")
+            .idempotency("Safe read.")
+            .source(products)
+            .done("inventory-get-products"));
+    ops.add(
+        Op.api("inventory-service", "inventory-service", "GET", "/products/{id}")
+            .group("Inventory")
+            .title("Get product")
+            .summary("One product with its price and remaining stock.")
+            .path("id", "uuid", "Product id.")
+            .response(200, "ProductCatalog.ProductView, the same fields as List products.", null)
+            .error(404, "PRODUCT_NOT_FOUND", "No product with this id.")
+            .error(400, "INVALID_PARAMETER", "id is not a UUID.")
+            .idempotency("Safe read.")
+            .source(products)
+            .done("inventory-get-product"));
     ops.add(
         Op.api("inventory-service", "inventory-service", "GET", "/stock")
             .group("Inventory")
             .title("Stock levels")
             .summary(
-                "On-hand, reserved and available units per SKU. available is onHand minus reserved.")
+                "Available and reserved units per product. available can still be sold; reserved is held by open reservations.")
             .response(
                 200,
-                "ApiResponse of PostgresStock.Level.",
-                schema(
-                    "Level",
-                    "inventory-service/src/main/java/io/zeroshift/inventory/infrastructure/PostgresStock.java",
-                    null,
-                    field("sku", "string", true, ""),
-                    field("name", "string", true, ""),
-                    field("onHand", "integer", true, ""),
-                    field("reserved", "integer", true, ""),
-                    field("available", "integer", true, ""),
-                    field("version", "integer", true, "Optimistic version of the stock row.")))
+                "ApiResponse of ProductCatalog.StockLevel. A complete list, so meta.hasMore is null.",
+                stockLevel())
             .idempotency("Safe read.")
             .source(
                 "inventory-service/src/main/java/io/zeroshift/inventory/infrastructure/StockController.java")
             .done("inventory-get-stock"));
+
+    var payments =
+        "payment-service/src/main/java/io/zeroshift/payment/infrastructure/PaymentController.java";
+    ops.add(
+        Op.api("payment-service", "payment-service", "GET", "/payments")
+            .group("Payments")
+            .title("Payments of an order")
+            .summary(
+                "Every payment row of the order, oldest first. More than one only when the commands carried different idempotency keys.")
+            .query("orderId", "uuid", true, null, "The order.")
+            .response(
+                200,
+                "ApiResponse of PostgresPayments.PaymentView. A complete list, so meta.hasMore is null.",
+                schema(
+                    "PaymentView",
+                    "payment-service/src/main/java/io/zeroshift/payment/infrastructure/PostgresPayments.java",
+                    """
+                    { "data": [ { "id": "9e8d7c6b-5a4f-4e3d-8c2b-1a0f9e8d7c6b", "orderId": "3f1c0b2e-7a4d-4e1a-9c3b-6d8e2f0a1b44", "idempotencyKey": "order:3f1c0b2e-7a4d-4e1a-9c3b-6d8e2f0a1b44:authorize", "status": "AUTHORIZED", "method": "CARD", "amount": 25.25, "currency": "USD", "provider": "zeroshift-gateway", "providerReference": "ch_4Fq9Zt2LmX8Rb1", "failureReason": null, "createdAt": "2026-09-26T00:00:00Z", "authorizedAt": "2026-09-26T00:00:01Z", "declinedAt": null, "refundedAt": null, "voidedAt": null } ], "meta": { "count": 1, "limit": null, "hasMore": null } }
+                    """,
+                    field("id", "uuid", true, ""),
+                    field("orderId", "uuid", true, ""),
+                    field(
+                        "idempotencyKey",
+                        "string",
+                        true,
+                        "Unique. From AuthorizePayment.idempotencyKey (the saga sends order:{orderId}:authorize) and sent to the gateway as its Idempotency-Key."),
+                    field(
+                        "status",
+                        "enum",
+                        true,
+                        "PENDING, AUTHORIZED, DECLINED, REFUNDED or VOIDED. PENDING: the key is claimed and the gateway's answer is not recorded yet; a redelivery retries the gateway with the same key."),
+                    field("method", "enum", true, "CARD."),
+                    field(
+                        "amount",
+                        "decimal",
+                        false,
+                        "Scale 2. Null, with currency, only for a VOIDED row: refunded before anything was charged."),
+                    field("currency", "string", false, ""),
+                    field(
+                        "provider", "string", true, "payment.provider, default zeroshift-gateway."),
+                    field("providerReference", "string", false, "The gateway's charge reference."),
+                    field("failureReason", "string", false, "Why it was declined."),
+                    field("createdAt", "datetime", true, ""),
+                    field("authorizedAt", "datetime", false, ""),
+                    field("declinedAt", "datetime", false, ""),
+                    field("refundedAt", "datetime", false, ""),
+                    field("voidedAt", "datetime", false, "")))
+            .error(400, "INVALID_PARAMETER", "orderId is missing or not a UUID.")
+            .idempotency("Safe read.")
+            .source(payments)
+            .done("payment-get-payments"));
+    ops.add(
+        Op.api("payment-service", "payment-service", "GET", "/payments/{id}")
+            .group("Payments")
+            .title("Get payment")
+            .path("id", "uuid", "Payment id.")
+            .response(
+                200, "PostgresPayments.PaymentView, the same fields as Payments of an order.", null)
+            .error(404, "PAYMENT_NOT_FOUND", "No payment with this id.")
+            .error(400, "INVALID_PARAMETER", "id is not a UUID.")
+            .idempotency("Safe read.")
+            .source(payments)
+            .done("payment-get-payment"));
 
     var pay =
         "payment-service/src/main/java/io/zeroshift/payment/infrastructure/GatewayControl.java";
@@ -1185,15 +1436,63 @@ final class Surface {
             .done(id));
   }
 
-  private static Schema placeOrder() {
+  static Schema placeOrder() {
     return schema(
         "PlaceOrderRequest",
         "order-service/src/main/java/io/zeroshift/order/web/PlaceOrderRequest.java",
         """
-        { "customerId": "ada", "items": [ { "sku": "SKU-CABLE", "quantity": 1 } ] }
+        {
+          "customerId": "5b0e6f4c-2d1a-4c3e-9f7b-1a2b3c4d5e6f",
+          "items": [
+            { "sku": "SKU-CABLE", "quantity": 2 }
+          ],
+          "voucherCode": "WELCOME10"
+        }
         """,
-        field("customerId", "string", true, "1–100 characters."),
-        field("items", "Line[]", true, "sku and quantity."));
+        field(
+            "customerId",
+            "uuid",
+            true,
+            "A customer of order-service. Take one from GET /customers: the seeded ids are random, so the example's id is a placeholder."),
+        field(
+            "items",
+            "Line[]",
+            true,
+            "1–20 lines. Line is sku (1–40 characters) and quantity (1–99). Each SKU must be an active product of the inventory catalog (GET /products)."),
+        field(
+            "voucherCode",
+            "string",
+            false,
+            "Optional, at most 40 characters, any case. One of GET /vouchers."));
+  }
+
+  static Schema stockLevel() {
+    return schema(
+        "StockLevel",
+        "inventory-service/src/main/java/io/zeroshift/inventory/infrastructure/ProductCatalog.java",
+        """
+        { "data": [ { "productId": "7d9f3b2a-4c1e-5a6b-8d7e-9f0a1b2c3d4e", "sku": "SKU-CABLE", "name": "USB-C cable, 2 m", "available": 512, "reserved": 3, "version": 4 } ], "meta": { "count": 1, "limit": null, "hasMore": null } }
+        """,
+        field("productId", "uuid", true, ""),
+        field("sku", "string", true, ""),
+        field("name", "string", true, ""),
+        field("available", "integer", true, "Units that can still be sold: the product's stock."),
+        field("reserved", "integer", true, "Units held by open reservations."),
+        field("version", "long", true, "Optimistic version of the product row."));
+  }
+
+  private static Schema customer() {
+    return schema(
+        "Customer",
+        "order-service/src/main/java/io/zeroshift/order/domain/Customer.java",
+        """
+        { "id": "5b0e6f4c-2d1a-4c3e-9f7b-1a2b3c4d5e6f", "name": "Amara Okafor", "email": "amara.okafor@example.com", "phone": "+1 (415) 555-0142", "createdAt": "2026-09-26T00:00:00Z" }
+        """,
+        field("id", "uuid", true, "Pass it as customerId to POST /orders."),
+        field("name", "string", true, "Copied onto each order as customerName when it is placed."),
+        field("email", "string", true, "Unique, case-insensitive."),
+        field("phone", "string", false, ""),
+        field("createdAt", "datetime", true, ""));
   }
 
   private static Schema listMeta() {

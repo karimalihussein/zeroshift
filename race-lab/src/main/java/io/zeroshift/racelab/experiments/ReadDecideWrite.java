@@ -8,8 +8,8 @@ import io.zeroshift.racelab.application.Participant.Write;
 import io.zeroshift.racelab.domain.Mode;
 
 /**
- * The shape most races share: read a row, decide in the application, do some work, write back.
- * Each strategy changes one thing:
+ * The shape most races share: read a row, decide in the application, do some work, write back. Each
+ * strategy changes one thing:
  *
  * <ul>
  *   <li>UNSAFE and SERIALIZABLE run the same code; SERIALIZABLE only changes the isolation level.
@@ -60,7 +60,10 @@ abstract class ReadDecideWrite implements Experiment {
     Row row =
         p.inTurn(
             "read",
-            () -> lock ? p.lockRead(read(p, true), "row lock on " + target(p)) : p.read(read(p, false)));
+            () ->
+                lock
+                    ? p.lockRead(read(p, true), "row lock on " + target(p))
+                    : p.read(read(p, false)));
     p.sync("read");
     if (p.mode() != Mode.ATOMIC) {
       var decision = decide(p, row);

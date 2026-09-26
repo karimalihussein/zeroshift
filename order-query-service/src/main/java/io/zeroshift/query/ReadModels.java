@@ -2,7 +2,10 @@ package io.zeroshift.query;
 
 import static io.zeroshift.query.db.Tables.CUSTOMER_SUMMARY;
 import static io.zeroshift.query.db.Tables.ORDER_VIEW;
+import static org.jooq.impl.DSL.excluded;
+import static org.jooq.impl.DSL.inline;
 import static org.jooq.impl.DSL.max;
+import static org.jooq.impl.DSL.when;
 
 import io.zeroshift.contracts.MessageCodec;
 import io.zeroshift.contracts.OrderEvent.OrderPlaced;
@@ -18,6 +21,7 @@ import java.util.Optional;
 import java.util.UUID;
 import java.util.function.UnaryOperator;
 import org.jooq.DSLContext;
+import org.jooq.Field;
 import org.jooq.JSONB;
 import org.jooq.UpdateSetMoreStep;
 import tools.jackson.core.type.TypeReference;
@@ -35,7 +39,7 @@ public final class ReadModels {
 
   public record Stats(int orders, int customers, OffsetDateTime lastProjectedAt) {}
 
-  private static final TypeReference<List<OrderLine>> LINES = new TypeReference<>() {};
+  private static final TypeReference<List<OrderLine>> ITEMS = new TypeReference<>() {};
 
   private final DSLContext db;
 
@@ -49,12 +53,20 @@ public final class ReadModels {
         db.insertInto(ORDER_VIEW)
                 .set(ORDER_VIEW.ORDER_ID, p.orderId())
                 .set(ORDER_VIEW.CUSTOMER_ID, p.customerId())
+                .set(ORDER_VIEW.CUSTOMER_NAME, p.customerName())
                 .set(ORDER_VIEW.STATUS, "PLACED")
-                .set(ORDER_VIEW.TOTAL, p.total())
                 .set(ORDER_VIEW.CURRENCY, p.currency())
+                .set(ORDER_VIEW.SUBTOTAL, p.subtotal())
+                .set(ORDER_VIEW.DISCOUNT, p.discount())
+                .set(ORDER_VIEW.TAX_RATE, p.taxRate())
+                .set(ORDER_VIEW.TAX, p.tax())
+                .set(ORDER_VIEW.TOTAL, p.total())
+                .set(ORDER_VIEW.VOUCHER_CODE, p.voucherCode())
+                .set(ORDER_VIEW.INVOICE_NUMBER, p.invoiceNumber())
+                .set(ORDER_VIEW.INVOICE_STATUS, p.invoiceNumber() == null ? null : "ISSUED")
                 .set(ORDER_VIEW.ITEM_COUNT, p.lines().stream().mapToInt(OrderLine::quantity).sum())
                 .set(
-                    ORDER_VIEW.LINES,
+                    ORDER_VIEW.ITEMS,
                     JSONB.valueOf(MessageCodec.json().writeValueAsString(p.lines())))
                 .set(ORDER_VIEW.EVENTS_APPLIED, 1)
                 .set(ORDER_VIEW.LAST_EVENT_TYPE, at.eventType())
@@ -67,9 +79,12 @@ public final class ReadModels {
     if (created)
       db.insertInto(CUSTOMER_SUMMARY)
           .set(CUSTOMER_SUMMARY.CUSTOMER_ID, p.customerId())
+          .set(CUSTOMER_SUMMARY.CUSTOMER_NAME, p.customerName())
+          .set(CUSTOMER_SUMMARY.CURRENCY, p.currency())
           .set(CUSTOMER_SUMMARY.ORDERS_PLACED, 1)
           .onConflict(CUSTOMER_SUMMARY.CUSTOMER_ID)
           .doUpdate()
+          .set(CUSTOMER_SUMMARY.CUSTOMER_NAME, excluded(CUSTOMER_SUMMARY.CUSTOMER_NAME))
           .set(CUSTOMER_SUMMARY.ORDERS_PLACED, CUSTOMER_SUMMARY.ORDERS_PLACED.plus(1))
           .set(CUSTOMER_SUMMARY.UPDATED_AT, PostgresClock.NOW)
           .execute();
@@ -77,13 +92,17 @@ public final class ReadModels {
   }
 
   // Each later event: its column changes, applied to the order's row. Empty if there is no row
-  // (the order was never seen placed).
+  // (the order was never seen placed). An order placed with an invoice (every order since ADR 021)
+  // has it paid with the payment and voided on cancellation; older orders never had one.
 
   public boolean paid(UUID orderId, UUID paymentId, Position at) {
     return advance(
             orderId,
             at,
-            u -> u.set(ORDER_VIEW.STATUS, "PAID").set(ORDER_VIEW.PAYMENT_ID, paymentId))
+            u ->
+                u.set(ORDER_VIEW.STATUS, "PAID")
+                    .set(ORDER_VIEW.PAYMENT_ID, paymentId)
+                    .set(ORDER_VIEW.INVOICE_STATUS, invoiceBecomes("PAID")))
         .isPresent();
   }
 
@@ -95,14 +114,15 @@ public final class ReadModels {
         .isPresent();
   }
 
-  public boolean shipped(UUID orderId, String trackingNumber, Position at) {
+  public boolean shipped(UUID orderId, String trackingNumber, String carrier, Position at) {
     var applied =
         advance(
             orderId,
             at,
             u ->
                 u.set(ORDER_VIEW.STATUS, "SHIPPED")
-                    .set(ORDER_VIEW.TRACKING_NUMBER, trackingNumber));
+                    .set(ORDER_VIEW.TRACKING_NUMBER, trackingNumber)
+                    .set(ORDER_VIEW.CARRIER, carrier));
     applied.ifPresent(
         order ->
             db.update(CUSTOMER_SUMMARY)
@@ -124,7 +144,8 @@ public final class ReadModels {
             u ->
                 u.set(ORDER_VIEW.STATUS, "CANCELLED")
                     .set(ORDER_VIEW.CANCEL_REASON, reason)
-                    .set(ORDER_VIEW.COMPENSATIONS, compensations.toArray(String[]::new)));
+                    .set(ORDER_VIEW.COMPENSATIONS, compensations.toArray(String[]::new))
+                    .set(ORDER_VIEW.INVOICE_STATUS, invoiceBecomes("VOIDED")));
     applied.ifPresent(
         order ->
             db.update(CUSTOMER_SUMMARY)
@@ -133,6 +154,11 @@ public final class ReadModels {
                 .where(CUSTOMER_SUMMARY.CUSTOMER_ID.eq(order.customerId()))
                 .execute());
     return applied.isPresent();
+  }
+
+  /** The invoice's new status, if the order has an invoice. */
+  private static Field<String> invoiceBecomes(String status) {
+    return when(ORDER_VIEW.INVOICE_STATUS.isNotNull(), inline(status));
   }
 
   /** Stamps the event as the order's last applied, plus its own column changes. */
@@ -164,14 +190,23 @@ public final class ReadModels {
   public record OrderView(
       UUID orderId,
       String customerId,
+      String customerName,
       String status,
-      BigDecimal total,
       String currency,
+      BigDecimal subtotal,
+      BigDecimal discount,
+      BigDecimal taxRate,
+      BigDecimal tax,
+      BigDecimal total,
+      String voucherCode,
+      String invoiceNumber,
+      String invoiceStatus,
       int itemCount,
-      List<OrderLine> lines,
+      List<OrderLine> items,
       UUID paymentId,
       UUID reservationId,
       String trackingNumber,
+      String carrier,
       String cancelReason,
       List<String> compensations,
       int eventsApplied,
@@ -183,6 +218,8 @@ public final class ReadModels {
 
   public record CustomerView(
       String customerId,
+      String customerName,
+      String currency,
       int ordersPlaced,
       int ordersShipped,
       int ordersCancelled,
@@ -218,6 +255,8 @@ public final class ReadModels {
             r ->
                 new CustomerView(
                     r.getCustomerId(),
+                    r.getCustomerName(),
+                    r.getCurrency(),
                     r.getOrdersPlaced(),
                     r.getOrdersShipped(),
                     r.getOrdersCancelled(),
@@ -229,14 +268,23 @@ public final class ReadModels {
     return new OrderView(
         r.getOrderId(),
         r.getCustomerId(),
+        r.getCustomerName(),
         r.getStatus(),
-        r.getTotal(),
         r.getCurrency(),
+        r.getSubtotal(),
+        r.getDiscount(),
+        r.getTaxRate(),
+        r.getTax(),
+        r.getTotal(),
+        r.getVoucherCode(),
+        r.getInvoiceNumber(),
+        r.getInvoiceStatus(),
         r.getItemCount(),
-        MessageCodec.json().readValue(r.getLines().data(), LINES),
+        MessageCodec.json().readValue(r.getItems().data(), ITEMS),
         r.getPaymentId(),
         r.getReservationId(),
         r.getTrackingNumber(),
+        r.getCarrier(),
         r.getCancelReason(),
         List.of(r.getCompensations()),
         r.getEventsApplied(),

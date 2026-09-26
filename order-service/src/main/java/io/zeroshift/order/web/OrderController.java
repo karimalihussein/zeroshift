@@ -23,7 +23,6 @@ public class OrderController {
   private final PlaceOrder placeOrder;
   private final OrderRepository orders;
   private final EventStore events;
-  private final Catalog catalog;
   private final DualWriteDemo dualWrite;
   private final PostgresLease lease;
   private final OperatorRefund refunds;
@@ -35,7 +34,6 @@ public class OrderController {
       PlaceOrder placeOrder,
       OrderRepository orders,
       EventStore events,
-      Catalog catalog,
       DualWriteDemo dualWrite,
       PostgresLease lease,
       OperatorRefund refunds,
@@ -45,7 +43,6 @@ public class OrderController {
     this.placeOrder = placeOrder;
     this.orders = orders;
     this.events = events;
-    this.catalog = catalog;
     this.dualWrite = dualWrite;
     this.lease = lease;
     this.refunds = refunds;
@@ -67,7 +64,12 @@ public class OrderController {
       throws Exception {
     var placed =
         guards.admit(
-            () -> placeOrder.place(request.customerId(), request.toItems(), idempotencyKey));
+            () ->
+                placeOrder.place(
+                    request.customerId(),
+                    request.toItems(),
+                    request.voucherCode(),
+                    idempotencyKey));
     slowAnswers.holdIfArmed();
     return ResponseEntity.status(HttpStatus.ACCEPTED)
         .header(ApiHeaders.IDEMPOTENT_REPLAYED, String.valueOf(placed.replayed()))
@@ -76,6 +78,11 @@ public class OrderController {
                 placed.orderId(),
                 placed.correlationId(),
                 placed.eventId(),
+                placed.invoiceNumber(),
+                placed.currency(),
+                placed.subtotal(),
+                placed.discount(),
+                placed.tax(),
                 placed.total(),
                 placed.version(),
                 placed.replayed(),
@@ -86,13 +93,13 @@ public class OrderController {
   @PostMapping("/orders/dual-write")
   public DualWriteDemo.Result dualWrite(
       @Valid @RequestBody PlaceOrderRequest request, @RequestParam DualWriteDemo.Mode mode) {
-    return dualWrite.place(request.customerId(), request.toItems(), mode);
+    return dualWrite.place(request.customerId(), request.toItems(), request.voucherCode(), mode);
   }
 
   @GetMapping("/orders")
   public ApiResponse<List<OrderViews.OrderSummary>> recent(
       @RequestParam(defaultValue = "20") @Min(1) @Max(100) int limit,
-      @RequestParam(required = false) @Size(max = 100) String customerId) {
+      @RequestParam(required = false) UUID customerId) {
     return ApiResponse.page(views.recent(limit, customerId), limit);
   }
 
@@ -128,10 +135,5 @@ public class OrderController {
   @GetMapping("/lab/lease")
   public OrderViews.LeaseView lease() {
     return OrderViews.lease(lease.describe(SagaTimeouts.LEASE), lease.owner());
-  }
-
-  @GetMapping("/catalog")
-  public ApiResponse<List<Catalog.Product>> catalog() {
-    return ApiResponse.list(catalog.all());
   }
 }

@@ -26,7 +26,8 @@ import org.testcontainers.containers.PostgreSQLContainer;
  */
 final class RaceLabHarness implements AutoCloseable {
   final PostgreSQLContainer<?> postgres =
-      new PostgreSQLContainer<>("postgres:17-alpine").withCommand("postgres", "-c", "max_connections=200");
+      new PostgreSQLContainer<>("postgres:17-alpine")
+          .withCommand("postgres", "-c", "max_connections=200");
   final HikariDataSource pool;
   final PostgresLabDatabase db;
   final PostgresRunRepository runs;
@@ -35,7 +36,8 @@ final class RaceLabHarness implements AutoCloseable {
 
   RaceLabHarness() {
     postgres.start();
-    pool = RaceLabSchema.pool(postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword());
+    pool =
+        RaceLabSchema.pool(postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword());
     RaceLabSchema.migrate(pool);
     db = new PostgresLabDatabase(pool);
     runs = new PostgresRunRepository(pool);
@@ -43,7 +45,14 @@ final class RaceLabHarness implements AutoCloseable {
   }
 
   /** Creates, starts and waits for a run. */
-  Run run(String experiment, Mode mode, Isolation isolation, int requests, int value, int delayMs, int retries) {
+  Run run(
+      String experiment,
+      Mode mode,
+      Isolation isolation,
+      int requests,
+      int value,
+      int delayMs,
+      int retries) {
     return run(experiment, mode, isolation, requests, value, delayMs, retries, null);
   }
 
@@ -59,14 +68,23 @@ final class RaceLabHarness implements AutoCloseable {
       RunStreams.Listener listener) {
     var created =
         engine.create(
-            new RunConfig(experiment, mode, isolation, requests, value, delayMs, Interleaving.CONTROLLED, retries));
+            new RunConfig(
+                experiment,
+                mode,
+                isolation,
+                requests,
+                value,
+                delayMs,
+                Interleaving.CONTROLLED,
+                retries));
     if (listener != null) streams.subscribe(created.id(), listener);
     engine.start(created.id());
     long deadline = System.nanoTime() + Duration.ofSeconds(60).toNanos();
     while (System.nanoTime() < deadline) {
       var run = runs.find(created.id()).orElseThrow();
       if (run.status() == Run.Status.COMPLETED || run.status() == Run.Status.FAILED) {
-        if (run.status() == Run.Status.FAILED) throw new AssertionError("run failed: " + run.error());
+        if (run.status() == Run.Status.FAILED)
+          throw new AssertionError("run failed: " + run.error());
         return run;
       }
       sleep(50);

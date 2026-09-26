@@ -31,9 +31,16 @@ class RebuildTest {
                   new OrderPlaced(
                       ID,
                       "c",
+                      null,
                       List.of(new OrderLine("SKU-1", 1, new BigDecimal("9.99"))),
+                      "USD",
+                      null,
+                      null,
+                      null,
+                      null,
                       new BigDecimal("9.99"),
-                      "USD"),
+                      null,
+                      null),
                   UUID.randomUUID(),
                   null);
           add(placed, 1);
@@ -81,7 +88,7 @@ class RebuildTest {
         public void discardSnapshot(UUID stream) {}
       };
 
-  final OrderRepository orders = new OrderRepository(store, null, 3);
+  final OrderRepository orders = new OrderRepository(store, null, null, 3);
 
   @Test
   void rebuildsAtAVersion() {

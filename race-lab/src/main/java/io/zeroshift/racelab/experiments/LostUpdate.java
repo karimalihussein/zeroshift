@@ -198,7 +198,15 @@ public class LostUpdate extends ReadDecideWrite {
     return new InvariantResult(
         "final balance = initial balance + 10 × committed deposits",
         holds,
-        "balance " + expected + " (" + start + " + " + plural(deposits, "deposit") + " of " + AMOUNT + ")",
+        "balance "
+            + expected
+            + " ("
+            + start
+            + " + "
+            + plural(deposits, "deposit")
+            + " of "
+            + AMOUNT
+            + ")",
         "balance " + balance + " after " + plural(deposits, "committed deposit"),
         holds
             ? "Every committed deposit is in the balance."
@@ -206,7 +214,8 @@ public class LostUpdate extends ReadDecideWrite {
   }
 
   @Override
-  public String conclusion(RunContext run, InvariantResult invariant, List<RequestResult> requests) {
+  public String conclusion(
+      RunContext run, InvariantResult invariant, List<RequestResult> requests) {
     if (invariant.holds()) return Texts.preserved(run.config(), requests);
     int ok = Texts.count(requests, Outcome.SUCCEEDED);
     return "The deposits read the same balance, each added "

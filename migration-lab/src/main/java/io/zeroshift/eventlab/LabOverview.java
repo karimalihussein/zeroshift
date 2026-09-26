@@ -56,8 +56,18 @@ public class LabOverview {
     tasks.put(
         "orders",
         () -> LabServices.data(services.tryGetAnyReplica("order-service", "/orders?limit=25")));
+    // The commerce model's reference data: the catalog is inventory's, customers and vouchers are
+    // order-service's. The composer builds real orders from them.
     tasks.put(
-        "catalog", () -> LabServices.data(services.tryGetAnyReplica("order-service", "/catalog")));
+        "catalog",
+        () ->
+            LabServices.data(services.get("inventory-service", "/products?active=true&limit=100")));
+    tasks.put(
+        "customers",
+        () -> LabServices.data(services.tryGetAnyReplica("order-service", "/customers?limit=100")));
+    tasks.put(
+        "vouchers",
+        () -> LabServices.data(services.tryGetAnyReplica("order-service", "/vouchers")));
     tasks.put("gateway", () -> services.get("payment-service", "/lab/gateway"));
     tasks.put("stock", () -> LabServices.data(services.get("inventory-service", "/stock")));
     tasks.put("projection", () -> services.get("order-query-service", "/lab/projection"));

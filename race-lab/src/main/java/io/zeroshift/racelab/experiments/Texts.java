@@ -32,13 +32,19 @@ final class Texts {
   }
 
   static String lanes(List<RequestResult> requests, Outcome outcome) {
-    var lanes = requests.stream().filter(r -> r.outcome() == outcome).map(RequestResult::lane).toList();
+    var lanes =
+        requests.stream().filter(r -> r.outcome() == outcome).map(RequestResult::lane).toList();
     return lanes.isEmpty() ? "none" : String.join(", ", lanes);
   }
 
   static Explanation.Fix fix(Mode mode, Isolation isolation, String why) {
-    return new Explanation.Fix(mode, isolation, "Run it again with " + mode.label()
-        + (isolation != null && mode != Mode.SERIALIZABLE ? " at " + isolation.sql() : ""), why);
+    return new Explanation.Fix(
+        mode,
+        isolation,
+        "Run it again with "
+            + mode.label()
+            + (isolation != null && mode != Mode.SERIALIZABLE ? " at " + isolation.sql() : ""),
+        why);
   }
 
   /** How the run went, for strategies that kept the invariant. */
@@ -51,8 +57,12 @@ final class Texts {
         + " succeeded ("
         + lanes(requests, Outcome.SUCCEEDED)
         + ")"
-        + (declined > 0 ? ", " + declined + " declined (" + lanes(requests, Outcome.REJECTED) + ")" : "")
-        + (aborted > 0 ? ", " + aborted + " aborted (" + lanes(requests, Outcome.ABORTED) + ")" : "")
+        + (declined > 0
+            ? ", " + declined + " declined (" + lanes(requests, Outcome.REJECTED) + ")"
+            : "")
+        + (aborted > 0
+            ? ", " + aborted + " aborted (" + lanes(requests, Outcome.ABORTED) + ")"
+            : "")
         + (retried > 0 ? "; " + plural(retried, "request") + " retried" : "")
         + ".";
   }

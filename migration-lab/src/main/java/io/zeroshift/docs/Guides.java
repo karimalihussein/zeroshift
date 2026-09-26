@@ -64,7 +64,7 @@ final class Guides {
             order.events → order-query-service
             :::
 
-            `PlaceOrder` writes the event and the outbox row in one transaction. Debezium reads the WAL and the outbox event router publishes to the topic stored on the row. Participants answer on their own event topics. `SagaReplies` advances `Saga`. `OrderEvents` projects `OrderView`.
+            Before that transaction, `PlaceOrder` checks the customer and prices every item from inventory-service (`GET /products?sku=…`). That call is synchronous: when the catalog is down, placing fails with **503** `CATALOG_UNAVAILABLE`. `PlaceOrder` then writes the event, the outbox row, the `orders`, `order_item` and `invoice` rows and the voucher's use in one transaction. Debezium reads the WAL and the outbox event router publishes to the topic stored on the row. Participants answer on their own event topics. `SagaReplies` advances `Saga`. `OrderEvents` projects `OrderView`.
 
             The dual-write endpoint skips this. It writes the database and Kafka separately so you can see an event lost or invented. See [ADR 008](docs/decisions/008-transactional-outbox.md) in the repository.
 
@@ -76,6 +76,20 @@ final class Guides {
             - **Orchestrated saga** — `OrderSaga` decides the next command and the compensation. [microservices.io](https://microservices.io/patterns/data/saga.html)
             - **Idempotent consumer** — `Inbox` inserts `processed_message` in the handler's transaction. [Enterprise Integration Patterns](https://www.enterpriseintegrationpatterns.com/patterns/messaging/IdempotentReceiver.html)
             - **Circuit breaker** — Resilience4j around `HttpPaymentGateway` only. [Martin Fowler](https://martinfowler.com/bliki/CircuitBreaker.html)
+
+            ## Commerce model
+
+            Seven entities, each owned by one service and stored in that service's database ([ADR 021](docs/decisions/021-commerce-model.md)):
+
+            | Entity | Owner | Tables |
+            |---|---|---|
+            | Customer, Voucher | order-service | `customer`, `voucher` |
+            | Order, OrderItem, Invoice | order-service | `orders`, `order_item`, `invoice` (the `event_store` stays the source of truth) |
+            | Product (catalog and stock) | inventory-service | `product`, `reservation`, `reservation_item` |
+            | Payment | payment-service | `payment`, unique on `idempotency_key` |
+            | Shipment | shipping-service | `shipment` |
+
+            Ids are UUIDs. Money is `NUMERIC(12,2)` and `BigDecimal` at scale 2, rounded `HALF_EVEN`, always with a three-letter currency (`commerce.currency`, default `USD`). An order snapshots each item's product id, SKU, name and unit price, the voucher and the tax rate when it is placed, so later catalog or voucher changes never alter it. Across services a reference is a plain UUID: no foreign key and no join.
 
             ## Migrate a table
 
@@ -90,7 +104,7 @@ final class Guides {
 
             ## Decisions
 
-            The repository keeps one ADR per decision in `docs/decisions/`, numbered 001 through 017: change capture, snapshot boundary, batching, checkpointing, cutover, rollback, reverse sync, outbox, idempotent consumer, saga, event sourcing and CQRS, retries and dead letters, the fencing lease, observability, jOOQ, HTTP conventions, and the Kafka lab cluster.
+            The repository keeps one ADR per decision in `docs/decisions/`, numbered 001 through 021: change capture, snapshot boundary, batching, checkpointing, cutover, rollback, reverse sync, outbox, idempotent consumer, saga, event sourcing and CQRS, retries and dead letters, the fencing lease, observability, jOOQ, HTTP conventions, the Kafka lab cluster, the race condition lab, the resilience lab, events over time, and the commerce model.
             """),
         page(
             "quickstart",
@@ -106,16 +120,22 @@ final class Guides {
 
             Open [the migration dashboard](/) and [the event lab](/events). This portal is [Docs](/docs/overview).
 
-            Place an order against the write model. `SKU-CABLE` is a real catalog row.
+            Orders are placed for a real customer. Compose seeds customers, vouchers and the product catalog; the customer ids are random, so pick one:
+
+            ```sh
+            curl -sS "http://localhost:18081/customers?limit=5"
+            ```
+
+            Place an order against the write model with that `id`. `SKU-CABLE` is a real product of the inventory catalog (`GET http://localhost:18084/products`) and `WELCOME10` a real voucher (`GET /vouchers`).
 
             ```sh
             curl -sS -D - http://localhost:18081/orders \\
               -H 'content-type: application/json' \\
               -H 'Idempotency-Key: docs-demo-1' \\
-              -d '{"customerId":"ada","items":[{"sku":"SKU-CABLE","quantity":1}]}'
+              -d '{"customerId":"<customer id>","items":[{"sku":"SKU-CABLE","quantity":2}],"voucherCode":"WELCOME10"}'
             ```
 
-            The status is **202**. Keep `version` from the body and read your write:
+            The status is **202**. The body carries the invoice number and the amounts in `currency` at 2 decimals, for example `"currency": "USD"`, `"subtotal": 25.98`, `"discount": 2.60`, `"tax": 1.87`, `"total": 25.25`. Keep `version` from the body and read your write:
 
             ```sh
             curl -sS -D - "http://localhost:18086/orders/<orderId>?minVersion=<version>&waitMs=2000"
@@ -123,7 +143,7 @@ final class Guides {
 
             A projection that has caught up answers **200** with `X-Projected-Version`. One that has not answers **409** `READ_MODEL_BEHIND`.
 
-            Try it on [Create order](/docs/api/order-post-orders) sends that POST from this control plane, and only that write. Crash, cutover, faults and dual-write stay on the lab pages.
+            Try it on [Create order](/docs/api/order-post-orders) sends that POST from this control plane, and only that write. Replace its placeholder `customerId` with one from [List customers](/docs/api/order-get-customers). Crash, cutover, faults and dual-write stay on the lab pages.
             """),
         page(
             "local",
@@ -211,6 +231,8 @@ final class Guides {
 
             Schema version is `upcasters + 1` in `Contracts`. The only upcaster is `OrderPlaced` v1 to v2, which sets `currency` to `USD`.
 
+            Adding a field is backward compatible, so the commerce model's additions did not change a version: `OrderPlaced` (still v2) gained `customerName`, `subtotal`, `discount`, `taxRate`, `tax`, `voucherCode` and `invoiceNumber`; `OrderLine` gained `productId`, `name`, `subtotal`, `discount` and `total`; `AuthorizePayment` gained `idempotencyKey`; `PaymentAuthorized` and `PaymentRefunded` gained `currency`; `ReserveStock`'s `StockLine` gained `productId`. A payload written before them decodes with neutral values (no discount, no tax, `subtotal = total`, the customer id as the name).
+
             :::flow
             OrderPlaced v1 → upcaster → OrderPlaced v2
             :::
@@ -265,11 +287,11 @@ final class Guides {
             "Core concepts",
             "Versions, fences and read-your-writes.",
             """
-            Three different versions show up in the lab:
+            Four different versions show up in the lab:
 
             - The order event-stream version, returned as `version` from `POST /orders` and checked on every append (`CONCURRENT_UPDATE`).
             - The saga version, checked on every save.
-            - The stock row version, checked when two reservations race.
+            - The product row's stock, taken by a conditional update (`stock >= quantity`) when two reservations race, so the last item is sold once.
             - The read-model `eventsApplied`, compared with `minVersion`.
 
             The migration has a different kind of consistency: a source fence during validation and cutover, and conflict detection on rollback so an out-of-band SQL Server write is not overwritten.
@@ -314,7 +336,7 @@ final class Guides {
 
             ## Payment gateway
 
-            `HttpPaymentGateway` retries `PaymentGateway.Unavailable` three times, exponential from 200 ms. An open circuit breaker is not retried. The per-attempt timeout is `payment.gateway-timeout`, default 1500 ms.
+            `HttpPaymentGateway` retries `PaymentGateway.Unavailable` three times, exponential from 200 ms. Every attempt sends the command's idempotency key (`AuthorizePayment.idempotencyKey`, `order:<orderId>:authorize` for the saga) as the gateway's `Idempotency-Key`. The key is claimed in the `payment` table before the first call, so a redelivered command answers with the recorded outcome instead of charging twice. An open circuit breaker is not retried. The per-attempt timeout is `payment.gateway-timeout`, default 1500 ms.
 
             HTTP clients of the control plane use an 800 ms connect timeout and a 4 s read timeout (`LabServices`). The portal's Try it uses the same limits.
             """),
@@ -362,7 +384,9 @@ final class Guides {
             "Reliability",
             "Optimistic versions, a lease, and consumer groups.",
             """
-            Appends to an order stream, saga saves and stock updates all check a version. The loser gets `CONCURRENT_UPDATE` or the domain's equivalent and retries against the winner's state.
+            Appends to an order stream and saga saves check a version. The loser gets `CONCURRENT_UPDATE` or the domain's equivalent and retries against the winner's state.
+
+            Stock does not read and then write. A reservation takes each product with one conditional update, `UPDATE product SET stock = stock - :q … WHERE id = :id AND active AND stock >= :q`, in product-id order so two reservations never deadlock. If any item fails the transaction rolls back and the reservation is `REJECTED`. A limited voucher's last use is taken the same way, inside the order's transaction; the loser gets `VOUCHER_EXHAUSTED`.
 
             The timeout scanner takes a PostgreSQL lease. The fencing token is checked inside the transaction the lease guards, so a scanner that lost the lease cannot still write.
 
@@ -399,7 +423,7 @@ final class Guides {
               "type": "about:blank",
               "title": "Unprocessable Content",
               "status": 422,
-              "detail": "Unknown SKU: SKU-NOPE",
+              "detail": "Unknown SKU SKU-NOPE",
               "instance": "/orders",
               "code": "ORDER_RULE_VIOLATION",
               "requestId": "…",
@@ -487,7 +511,7 @@ final class Guides {
             """
             `race-lab` runs experiments against PostgreSQL. The one registered in `experiments.Catalog` is `oversell`: each request reads stock, checks it in Java, then writes stock minus one. The strategies are unsafe, serializable, pessimistic (`FOR UPDATE`), optimistic (`WHERE version = :read`) and atomic (the conditional update decides). The engine records the interleaving. Nothing in this repository maps that engine to HTTP.
 
-            Concurrency you can call over HTTP today is the stock version, the saga version, the event-stream version, and the carrier-scan ordering lab.
+            Concurrency you can call over HTTP today is the conditional stock update on `product`, the voucher's limited uses, the saga version, the event-stream version, and the carrier-scan ordering lab.
             """));
   }
 

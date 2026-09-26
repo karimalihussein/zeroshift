@@ -19,6 +19,8 @@ spring:
 server:
   port: ${PORT:18082}
 payment:
+  # Recorded as each payment's provider.
+  provider: zeroshift-gateway
   gateway-url: ${GATEWAY_URL:http://localhost:18090}
   # WireMock's admin API for the lab's gateway levers; blank means gateway-url.
   gateway-admin-url: ${GATEWAY_ADMIN_URL:}

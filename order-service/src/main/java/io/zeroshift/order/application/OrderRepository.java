@@ -10,7 +10,9 @@ import java.util.UUID;
 
 /**
  * Loads an order by folding its history, and records new events: each one is appended to the event
- * store (the source of truth) and to the outbox (its publication) in the caller's transaction.
+ * store (the source of truth), to the outbox (its publication) and to the order tables (its
+ * relational copy), all in the caller's transaction. Every path that changes an order goes through
+ * {@link #record}, so the three never disagree.
  */
 public final class OrderRepository {
   /** An order and how it was rebuilt: from which snapshot, replaying which events. */
@@ -22,11 +24,13 @@ public final class OrderRepository {
 
   private final EventStore events;
   private final Outbox outbox;
+  private final OrderTables tables;
   private final int snapshotEvery;
 
-  public OrderRepository(EventStore events, Outbox outbox, int snapshotEvery) {
+  public OrderRepository(EventStore events, Outbox outbox, OrderTables tables, int snapshotEvery) {
     this.events = events;
     this.outbox = outbox;
+    this.tables = tables;
     this.snapshotEvery = snapshotEvery;
   }
 
@@ -111,6 +115,7 @@ public final class OrderRepository {
     }
     events.append(current.id(), current.version(), envelopes);
     envelopes.forEach(outbox::append);
+    tables.recorded(next, List.of(newEvents));
     if (next.version() / snapshotEvery > current.version() / snapshotEvery)
       events.saveSnapshot(next);
     return new Appended(next, List.copyOf(envelopes));

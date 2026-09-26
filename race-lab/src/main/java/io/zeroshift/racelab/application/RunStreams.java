@@ -23,7 +23,8 @@ public class RunStreams implements AutoCloseable {
   private final java.util.concurrent.ExecutorService dispatcher =
       java.util.concurrent.Executors.newSingleThreadExecutor(
           Thread.ofPlatform().name("race-lab-streams").daemon().factory());
-  private final Map<Long, java.util.function.Supplier<List<RaceEvent>>> live = new ConcurrentHashMap<>();
+  private final Map<Long, java.util.function.Supplier<List<RaceEvent>>> live =
+      new ConcurrentHashMap<>();
 
   /**
    * Every event a running run has recorded so far, from memory: events are persisted in the

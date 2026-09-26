@@ -6,6 +6,8 @@ package io.zeroshift.inventory.db.tables;
 
 import io.zeroshift.inventory.db.Keys;
 import io.zeroshift.inventory.db.Public;
+import io.zeroshift.inventory.db.tables.Product.ProductPath;
+import io.zeroshift.inventory.db.tables.ReservationItem.ReservationItemPath;
 import io.zeroshift.inventory.db.tables.records.ReservationRecord;
 
 import java.time.OffsetDateTime;
@@ -17,10 +19,13 @@ import java.util.UUID;
 import org.jooq.Check;
 import org.jooq.Condition;
 import org.jooq.Field;
-import org.jooq.JSONB;
+import org.jooq.ForeignKey;
+import org.jooq.InverseForeignKey;
 import org.jooq.Name;
+import org.jooq.Path;
 import org.jooq.PlainSQL;
 import org.jooq.QueryPart;
+import org.jooq.Record;
 import org.jooq.SQL;
 import org.jooq.Schema;
 import org.jooq.Stringly;
@@ -57,24 +62,19 @@ public class Reservation extends TableImpl<ReservationRecord> {
     }
 
     /**
+     * The column <code>public.reservation.id</code>.
+     */
+    public final TableField<ReservationRecord, UUID> ID = createField(DSL.name("id"), SQLDataType.UUID.nullable(false), this, "");
+
+    /**
      * The column <code>public.reservation.order_id</code>.
      */
     public final TableField<ReservationRecord, UUID> ORDER_ID = createField(DSL.name("order_id"), SQLDataType.UUID.nullable(false), this, "");
 
     /**
-     * The column <code>public.reservation.reservation_id</code>.
-     */
-    public final TableField<ReservationRecord, UUID> RESERVATION_ID = createField(DSL.name("reservation_id"), SQLDataType.UUID, this, "");
-
-    /**
      * The column <code>public.reservation.status</code>.
      */
     public final TableField<ReservationRecord, String> STATUS = createField(DSL.name("status"), SQLDataType.CLOB.nullable(false), this, "");
-
-    /**
-     * The column <code>public.reservation.lines</code>.
-     */
-    public final TableField<ReservationRecord, JSONB> LINES = createField(DSL.name("lines"), SQLDataType.JSONB.nullable(false), this, "");
 
     /**
      * The column <code>public.reservation.reason</code>.
@@ -90,6 +90,11 @@ public class Reservation extends TableImpl<ReservationRecord> {
      * The column <code>public.reservation.updated_at</code>.
      */
     public final TableField<ReservationRecord, OffsetDateTime> UPDATED_AT = createField(DSL.name("updated_at"), SQLDataType.TIMESTAMPWITHTIMEZONE(6).nullable(false).defaultValue(DSL.field(DSL.raw("clock_timestamp()"), SQLDataType.TIMESTAMPWITHTIMEZONE)), this, "");
+
+    /**
+     * The column <code>public.reservation.released_at</code>.
+     */
+    public final TableField<ReservationRecord, OffsetDateTime> RELEASED_AT = createField(DSL.name("released_at"), SQLDataType.TIMESTAMPWITHTIMEZONE(6), this, "");
 
     private Reservation(Name alias, Table<ReservationRecord> aliased) {
         this(alias, aliased, (Field<?>[]) null, null);
@@ -120,6 +125,39 @@ public class Reservation extends TableImpl<ReservationRecord> {
         this(DSL.name("reservation"), null);
     }
 
+    public <O extends Record> Reservation(Table<O> path, ForeignKey<O, ReservationRecord> childPath, InverseForeignKey<O, ReservationRecord> parentPath) {
+        super(path, childPath, parentPath, RESERVATION);
+    }
+
+    /**
+     * A subtype implementing {@link Path} for simplified path-based joins.
+     */
+    public static class ReservationPath extends Reservation implements Path<ReservationRecord> {
+
+        private static final long serialVersionUID = 1L;
+        public <O extends Record> ReservationPath(Table<O> path, ForeignKey<O, ReservationRecord> childPath, InverseForeignKey<O, ReservationRecord> parentPath) {
+            super(path, childPath, parentPath);
+        }
+        private ReservationPath(Name alias, Table<ReservationRecord> aliased) {
+            super(alias, aliased);
+        }
+
+        @Override
+        public ReservationPath as(String alias) {
+            return new ReservationPath(DSL.name(alias), this);
+        }
+
+        @Override
+        public ReservationPath as(Name alias) {
+            return new ReservationPath(alias, this);
+        }
+
+        @Override
+        public ReservationPath as(Table<?> alias) {
+            return new ReservationPath(alias.getQualifiedName(), this);
+        }
+    }
+
     @Override
     public Schema getSchema() {
         return aliased() ? null : Public.PUBLIC;
@@ -128,6 +166,32 @@ public class Reservation extends TableImpl<ReservationRecord> {
     @Override
     public UniqueKey<ReservationRecord> getPrimaryKey() {
         return Keys.RESERVATION_PKEY;
+    }
+
+    @Override
+    public List<UniqueKey<ReservationRecord>> getUniqueKeys() {
+        return Arrays.asList(Keys.RESERVATION_ORDER_ID_KEY);
+    }
+
+    private transient ReservationItemPath _reservationItem;
+
+    /**
+     * Get the implicit to-many join path to the
+     * <code>public.reservation_item</code> table
+     */
+    public ReservationItemPath reservationItem() {
+        if (_reservationItem == null)
+            _reservationItem = new ReservationItemPath(this, null, Keys.RESERVATION_ITEM__RESERVATION_ITEM_RESERVATION_ID_FKEY.getInverseKey());
+
+        return _reservationItem;
+    }
+
+    /**
+     * Get the implicit many-to-many join path to the
+     * <code>public.product</code> table
+     */
+    public ProductPath product() {
+        return reservationItem().product();
     }
 
     @Override

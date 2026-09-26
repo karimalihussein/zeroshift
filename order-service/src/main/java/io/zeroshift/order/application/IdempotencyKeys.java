@@ -1,18 +1,11 @@
 package io.zeroshift.order.application;
 
-import java.math.BigDecimal;
 import java.util.Optional;
 import java.util.UUID;
 
-/** Idempotency-Key → the answer its first request got. */
+/** Idempotency-Key → the order its first request created. */
 public interface IdempotencyKeys {
-  record Claim(
-      String key,
-      String requestHash,
-      UUID orderId,
-      UUID correlationId,
-      UUID eventId,
-      BigDecimal total) {}
+  record Claim(String key, String requestHash, UUID orderId, UUID correlationId, UUID eventId) {}
 
   Optional<Claim> find(String key);
 

@@ -259,6 +259,10 @@ services:
       SAGA_STEP_TIMEOUT: ${SAGA_STEP_TIMEOUT:-30s}
       ZEROSHIFT_INSTANCE: order-service
       OTEL_RESOURCE_ATTRIBUTES: service.instance.id=order-service
+      # Prices come from inventory-service's catalog at order time (snapshotted on the order).
+      COMMERCE_CATALOG_URL: http://inventory-service:8080
+      # Seeds customers and vouchers into an empty database (this replica only: one seeder).
+      COMMERCE_DEMO_DATA: 'true'
     ports: ['127.0.0.1:${ORDER_SERVICE_PORT:-18081}:8080']
   # A second replica: the order-saga consumer group spreads its partitions over both, and the
   # saga-timeout scanner runs on whichever replica holds the lease.
@@ -271,6 +275,7 @@ services:
       SAGA_STEP_TIMEOUT: ${SAGA_STEP_TIMEOUT:-30s}
       ZEROSHIFT_INSTANCE: order-service-b
       OTEL_RESOURCE_ATTRIBUTES: service.instance.id=order-service-b
+      COMMERCE_CATALOG_URL: http://inventory-service:8080
     depends_on:
       order-service: {condition: service_healthy}
     ports: ['127.0.0.1:${ORDER_SERVICE_B_PORT:-18088}:8080']
@@ -293,6 +298,8 @@ services:
       <<: *commerce-env
       ZEROSHIFT_INSTANCE: inventory-service
       OTEL_RESOURCE_ATTRIBUTES: service.instance.id=inventory-service
+      # Seeds the product catalog into an empty database.
+      COMMERCE_DEMO_DATA: 'true'
       DB_URL: jdbc:postgresql://commerce-postgres:5432/inventory
     ports: ['127.0.0.1:${INVENTORY_SERVICE_PORT:-18084}:8080']
   shipping-service:

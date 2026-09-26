@@ -81,7 +81,8 @@ class RaceLabIT {
               assertThat(e.lane()).isEqualTo("B");
               assertThat(e.blockedBy()).containsExactly("A");
             });
-    assertThat(lab.events(run, WRITE_PERFORMED)).anyMatch(e -> e.lane().equals("B") && e.rows() == 0);
+    assertThat(lab.events(run, WRITE_PERFORMED))
+        .anyMatch(e -> e.lane().equals("B") && e.rows() == 0);
   }
 
   @Test
@@ -92,9 +93,13 @@ class RaceLabIT {
         .singleElement()
         .satisfies(e -> assertThat(e.blockedBy()).containsExactly("A"));
     var bRead =
-        lab.events(run, READ_PERFORMED).stream().filter(e -> e.lane().equals("B")).findFirst().orElseThrow();
+        lab.events(run, READ_PERFORMED).stream()
+            .filter(e -> e.lane().equals("B"))
+            .findFirst()
+            .orElseThrow();
     assertThat(bRead.valueRead()).isEqualTo("stock=0");
-    assertThat(lab.events(run, LOCK_ACQUIRED)).anyMatch(e -> e.lane().equals("B") && e.waitMicros() > 0);
+    assertThat(lab.events(run, LOCK_ACQUIRED))
+        .anyMatch(e -> e.lane().equals("B") && e.waitMicros() > 0);
   }
 
   @Test
@@ -146,7 +151,8 @@ class RaceLabIT {
     assertThat(holds(unsafe)).isFalse();
     assertThat(number(unsafe.result().finalState(), "balance")).isEqualTo(110);
     assertThat(number(unsafe.result().finalState(), "deposits")).isEqualTo(2);
-    for (var mode : new Mode[] {Mode.ATOMIC, Mode.PESSIMISTIC, Mode.OPTIMISTIC, Mode.SERIALIZABLE}) {
+    for (var mode :
+        new Mode[] {Mode.ATOMIC, Mode.PESSIMISTIC, Mode.OPTIMISTIC, Mode.SERIALIZABLE}) {
       var run = lab.run("lost-update", mode);
       assertThat(holds(run)).as(mode.name()).isTrue();
       assertThat(number(run.result().finalState(), "balance")).as(mode.name()).isEqualTo(120);
@@ -157,10 +163,10 @@ class RaceLabIT {
   void checkThenActChargesTwiceAndAClaimChargesOnce() {
     var unsafe = lab.run("double-payment", Mode.UNSAFE);
     assertThat(holds(unsafe)).isFalse();
-    assertThat(number(unsafe.result().finalState(), "charges")).isEqualTo(2);
+    assertThat(number(unsafe.result().finalState(), "payments")).isEqualTo(2);
     var claim = lab.run("double-payment", Mode.ATOMIC);
     assertThat(holds(claim)).isTrue();
-    assertThat(number(claim.result().finalState(), "charges")).isEqualTo(1);
+    assertThat(number(claim.result().finalState(), "payments")).isEqualTo(1);
   }
 
   @Test
@@ -189,7 +195,11 @@ class RaceLabIT {
             });
     assertThat(optimistic.result().requests().get(1).outcome()).isEqualTo(Outcome.ABORTED);
     assertThat(optimistic.result().highlights())
-        .anyMatch(h -> h.title().equals("Optimistic lock rejected B because expected version=4, actual version=5"));
+        .anyMatch(
+            h ->
+                h.title()
+                    .equals(
+                        "Optimistic lock rejected B because expected version=4, actual version=5"));
   }
 
   @Test
@@ -198,14 +208,17 @@ class RaceLabIT {
     assertThat(holds(run)).isTrue();
     assertThat(run.result().metrics().succeeded()).isEqualTo(5);
     // B, C, D and E each blocked; each waited at least as long as A held the lock (200 ms).
-    var blocked = lab.events(run, TRANSACTION_BLOCKED).stream().map(e -> e.lane()).distinct().toList();
+    var blocked =
+        lab.events(run, TRANSACTION_BLOCKED).stream().map(e -> e.lane()).distinct().toList();
     assertThat(blocked).containsExactly("B", "C", "D", "E");
     assertThat(run.result().requests().get(4).lockWaitMicros()).isGreaterThan(4 * 150_000L);
-    // Each request read the stock only after the one before it committed: nothing it wrote was stale.
+    // Each request read the stock only after the one before it committed: nothing it wrote was
+    // stale.
     assertThat(run.result().highlights()).noneMatch(h -> h.kind().equals("STALE_WRITE"));
     var atomic = lab.run("pessimistic-locking", Mode.ATOMIC);
     assertThat(holds(atomic)).isTrue();
-    assertThat(atomic.result().metrics().lockWaitMicros()).isLessThan(run.result().metrics().lockWaitMicros());
+    assertThat(atomic.result().metrics().lockWaitMicros())
+        .isLessThan(run.result().metrics().lockWaitMicros());
   }
 
   // ---- 7 deadlock ------------------------------------------------------------------------------
@@ -215,11 +228,14 @@ class RaceLabIT {
     var run = lab.run("deadlock", Mode.UNSAFE);
     assertThat(holds(run)).isFalse();
     var deadlock = lab.events(run, DEADLOCK_DETECTED);
-    assertThat(deadlock).singleElement().satisfies(e -> {
-      assertThat(e.sqlState()).isEqualTo("40P01");
-      assertThat(e.blockedBy()).hasSize(1);
-      assertThat(String.valueOf(e.data().get("postgresDetail"))).contains("waits for");
-    });
+    assertThat(deadlock)
+        .singleElement()
+        .satisfies(
+            e -> {
+              assertThat(e.sqlState()).isEqualTo("40P01");
+              assertThat(e.blockedBy()).hasSize(1);
+              assertThat(String.valueOf(e.data().get("postgresDetail"))).contains("waits for");
+            });
     // Before PostgreSQL broke the cycle, each transaction was blocked by the other.
     assertThat(lab.events(run, TRANSACTION_BLOCKED))
         .extracting(e -> e.lane() + "<" + e.blockedBy().getFirst())
@@ -300,7 +316,10 @@ class RaceLabIT {
     assertThat(run.result().metrics().durationMicros()).isLessThan(1_500_000L);
     var blocked = lab.events(run, TRANSACTION_BLOCKED).getFirst();
     var requested =
-        lab.events(run, LOCK_REQUESTED).stream().filter(e -> e.lane().equals("B")).findFirst().orElseThrow();
+        lab.events(run, LOCK_REQUESTED).stream()
+            .filter(e -> e.lane().equals("B"))
+            .findFirst()
+            .orElseThrow();
     assertThat(blocked.atMicros() - requested.atMicros()).isLessThan(200_000L);
   }
 
@@ -316,7 +335,7 @@ class RaceLabIT {
     var before = lab.run("oversell", Mode.UNSAFE);
     var deleted = lab.engine.reset();
     assertThat(deleted.get("run")).isPositive();
-    assertThat(deleted.get("item")).isPositive();
+    assertThat(deleted.get("product")).isPositive();
     assertThat(lab.runs.recent(null, 10)).isEmpty();
     var first = lab.run("oversell", Mode.UNSAFE);
     assertThat(first.id()).isEqualTo(1);

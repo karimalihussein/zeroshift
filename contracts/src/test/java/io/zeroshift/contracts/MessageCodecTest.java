@@ -16,15 +16,22 @@ class MessageCodecTest {
     return new OrderPlaced(
         ORDER,
         "customer-1",
+        "Customer One",
         List.of(new OrderLine("SKU-1", 2, new BigDecimal("10.50"))),
+        "EUR",
         new BigDecimal("21.00"),
-        "EUR");
+        Money.ZERO,
+        BigDecimal.ZERO,
+        Money.ZERO,
+        new BigDecimal("21.00"),
+        null,
+        null);
   }
 
   @Test
   void roundTripsEveryFieldAndKeepsTheConversation() {
     var first = Envelope.of(placed(), UUID.randomUUID(), null);
-    var reply = first.reply(new AuthorizePayment(ORDER, new BigDecimal("21.00"), "EUR"));
+    var reply = first.reply(new AuthorizePayment(ORDER, new BigDecimal("21.00"), "EUR", null));
 
     var decoded = MessageCodec.decode(MessageCodec.encode(reply));
 

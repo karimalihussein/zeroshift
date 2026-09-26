@@ -3,6 +3,8 @@
 // /api/events/actions. Nothing here advances on a timer of its own.
 const el = id => document.getElementById(id);
 const number = value => new Intl.NumberFormat().format(value ?? 0);
+/** An amount in its currency, as the commerce model stores it (2 decimals). */
+const money = (value, currency = 'USD') => new Intl.NumberFormat(undefined, { style: 'currency', currency: currency || 'USD' }).format(Number(value ?? 0));
 const clock = new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit', fractionalSecondDigits: 3, hour12: false });
 const time = value => value ? clock.format(new Date(value)) : '—';
 const seconds = value => time(value).slice(0, 8);
@@ -159,11 +161,9 @@ function showMessage(text, error = false) {
 const copy = text => h('button', { type: 'button', class: 'copy', title: 'Copy', 'aria-label': 'Copy', onclick: () => navigator.clipboard?.writeText(text) }, icon('copy'));
 
 // ---- Composer: random realistic orders, editable as fields or JSON --------------------------------
-const FIRST = ['Maya', 'Tomás', 'Aisha', 'Kenji', 'Lena', 'Omar', 'Priya', 'Jonas', 'Chloé', 'Mateo', 'Yara', 'Felix', 'Amara', 'Ravi', 'Ines', 'Noah', 'Zanele', 'Hugo', 'Mei', 'Karim', 'Sofia', 'Emeka', 'Astrid', 'Diego', 'Leila', 'Arjun', 'Nora', 'Tariq', 'Elif', 'Samuel'];
-const LAST = ['Okafor', 'Lindqvist', 'Haddad', 'Tanaka', 'Moreau', 'Castillo', 'Nair', 'Becker', 'Mensah', 'Rossi', 'Kowalski', 'Ahmadi', 'Dubois', 'Silva', 'Novak', 'Osei', 'Fischer', 'Yamamoto', 'Petrov', 'Herrera', 'Adeyemi', 'Bergström', 'Farouk', 'Chen', 'Walsh', 'Ibrahim', 'Laurent', 'Svensson', 'Aziz', 'Kaur'];
 const randomInt = (min, max) => { const r = new Uint32Array(1); crypto.getRandomValues(r); return min + (r[0] % (max - min + 1)); };
 const pick = list => list[randomInt(0, list.length - 1)];
-let draft = { customerId: '', items: [] };
+let draft = { customerId: '', items: [], voucherCode: '' };
 let draftGenerated = true;
 
 function randomDraft() {
@@ -178,7 +178,8 @@ function randomDraft() {
     const cap = Math.max(1, Math.min(expensive ? 1 : 4, stock.get(product.sku) ?? 4));
     items.push({ sku: product.sku, quantity: randomInt(1, cap) });
   }
-  return { customerId: `${pick(FIRST)} ${pick(LAST)}`, items };
+  const customers = Array.isArray(state?.customers) ? state.customers : [];
+  return { customerId: customers.length ? pick(customers).id : '', items, voucherCode: '' };
 }
 function regenerate() {
   draft = randomDraft();
@@ -195,7 +196,7 @@ const SCENARIOS = [
   { id: 'error-6', label: 'Consumer error ×6 → DLQ', note: 'Retries exhausted: the command is dead-lettered and the saga times out into compensation.', arm: ['payment-service', 'transient-error', 'error', 6] },
   { id: 'crash', label: 'Crash after commit', note: 'payment-service commits, dies before the offset commit, restarts and skips the redelivery as a duplicate.', arm: ['payment-service', 'crash-after-commit', 'crash', 1] },
   { id: 'gateway-down', label: 'Payment gateway down', note: 'Gateway 503s: in-process retries, breaker opens, Kafka retries, DLQ, saga timeout. Restore it under Services.', gateway: 'down' },
-  { id: 'race', label: 'Two orders race for stock', note: 'Sends two orders for the first item at once with inventory slowed: optimistic locking makes one retry.', race: true },
+  { id: 'race', label: 'Two orders race for stock', note: 'Sends two orders for the first item at once with inventory slowed: the second waits for the first one\'s row lock, then takes what is left.', race: true },
   { id: 'dual-lost', label: 'Dual write: lost event', note: 'Anti-pattern: commits the order, then kills order-service before it publishes. The event never exists.', dual: 'COMMIT_THEN_CRASH' },
   { id: 'dual-ghost', label: 'Dual write: ghost event', note: 'Anti-pattern: publishes to Kafka, then rolls the database back. Consumers see an order that does not exist.', dual: 'PUBLISH_THEN_ROLLBACK' }
 ];
@@ -206,22 +207,29 @@ function renderComposer(force = false) {
   const stock = new Map((Array.isArray(state?.stock) ? state.stock : []).map(i => [i.sku, i]));
   const inside = document.activeElement?.closest?.('#composer');
   if (!force && inside) return;
-  const customer = el('customer');
-  if (document.activeElement !== customer) customer.value = draft.customerId;
-  if (!catalog) { el('lines').replaceChildren(empty('order-service is unreachable: the catalog cannot be read.')); syncJson(); return; }
+  const customers = Array.isArray(state?.customers) ? state.customers : [];
+  const vouchers = Array.isArray(state?.vouchers) ? state.vouchers : [];
+  el('customer').replaceChildren(
+    ...(customers.length ? [] : [h('option', { value: '' }, 'order-service has no customers')]),
+    ...customers.map(c => h('option', { value: c.id, selected: c.id === draft.customerId || null }, `${c.name} · ${c.email}`)));
+  el('voucher').replaceChildren(
+    h('option', { value: '' }, 'No voucher'),
+    ...vouchers.map(v => h('option', { value: v.code, selected: v.code === draft.voucherCode || null },
+      `${v.code} · ${v.discountType === 'PERCENTAGE' ? `${Number(v.value)}%` : money(v.value)}${v.active ? '' : ' · inactive'}`)));
+  if (!catalog) { el('lines').replaceChildren(empty('inventory-service is unreachable: the catalog cannot be read.')); syncJson(); return; }
   el('lines').replaceChildren(...draft.items.map((item, index) => {
     const product = catalog.find(p => p.sku === item.sku);
     const level = stock.get(item.sku);
     const setQuantity = q => { item.quantity = Math.max(1, Math.min(99, q || 1)); draftGenerated = false; renderComposer(true); };
     return h('div', { class: 'line' },
       h('select', { 'aria-label': `Item ${index + 1} product`, onchange: e => { item.sku = e.target.value; draftGenerated = false; renderComposer(true); } },
-        ...catalog.map(p => h('option', { value: p.sku, selected: p.sku === item.sku || null }, `${p.name} · $${p.price}`))),
+        ...catalog.map(p => h('option', { value: p.sku, selected: p.sku === item.sku || null }, `${p.name} · ${money(p.price, p.currency)}`))),
       h('div', { class: 'qty' },
         h('button', { type: 'button', 'aria-label': 'One fewer', onclick: () => setQuantity(item.quantity - 1) }, icon('minus')),
         h('input', { type: 'number', min: 1, max: 99, value: item.quantity, 'aria-label': `${product?.name || item.sku} quantity`, onchange: e => setQuantity(Number(e.target.value)) }),
         h('button', { type: 'button', 'aria-label': 'One more', onclick: () => setQuantity(item.quantity + 1) }, icon('plus'))),
       h('button', { type: 'button', class: 'remove-line', 'aria-label': 'Remove item', disabled: draft.items.length === 1 || null, onclick: () => { draft.items.splice(index, 1); draftGenerated = false; renderComposer(true); } }, icon('close')),
-      h('small', {}, level ? `${product ? `$${(product.price * item.quantity).toFixed(2)} · ` : ''}${level.available} available · ${level.reserved} reserved in inventory-service` : 'stock unknown'));
+      h('small', {}, level ? `${product ? `${money(product.price * item.quantity, product.currency)} · ` : ''}${level.available} available · ${level.reserved} reserved in inventory-service` : 'stock unknown'));
   }));
   el('add-line').disabled = draft.items.length >= catalog.length;
   syncJson();
@@ -235,7 +243,7 @@ function syncJson() {
 }
 function readJson() {
   const parsed = JSON.parse(el('json').value);
-  if (typeof parsed?.customerId !== 'string' || !Array.isArray(parsed.items)) throw new Error('Expected {"customerId": "…", "items": [{"sku": "…", "quantity": 1}]}');
+  if (typeof parsed?.customerId !== 'string' || !Array.isArray(parsed.items)) throw new Error('Expected {"customerId": "<customer uuid>", "items": [{"sku": "…", "quantity": 1}], "voucherCode": "optional"}');
   return parsed;
 }
 function renderScenarioControls() {
@@ -253,7 +261,8 @@ async function send() {
   if (el('json-editor').open) {
     try { body = readJson(); } catch (e) { el('json').classList.add('invalid'); el('json-error').textContent = e.message; return; }
   }
-  if (!body.customerId?.trim()) { showMessage('Add a customer before sending.', true); el('customer').focus(); return; }
+  if (!body.customerId?.trim()) { showMessage('Pick a customer before sending.', true); el('customer').focus(); return; }
+  if (!body.voucherCode) { body = { ...body }; delete body.voucherCode; }
   if (!body.items?.length) { showMessage('Add at least one item.', true); return; }
   const plan = scenario();
   try {
@@ -270,7 +279,7 @@ async function send() {
       const orders = [{ customerId: body.customerId, items: [{ sku, quantity: 1 }] }, { customerId: randomDraft().customerId, items: [{ sku, quantity: 1 }] }];
       const results = await Promise.all(orders.map(order => fetch('/api/events/actions/place-order', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ order }) }).then(r => r.json())));
       if (results[0]?.orderId) follow(results[0].orderId);
-      showMessage(`Two orders reserve ${sku} at once. On different partitions both read version n and one retries (StockChanged in Retries & DLQ); on the same partition they run in turn.`);
+      showMessage(`Two orders reserve ${sku} at once. The first takes the stock under its row lock (UPDATE … WHERE stock >= quantity); the second waits for that lock, then finds what is left: rejected if it was the last one.`);
     } else {
       const result = await act('place-order', { order: body }, 'Sending…');
       follow(result.orderId);
@@ -321,7 +330,7 @@ function orderStages(s, j) {
   const ghost = !writeOk && onKafka.length;
   const records = new Set(onKafka.flatMap(m => m.kafka.map(k => k.topic)));
   return {
-    request: { state: writeOk || messages.length ? 'done' : 'failed', detail: writeOk ? `POST /orders · ${o.order.customerId}` : 'no such order' },
+    request: { state: writeOk || messages.length ? 'done' : 'failed', detail: writeOk ? `POST /orders · ${o.order.customerName || o.order.customerId}` : 'no such order' },
     api: { state: writeOk ? 'done' : ghost ? 'failed' : 'waiting', detail: writeOk ? `v${o.order.version} · ${o.order.status}` : ghost ? 'not in the event store' : 'not recorded' },
     tx: { state: placed?.outboxAt ? 'done' : ghost ? 'failed' : 'waiting', detail: placed?.outboxAt ? `committed ${seconds(placed.outboxAt)}` : ghost ? 'rolled back' : '—' },
     outbox: { state: !inOutbox.length ? (ghost ? 'failed' : 'waiting') : pending.length ? 'waiting' : 'done', detail: `${inOutbox.length} rows${pending.length ? ` · ${pending.length} waiting` : ''}` },
@@ -424,7 +433,7 @@ function renderGraph() {
         h('h3', {}, 'No order followed yet'),
         h('p', {}, 'Send a test order above and it is followed here automatically: every message it causes appears in the lane of the service that produced it, linked to the message that caused it. Or pick a recent order.'),
         recent.length ? h('div', { class: 'recent-list' }, ...recent.map(({ saga, order }) => h('button', { type: 'button', onclick: () => follow(saga.orderId) },
-          h('strong', {}, `${order.customerId}`), h('span', {}, `${short(saga.orderId)} · $${order.total} · `, chip(saga.state.toLowerCase(), `s-${sagaState(saga.state)}`))))) : null));
+          h('strong', {}, `${order.customerName || order.customerId}`), h('span', {}, `${short(saga.orderId)} · ${money(order.total, order.currency)} · `, chip(saga.state.toLowerCase(), `s-${sagaState(saga.state)}`))))) : null));
       drawEdges();
     });
     return;
@@ -506,9 +515,9 @@ function renderOrderHead() {
   const orders = recentOrders();
   const o = journey?.order;
   const writeOk = ok(o);
-  const own = writeOk ? `${o.order.customerId} · ${(o.saga?.state || o.order.status).replaceAll('_', ' ').toLowerCase()}` : null;
+  const own = writeOk ? `${o.order.customerName || o.order.customerId} · ${(o.saga?.state || o.order.status).replaceAll('_', ' ').toLowerCase()}` : null;
   renderIf('order-select', [orders.map(x => [x.saga.orderId, x.saga.state, x.order.customerId]), selected, own], () => {
-    const options = orders.map(({ saga, order }) => h('option', { value: saga.orderId, selected: saga.orderId === selected || null }, `${short(saga.orderId)} · ${order.customerId} · ${saga.state.replaceAll('_', ' ').toLowerCase()}`));
+    const options = orders.map(({ saga, order }) => h('option', { value: saga.orderId, selected: saga.orderId === selected || null }, `${short(saga.orderId)} · ${order.customerName || order.customerId} · ${saga.state.replaceAll('_', ' ').toLowerCase()}`));
     if (selected && !orders.some(x => x.saga.orderId === selected)) options.unshift(h('option', { value: selected, selected: true }, `${short(selected)} · ${own || 'older order'}`));
     el('order-select').replaceChildren(h('option', { value: '', selected: !selected || null }, selected ? 'Stop following' : 'Follow an order…'), ...options);
   });
@@ -519,7 +528,7 @@ function renderOrderHead() {
     const saga = o?.saga;
     el('order-facts').replaceChildren(
       saga ? h('span', { class: `saga-pill chip s-${saga.state === 'CANCELLED' && saga.compensations.length ? 'compensated' : sagaState(saga.state)}` }, `Saga ${saga.state.replaceAll('_', ' ').toLowerCase()}`) : chip(writeOk ? 'no saga' : 'not in the event store', 'bad'),
-      writeOk ? h('span', {}, h('strong', {}, `$${o.order.total}`), ` · ${o.order.lines.reduce((n, l) => n + l.quantity, 0)} items · ${o.order.customerId}`) : null,
+      writeOk ? h('span', {}, h('strong', {}, money(o.order.total, o.order.currency)), ` · ${o.order.lines.reduce((n, l) => n + l.quantity, 0)} items · ${o.order.customerName || o.order.customerId}${o.order.invoiceNumber ? ` · ${o.order.invoiceNumber}` : ''}`) : null,
       writeOk ? h('span', {}, 'Read model ', ok(read) ? chip(read.status === o.order.status ? 'in sync' : `behind (${read.status.toLowerCase()})`, read.status === o.order.status ? 'good' : 'warn') : chip('not projected', 'warn')) : null);
     el('order-tools').replaceChildren(
       traceId && grafana ? h('a', { class: 'small-button button-link', href: explore('tempo', traceId), target: '_blank', rel: 'noopener' }, icon('trace'), 'Trace') : null,
@@ -607,7 +616,7 @@ function orderInspector() {
   const traceId = journey.messages?.find(m => m.traceparent)?.traceparent.split('-')[1];
   const calls = Array.isArray(journey.gatewayCalls) ? journey.gatewayCalls : [];
   return [
-    h('div', { class: 'insp-head' }, h('h2', {}, writeOk ? `${o.order.customerId} · $${o.order.total}` : `Order ${short(selected)}`), h('p', { class: 'insp-meta' }, 'The order you are following'), idRow('order id', selected)),
+    h('div', { class: 'insp-head' }, h('h2', {}, writeOk ? `${o.order.customerName || o.order.customerId} · ${money(o.order.total, o.order.currency)}` : `Order ${short(selected)}`), h('p', { class: 'insp-meta' }, 'The order you are following'), idRow('order id', selected)),
     h('div', { class: 'insp-body' },
       !writeOk ? h('p', { class: 'callout bad' }, 'Not in the event store: a lost or ghost order. Its messages, if any, are shown in the graph.') : null,
       saga?.failureReason ? h('p', { class: `callout ${saga.compensations.length ? 'warn' : 'bad'}` }, `${saga.failureReason}${saga.compensations.length ? `. Compensated: ${saga.compensations.join(', ')}.` : '.'}`) : null,
@@ -703,7 +712,7 @@ function renderOrdersTab(s) {
         const projected = read.get(saga.orderId);
         const inSync = projected && projected.status === order.status;
         return h('tr', { class: `selectable ${selected === saga.orderId ? 'selected' : ''}`, onclick: () => { follow(saga.orderId); window.scrollTo({ top: 0, behavior: 'smooth' }); } },
-          h('td', { class: 'mono hide-sm' }, short(saga.orderId)), h('td', {}, order.customerId), h('td', { class: 'hide-sm' }, order.lines.map(l => `${l.quantity}× ${l.sku.replace('SKU-', '').toLowerCase()}`).join(', ')), h('td', { class: 'num' }, `$${order.total}`),
+          h('td', { class: 'mono hide-sm' }, short(saga.orderId)), h('td', {}, order.customerName || order.customerId), h('td', { class: 'hide-sm' }, order.lines.map(l => `${l.quantity}× ${l.sku.replace('SKU-', '').toLowerCase()}`).join(', ')), h('td', { class: 'num' }, `$${order.total}`),
           h('td', {}, chip(saga.state.replaceAll('_', ' ').toLowerCase(), `s-${saga.state === 'CANCELLED' && saga.compensations.length ? 'compensated' : sagaState(saga.state)}`)), h('td', { class: 'hide-sm' }, order.status.toLowerCase()),
           h('td', {}, projected ? chip(inSync ? 'in sync' : `behind · ${projected.status.toLowerCase()}`, inSync ? 'good' : 'warn') : chip('not projected yet', 'warn')));
       }))))];
@@ -1076,9 +1085,10 @@ el('add-line').addEventListener('click', () => {
   const next = (state?.catalog || []).find(p => !used.has(p.sku));
   if (next) { draft.items.push({ sku: next.sku, quantity: 1 }); draftGenerated = false; renderComposer(true); }
 });
-el('customer').addEventListener('input', e => { draft.customerId = e.target.value; draftGenerated = false; syncJson(); });
+el('customer').addEventListener('change', e => { draft.customerId = e.target.value; draftGenerated = false; syncJson(); });
+el('voucher').addEventListener('change', e => { draft.voucherCode = e.target.value; draftGenerated = false; syncJson(); });
 el('json').addEventListener('input', () => {
-  try { const parsed = readJson(); draft = parsed; draftGenerated = false; el('json').classList.remove('invalid'); el('json-error').textContent = ''; el('customer').value = draft.customerId; }
+  try { const parsed = readJson(); draft = parsed; draftGenerated = false; el('json').classList.remove('invalid'); el('json-error').textContent = ''; el('customer').value = draft.customerId; el('voucher').value = draft.voucherCode || ''; }
   catch (e) { el('json').classList.add('invalid'); el('json-error').textContent = e.message; }
 });
 el('json').addEventListener('blur', () => renderComposer(true));

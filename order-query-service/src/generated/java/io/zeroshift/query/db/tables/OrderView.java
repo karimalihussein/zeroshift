@@ -4,17 +4,22 @@
 package io.zeroshift.query.db.tables;
 
 
+import io.zeroshift.query.db.Indexes;
 import io.zeroshift.query.db.Keys;
 import io.zeroshift.query.db.Public;
 import io.zeroshift.query.db.tables.records.OrderViewRecord;
 
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
+import java.util.Arrays;
 import java.util.Collection;
+import java.util.List;
 import java.util.UUID;
 
+import org.jooq.Check;
 import org.jooq.Condition;
 import org.jooq.Field;
+import org.jooq.Index;
 import org.jooq.JSONB;
 import org.jooq.Name;
 import org.jooq.PlainSQL;
@@ -65,9 +70,39 @@ public class OrderView extends TableImpl<OrderViewRecord> {
     public final TableField<OrderViewRecord, String> CUSTOMER_ID = createField(DSL.name("customer_id"), SQLDataType.CLOB.nullable(false), this, "");
 
     /**
+     * The column <code>public.order_view.customer_name</code>.
+     */
+    public final TableField<OrderViewRecord, String> CUSTOMER_NAME = createField(DSL.name("customer_name"), SQLDataType.CLOB.nullable(false), this, "");
+
+    /**
      * The column <code>public.order_view.status</code>.
      */
     public final TableField<OrderViewRecord, String> STATUS = createField(DSL.name("status"), SQLDataType.CLOB.nullable(false), this, "");
+
+    /**
+     * The column <code>public.order_view.currency</code>.
+     */
+    public final TableField<OrderViewRecord, String> CURRENCY = createField(DSL.name("currency"), SQLDataType.CHAR(3).nullable(false), this, "");
+
+    /**
+     * The column <code>public.order_view.subtotal</code>.
+     */
+    public final TableField<OrderViewRecord, BigDecimal> SUBTOTAL = createField(DSL.name("subtotal"), SQLDataType.NUMERIC(12, 2).nullable(false), this, "");
+
+    /**
+     * The column <code>public.order_view.discount</code>.
+     */
+    public final TableField<OrderViewRecord, BigDecimal> DISCOUNT = createField(DSL.name("discount"), SQLDataType.NUMERIC(12, 2).nullable(false), this, "");
+
+    /**
+     * The column <code>public.order_view.tax_rate</code>.
+     */
+    public final TableField<OrderViewRecord, BigDecimal> TAX_RATE = createField(DSL.name("tax_rate"), SQLDataType.NUMERIC(5, 4).nullable(false), this, "");
+
+    /**
+     * The column <code>public.order_view.tax</code>.
+     */
+    public final TableField<OrderViewRecord, BigDecimal> TAX = createField(DSL.name("tax"), SQLDataType.NUMERIC(12, 2).nullable(false), this, "");
 
     /**
      * The column <code>public.order_view.total</code>.
@@ -75,9 +110,19 @@ public class OrderView extends TableImpl<OrderViewRecord> {
     public final TableField<OrderViewRecord, BigDecimal> TOTAL = createField(DSL.name("total"), SQLDataType.NUMERIC(12, 2).nullable(false), this, "");
 
     /**
-     * The column <code>public.order_view.currency</code>.
+     * The column <code>public.order_view.voucher_code</code>.
      */
-    public final TableField<OrderViewRecord, String> CURRENCY = createField(DSL.name("currency"), SQLDataType.CLOB.nullable(false), this, "");
+    public final TableField<OrderViewRecord, String> VOUCHER_CODE = createField(DSL.name("voucher_code"), SQLDataType.CLOB, this, "");
+
+    /**
+     * The column <code>public.order_view.invoice_number</code>.
+     */
+    public final TableField<OrderViewRecord, String> INVOICE_NUMBER = createField(DSL.name("invoice_number"), SQLDataType.CLOB, this, "");
+
+    /**
+     * The column <code>public.order_view.invoice_status</code>.
+     */
+    public final TableField<OrderViewRecord, String> INVOICE_STATUS = createField(DSL.name("invoice_status"), SQLDataType.CLOB, this, "");
 
     /**
      * The column <code>public.order_view.item_count</code>.
@@ -85,9 +130,9 @@ public class OrderView extends TableImpl<OrderViewRecord> {
     public final TableField<OrderViewRecord, Integer> ITEM_COUNT = createField(DSL.name("item_count"), SQLDataType.INTEGER.nullable(false), this, "");
 
     /**
-     * The column <code>public.order_view.lines</code>.
+     * The column <code>public.order_view.items</code>.
      */
-    public final TableField<OrderViewRecord, JSONB> LINES = createField(DSL.name("lines"), SQLDataType.JSONB.nullable(false), this, "");
+    public final TableField<OrderViewRecord, JSONB> ITEMS = createField(DSL.name("items"), SQLDataType.JSONB.nullable(false), this, "");
 
     /**
      * The column <code>public.order_view.payment_id</code>.
@@ -103,6 +148,11 @@ public class OrderView extends TableImpl<OrderViewRecord> {
      * The column <code>public.order_view.tracking_number</code>.
      */
     public final TableField<OrderViewRecord, String> TRACKING_NUMBER = createField(DSL.name("tracking_number"), SQLDataType.CLOB, this, "");
+
+    /**
+     * The column <code>public.order_view.carrier</code>.
+     */
+    public final TableField<OrderViewRecord, String> CARRIER = createField(DSL.name("carrier"), SQLDataType.CLOB, this, "");
 
     /**
      * The column <code>public.order_view.cancel_reason</code>.
@@ -179,8 +229,21 @@ public class OrderView extends TableImpl<OrderViewRecord> {
     }
 
     @Override
+    public List<Index> getIndexes() {
+        return Arrays.asList(Indexes.ORDER_VIEW_CUSTOMER_PLACED_AT, Indexes.ORDER_VIEW_PLACED_AT);
+    }
+
+    @Override
     public UniqueKey<OrderViewRecord> getPrimaryKey() {
         return Keys.ORDER_VIEW_PKEY;
+    }
+
+    @Override
+    public List<Check<OrderViewRecord>> getChecks() {
+        return Arrays.asList(
+            Internal.createCheck(this, DSL.name("order_view_invoice_status_check"), "((invoice_status = ANY (ARRAY['ISSUED'::text, 'PAID'::text, 'VOIDED'::text])))", true),
+            Internal.createCheck(this, DSL.name("order_view_status_check"), "((status = ANY (ARRAY['PLACED'::text, 'PAID'::text, 'RESERVED'::text, 'SHIPPED'::text, 'CANCELLED'::text])))", true)
+        );
     }
 
     @Override

@@ -74,6 +74,7 @@ OpenTelemetry agent in every JVM ─► collector ─► Tempo · Loki;  Prometh
 | Consumer groups and rebalancing | Two `order-service` replicas share the reply topics' partitions; crash one, watch them move | |
 | Distributed lock with fencing | PostgreSQL lease with a fencing token checked inside the guarded transaction | [013](docs/decisions/013-lease-with-fencing-tokens.md) |
 | Optimistic concurrency | Event-stream version, saga version and stock row version; *Concurrent reservations* | [011](docs/decisions/011-event-sourcing-and-cqrs.md) |
+| One commerce model | Customer, Product, Order/OrderItem, Voucher, Payment, Invoice: one owner each, UUIDs, `NUMERIC(12,2)` money with currency, snapshots on the order, deterministic pricing (HALF_EVEN, voucher, tax), an atomic stock take and a unique payment idempotency key | [021](docs/decisions/021-commerce-model.md) |
 | Observability | One trace per order across services and Kafka hops; logs linked by trace id | [014](docs/decisions/014-observability.md) |
 | Typed persistence | Flyway → PostgreSQL → generated jOOQ classes; no hand-built SQL strings | [015](docs/decisions/015-jooq-persistence.md) |
 | Kafka internals (Phase 2) | A separate 3-node KRaft cluster (profile `kafka-lab`): controller quorum, leader failure under load, acks=1 vs acks=all, min.insync.replicas, idempotent retries, unclean election, at-most/at-least/exactly-once with real worker crashes | [017](docs/decisions/017-kafka-lab-cluster.md), [labs](docs/labs.md#phase-2-kafka-internals) |
@@ -127,6 +128,8 @@ OpenSearch is optional, for full-text log search (about 1.5 GB more; OpenSearch 
 docker compose -f docker-compose.yml -f docker-compose.override.yml -f docker-compose.opensearch.yml up -d
 ```
 
+With `COMMERCE_DEMO_DATA=true` (the Compose default) the services seed themselves on an empty database: order-service 40 customers and 8 vouchers, inventory-service a 30-product catalog. `scripts/seed_commerce.py [n]` then places `n` randomized orders through `POST /orders`, so every payment, reservation, invoice and projection comes from the real saga ([ADR 021](docs/decisions/021-commerce-model.md)).
+
 The service images are built from the packaged jars (no hot reload): after changing a service, `docker compose up -d --build <service>`. Each service keeps its own Flyway history (`flyway_schema_history`) apart from the shared platform tables (outbox, inbox, decisions, faults), which are versioned in `flyway_platform_history`. Persistence uses jOOQ classes generated from what those migrations build ([ADR 015](docs/decisions/015-jooq-persistence.md)): after adding a migration, run `mvn -Pjooq-codegen -DskipTests process-test-classes` and commit `src/generated/java`. The ITs fail if the generated classes and the migrated schema disagree.
 
 ## Migration lab architecture
@@ -159,7 +162,7 @@ All Java packages are under `src/main/java/io/zeroshift/`.
 
 - [How consistency is kept](docs/consistency.md): transaction boundaries, the change window, crash recovery and the fence
 - [Live Data Changes](docs/live-changes.md): the interactive CDC experiment and its API
-- [Design decisions](docs/decisions/): change capture, snapshot boundary, batching, checkpointing, cutover, rollback; outbox, idempotency, saga, event sourcing, retries, lease and fencing, observability, jOOQ, HTTP API conventions, the Kafka lab cluster, the race condition lab, the resilience lab, events over time
+- [Design decisions](docs/decisions/): change capture, snapshot boundary, batching, checkpointing, cutover, rollback; outbox, idempotency, saga, event sourcing, retries, lease and fencing, observability, jOOQ, HTTP API conventions, the Kafka lab cluster, the race condition lab, the resilience lab, events over time, the commerce model
 - [Event lab failure drills](docs/event-lab-drills.md): what each drill breaks and what to watch
 - [Experiments](docs/labs.md): the learning labs (Learn → Trigger → Observe → Break → Understand → Fix → Recover), the Kafka internals labs, the resilience experiments (Hypothesis → Inject → Observe → Explain → Mitigate → Recover → Verify) and the events-over-time experiments (History → Inspect → Change/Rebuild → Replay → Compare → Understand)
 - [Race condition lab](docs/race-lab.md): the ten experiments, the event model, the API and how races are reproduced on real transactions

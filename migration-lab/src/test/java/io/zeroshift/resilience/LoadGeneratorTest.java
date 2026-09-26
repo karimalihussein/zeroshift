@@ -26,6 +26,9 @@ import org.junit.jupiter.api.Test;
 
 /** The generator against a real HTTP server standing in for both order-service replicas. */
 class LoadGeneratorTest {
+  /** The one seeded customer the stubbed order-service knows. */
+  private static final String CUSTOMER = "8d6f1a2e-0c55-4b4c-9d1e-2f4e6c8a0b11";
+
   private HttpServer server;
   private LoadGenerator load;
   private final AtomicInteger placements = new AtomicInteger();
@@ -63,6 +66,19 @@ class LoadGeneratorTest {
           exchange.close();
         });
     server.createContext(
+        "/customers",
+        exchange -> {
+          var body =
+              ("{\"data\":[{\"id\":\""
+                      + CUSTOMER
+                      + "\",\"name\":\"Ada Lovelace\"}],\"meta\":{\"count\":1}}")
+                  .getBytes(StandardCharsets.UTF_8);
+          exchange.getResponseHeaders().add("Content-Type", "application/json");
+          exchange.sendResponseHeaders(200, body.length);
+          exchange.getResponseBody().write(body);
+          exchange.close();
+        });
+    server.createContext(
         "/lab/stock",
         exchange -> {
           restocked.add(exchange.getRequestURI().getPath());
@@ -80,7 +96,13 @@ class LoadGeneratorTest {
             "http://unused",
             Map.of("order-service", url, "order-service-b", url, "inventory-service", url),
             "");
-    load = new LoadGenerator(settings, new LabServices(settings), new SimpleMeterRegistry());
+    var services = new LabServices(settings);
+    load =
+        new LoadGenerator(
+            settings,
+            services,
+            new SimpleMeterRegistry(),
+            new io.zeroshift.eventlab.LabCustomers(services));
   }
 
   @AfterEach
@@ -184,6 +206,8 @@ class LoadGeneratorTest {
   @Test
   void generatedOrdersUseOnlyRestockedSkus() {
     for (int i = 0; i < 200; i++)
-      assertThat(load.order()).contains("\"customerId\":\"load-").doesNotContain("SKU-MONITOR");
+      assertThat(load.order())
+          .contains("\"customerId\":\"" + CUSTOMER + "\"")
+          .doesNotContain("SKU-MONITOR");
   }
 }

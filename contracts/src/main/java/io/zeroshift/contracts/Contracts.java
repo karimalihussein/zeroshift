@@ -2,8 +2,10 @@ package io.zeroshift.contracts;
 
 import java.util.Arrays;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.function.UnaryOperator;
+import tools.jackson.databind.node.ArrayNode;
 import tools.jackson.databind.node.ObjectNode;
 
 /**
@@ -32,6 +34,14 @@ public final class Contracts {
           ShippingEvent.class, Topics.SHIPPING_EVENTS,
           CarrierEvent.class, Topics.CARRIER_SCANS);
 
+  /** OrderPlaced's additions from the commerce model (ADR 021): absent in older payloads. */
+  private static final List<String> COMMERCE_FIELDS =
+      List.of(
+          "customerName", "subtotal", "discount", "taxRate", "tax", "voucherCode", "invoiceNumber");
+
+  private static final List<String> LINE_FIELDS =
+      List.of("productId", "name", "subtotal", "discount", "total");
+
   /** Upcasters keyed by the version they read: entry n turns a vn payload into v(n+1). */
   private static final Map<Class<? extends Message>, Map<Integer, UnaryOperator<ObjectNode>>>
       UPCASTERS = Map.of(OrderEvent.OrderPlaced.class, Map.of(1, v1 -> v1.put("currency", "USD")));
@@ -53,6 +63,11 @@ public final class Contracts {
                       throw new IllegalArgumentException(
                           "OrderPlaced v1 has no currency field and means USD, not " + currency);
                     v2.remove("currency");
+                    // Nor did it know the commerce model's additions: it wrote the total only.
+                    COMMERCE_FIELDS.forEach(v2::remove);
+                    if (v2.get("lines") instanceof ArrayNode lines)
+                      for (var line : lines)
+                        if (line instanceof ObjectNode l) LINE_FIELDS.forEach(l::remove);
                     return v2;
                   }));
 

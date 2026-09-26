@@ -85,7 +85,10 @@ public class RunEventStream {
     if (closed[0] || !sent.add(e.seq())) return;
     try {
       emitter.send(
-          SseEmitter.event().name("event").id(String.valueOf(e.seq())).data(e, MediaType.APPLICATION_JSON));
+          SseEmitter.event()
+              .name("event")
+              .id(String.valueOf(e.seq()))
+              .data(e, MediaType.APPLICATION_JSON));
     } catch (IOException | IllegalStateException ex) {
       closed[0] = true;
     }

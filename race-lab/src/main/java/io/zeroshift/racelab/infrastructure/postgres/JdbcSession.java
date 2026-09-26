@@ -20,7 +20,8 @@ final class JdbcSession implements Session {
     this.connection = connection;
     try {
       connection.setAutoCommit(true);
-      try (var ps = connection.prepareStatement("SELECT set_config('application_name', ?, false)")) {
+      try (var ps =
+          connection.prepareStatement("SELECT set_config('application_name', ?, false)")) {
         ps.setString(1, applicationName);
         ps.execute();
       }
@@ -64,7 +65,8 @@ final class JdbcSession implements Session {
       var rows = new ArrayList<Map<String, Object>>();
       while (rs.next()) {
         var row = new LinkedHashMap<String, Object>();
-        for (int i = 1; i <= meta.getColumnCount(); i++) row.put(meta.getColumnLabel(i), rs.getObject(i));
+        for (int i = 1; i <= meta.getColumnCount(); i++)
+          row.put(meta.getColumnLabel(i), rs.getObject(i));
         rows.add(row);
       }
       return rows;
@@ -105,7 +107,9 @@ final class JdbcSession implements Session {
     try {
       if (!connection.getAutoCommit()) connection.rollback();
       connection.setAutoCommit(true);
-      try (var ps = connection.prepareStatement("SELECT set_config('application_name', 'race-lab idle', false)")) {
+      try (var ps =
+          connection.prepareStatement(
+              "SELECT set_config('application_name', 'race-lab idle', false)")) {
         ps.execute();
       }
     } catch (SQLException ignored) {
