@@ -59,3 +59,7 @@ kafka-lab:
   bootstrap: ${KAFKA_LAB_BOOTSTRAP:}
   docker-url: ${KAFKA_LAB_DOCKER:}
   cluster: ${KAFKA_LAB_CLUSTER:compose}
+# Phase 3 resilience lab (/resilience). The chaos proxy only runs with docker-compose.chaos.yml;
+# blank, the network experiments explain how to start it and the rest of the lab still works.
+resilience-lab:
+  toxiproxy-url: ${TOXIPROXY_URL:}

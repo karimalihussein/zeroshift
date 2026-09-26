@@ -11,7 +11,8 @@ import org.springframework.scheduling.annotation.EnableScheduling;
 @EnableConfigurationProperties({
   LabSettings.class,
   io.zeroshift.eventlab.EventLabSettings.class,
-  io.zeroshift.kafkalab.KafkaLabSettings.class
+  io.zeroshift.kafkalab.KafkaLabSettings.class,
+  io.zeroshift.resilience.ResilienceSettings.class
 })
 public class ZeroShiftApplication {
   public static void main(String[] args) {

@@ -1,0 +1,161 @@
+/* Resilience lab. Tokens come from style.css (DESIGN.md); this adds the signal chain, the
+   experiment track and the lever cards. Series colours are fixed per meaning, never per position:
+   blue = demand, green = work done, amber = retries, red = failure, violet = mitigation. */
+:root {
+  --violet: #6f4bc2;
+  --violet-soft: #f1ecfb;
+  --slate: #aab3c2;
+  --teal: #16808a;
+  --chip-ink: #3c4960;
+  --panel-tint: #fbfcfe;
+  --code-night: #0f1a2c;
+}
+
+.resilience-shell { padding-bottom: 48px; }
+.mono { font-family: var(--mono); font-size: .92em; }
+.chip { display: inline-flex; align-items: center; gap: 5px; width: fit-content; padding: 2px 8px; border-radius: 6px; background: var(--canvas); color: var(--chip-ink); font-size: 11px; font-weight: 650; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.chip.good { color: var(--green); background: var(--green-soft); }
+.chip.warn { color: var(--amber); background: var(--amber-soft); }
+.chip.bad { color: var(--red); background: var(--red-soft); }
+.chip.info { color: var(--blue-deep); background: var(--blue-soft); }
+.chip.mitigate { color: var(--violet); background: var(--violet-soft); }
+.chips { display: flex; flex-wrap: wrap; gap: 5px; }
+.buttons { display: flex; flex-wrap: wrap; gap: 6px; }
+.span-all { grid-column: 1 / -1; }
+
+.chain, .experiments, .controls, .history { margin-top: 16px; background: var(--paper); border: 1px solid var(--line); border-radius: 16px; }
+.chain { margin-top: 20px; padding: 18px 20px 14px; }
+.chain-head, .section-head { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 12px 24px; }
+.section-head { padding: 18px 20px 14px; border-bottom: 1px solid var(--line); }
+.section-head p, .chain-note { max-width: 78ch; margin: 6px 0 0; color: var(--muted); font-size: 13px; line-height: 1.5; }
+.section-head h2 { font-size: 18px; }
+.chain-window { display: flex; gap: 2px; padding: 3px; border: 1px solid var(--line); border-radius: 10px; }
+.chain-window button { min-height: 28px; padding: 3px 10px; border: 0; background: none; color: var(--muted); }
+.chain-window button[aria-pressed="true"] { background: var(--ink); color: white; }
+.chain-empty { margin: 18px 0 6px; color: var(--muted); font-size: 13px; }
+
+/* The signal chain: one row per stage, the same clock across all of them. */
+.rows { position: relative; display: grid; gap: 0; margin-top: 16px; }
+.row { display: grid; grid-template-columns: 208px minmax(0, 1fr); gap: 14px; align-items: stretch; padding: 6px 0; border-top: 1px solid var(--line); }
+.row:first-child { border-top: 0; }
+.row-label { display: grid; align-content: start; gap: 4px; padding-top: 2px; }
+.row-label strong { font-size: 13px; letter-spacing: -.01em; }
+.row-label small { color: var(--muted); font-size: 11px; line-height: 1.35; }
+.series { display: grid; gap: 2px; margin: 4px 0 0; padding: 0; list-style: none; }
+.series li { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; font-size: 11px; color: var(--muted); }
+.series li b { color: var(--ink); font-weight: 650; font-variant-numeric: tabular-nums; }
+.series i { display: inline-block; width: 10px; height: 2px; margin-right: 6px; border-radius: 999px; vertical-align: middle; }
+.series i.dash { background: none !important; border-top: 2px dashed currentColor; height: 0; }
+.plot { position: relative; min-width: 0; }
+.plot svg { display: block; width: 100%; height: 86px; overflow: visible; fill: none; stroke: none; }
+.plot .grid { stroke: var(--line); stroke-width: 1; }
+.plot .axis-label { fill: var(--quiet); font-size: 10px; font-family: inherit; }
+.plot path.line { fill: none; stroke-width: 1.6; stroke-linejoin: round; stroke-linecap: round; vector-effect: non-scaling-stroke; }
+.plot path.area { stroke: none; opacity: .12; }
+.plot .gap { fill: repeating-linear-gradient(45deg, var(--canvas), var(--canvas) 3px, white 3px, white 6px); }
+.marker-line { stroke-width: 1; vector-effect: non-scaling-stroke; }
+.marker-line.inject { stroke: var(--red); }
+.marker-line.mitigate { stroke: var(--violet); }
+.marker-line.recover { stroke: var(--green); }
+.marker-line.load, .marker-line.note, .marker-line.reset { stroke: var(--slate); stroke-dasharray: 3 3; }
+.markers { position: relative; height: 22px; margin-left: 222px; }
+.markers span { position: absolute; top: 2px; max-width: 180px; overflow: hidden; padding: 1px 6px; border-radius: 4px; font-size: 10px; font-weight: 650; white-space: nowrap; text-overflow: ellipsis; transform: translateX(-2px); }
+.markers .inject { color: var(--red); background: var(--red-soft); }
+.markers .mitigate { color: var(--violet); background: var(--violet-soft); }
+.markers .recover { color: var(--green); background: var(--green-soft); }
+.markers .load, .markers .note, .markers .reset { color: var(--muted); background: var(--canvas); }
+.cursor { position: absolute; top: 0; bottom: 0; width: 1px; background: var(--muted); pointer-events: none; }
+.cursor-time { position: absolute; top: -18px; transform: translateX(-50%); padding: 1px 6px; border-radius: 4px; background: var(--ink); color: white; font-size: 10px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+/* Experiments */
+.experiment-layout { display: grid; grid-template-columns: minmax(240px, 300px) minmax(0, 1fr); min-height: 420px; }
+.experiment-list { margin: 0; padding: 10px; list-style: none; border-right: 1px solid var(--line); background: var(--panel-tint); border-bottom-left-radius: 16px; }
+.experiment-list button { display: grid; justify-items: start; gap: 6px; width: 100%; min-height: 0; padding: 10px 12px; border: 1px solid transparent; border-radius: 10px; background: none; text-align: left; }
+.experiment-list button:hover:enabled { background: white; border-color: var(--line); }
+.experiment-list button[aria-current="true"] { background: white; border-color: var(--line-strong); }
+.experiment-list strong { color: var(--ink); font-size: 13px; line-height: 1.3; }
+.experiment-list small { color: var(--muted); font-size: 11px; font-weight: 500; }
+.experiment { padding: 18px 20px 20px; min-width: 0; }
+.experiment-top { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.experiment-top h3 { font-size: 18px; line-height: 1.25; }
+.experiment-top p { max-width: 70ch; margin: 6px 0 0; color: var(--muted); font-size: 13px; line-height: 1.5; }
+.experiment-meta { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.track { display: grid; gap: 0; margin: 18px 0 0; padding: 0; list-style: none; counter-reset: step; }
+.track > li { position: relative; display: grid; grid-template-columns: 28px minmax(0, 1fr); gap: 12px; padding: 0 0 16px; }
+.track > li::before { counter-increment: step; content: counter(step); display: grid; place-items: center; width: 26px; height: 26px; border: 1px solid var(--line-strong); border-radius: 50%; background: white; color: var(--muted); font-size: 11px; font-weight: 700; }
+.track > li::after { content: ""; position: absolute; left: 13px; top: 28px; bottom: 2px; width: 1px; background: var(--line); }
+.track > li:last-child::after { display: none; }
+.track > li.running::before { border-color: var(--blue); color: white; background: var(--blue); box-shadow: 0 0 0 4px var(--blue-soft); }
+.track > li.passed::before, .track > li.done::before { border-color: var(--green); color: white; background: var(--green); }
+.track > li.failed::before { border-color: var(--red); color: white; background: var(--red); }
+.step-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 10px; padding-top: 3px; }
+.step-phase { color: var(--quiet); font-size: 10px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+.step-head strong { font-size: 13px; }
+.step-body p { max-width: 80ch; margin: 5px 0 0; color: var(--chip-ink); font-size: 13px; line-height: 1.55; }
+.step-did { margin-top: 6px !important; color: var(--ink) !important; font-family: var(--mono); font-size: 11px !important; }
+.checks { display: grid; gap: 4px; margin: 8px 0 0; padding: 0; list-style: none; }
+.checks li { display: grid; grid-template-columns: 16px minmax(0, 1fr) auto; gap: 8px; align-items: baseline; padding: 6px 10px; border: 1px solid var(--line); border-radius: 7px; background: var(--panel-tint); font-size: 12px; }
+.checks li::before { content: "○"; color: var(--quiet); }
+.checks li.held { border-color: var(--green-soft); background: var(--green-soft); }
+.checks li.held::before { content: "✓"; color: var(--green); font-weight: 700; }
+.checks li.failed { border-color: var(--red-soft); background: var(--red-soft); }
+.checks li.failed::before { content: "✗"; color: var(--red); font-weight: 700; }
+.checks li.pending.live::before { content: "◌"; color: var(--blue); }
+.checks .observed { color: var(--muted); font-family: var(--mono); font-size: 11px; text-align: right; }
+.run-bar { position: sticky; bottom: 12px; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; margin-top: 4px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--paper); box-shadow: var(--shadow); }
+.run-bar p { margin: 0; color: var(--muted); font-size: 12px; }
+.needs-chaos { margin: 12px 0 0; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--amber-soft); color: var(--amber); font-size: 12px; line-height: 1.5; }
+.needs-chaos code { font-family: var(--mono); font-size: 11px; }
+
+/* Levers */
+.control-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 12px; padding: 16px 20px 20px; }
+.control-card { display: grid; align-content: start; gap: 12px; padding: 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel-tint); min-width: 0; }
+.control-card header { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.control-card h3 { font-size: 13px; }
+.control-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 10px; align-items: end; }
+.control-form.guards { grid-template-columns: minmax(110px, auto) minmax(90px, 1fr); align-items: center; }
+.field { display: grid; gap: 5px; min-width: 0; }
+.field > span { color: var(--muted); font-size: 11px; font-weight: 650; }
+.field input, .field select { width: 100%; height: 34px; font-size: 13px; }
+.toggle { display: inline-flex; align-items: center; gap: 8px; min-height: 34px; font-size: 12px; font-weight: 650; color: var(--ink); cursor: pointer; }
+.toggle input { width: 16px; height: 16px; margin: 0; accent-color: var(--violet); }
+.control-note { margin: 0; color: var(--muted); font-size: 11px; line-height: 1.5; }
+.totals { display: grid; grid-template-columns: repeat(auto-fit, minmax(90px, 1fr)); gap: 8px; margin: 0; }
+.totals div { padding: 6px 8px; border-radius: 7px; background: white; border: 1px solid var(--line); }
+.totals dt { color: var(--muted); font-size: 10px; font-weight: 650; }
+.totals dd { margin: 2px 0 0; font-size: 13px; font-weight: 650; font-variant-numeric: tabular-nums; }
+.chaos { display: grid; gap: 8px; }
+.link { display: grid; gap: 6px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 10px; background: white; }
+.link-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 6px; }
+.link-head strong { font-family: var(--mono); font-size: 12px; }
+.link-head small { color: var(--muted); font-size: 11px; }
+.link .buttons button { min-height: 28px; padding: 3px 8px; font-size: 11px; }
+.link.broken { border-color: var(--red-soft); }
+.chaos-off { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
+.chaos-off code { display: block; margin-top: 6px; padding: 8px 10px; border-radius: 7px; background: var(--code-night); color: white; font-family: var(--mono); font-size: 11px; white-space: pre-wrap; }
+
+.runs { display: grid; gap: 6px; padding: 14px 20px 20px; }
+.runs details { border: 1px solid var(--line); border-radius: 10px; background: var(--panel-tint); }
+.runs summary { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 9px 12px; cursor: pointer; font-size: 12px; }
+.runs summary time { color: var(--muted); font-variant-numeric: tabular-nums; }
+.runs .run-body { padding: 0 12px 12px; }
+.runs-empty { margin: 0; color: var(--muted); font-size: 13px; }
+
+.page-footer { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; margin-top: 18px; color: var(--quiet); font-size: 11px; }
+.toast { position: fixed; right: 20px; bottom: 20px; max-width: min(520px, calc(100% - 40px)); margin: 0; padding: 10px 14px; border-radius: 10px; background: var(--ink); color: white; font-size: 12px; line-height: 1.45; box-shadow: var(--shadow); z-index: 10; }
+.toast.error { background: var(--red); }
+
+@media (max-width: 900px) {
+  .row { grid-template-columns: 1fr; gap: 4px; }
+  .markers { margin-left: 0; }
+  .experiment-layout { grid-template-columns: 1fr; }
+  .experiment-list { display: flex; gap: 6px; overflow-x: auto; border-right: 0; border-bottom: 1px solid var(--line); border-radius: 0; }
+  .experiment-list li { flex: 0 0 240px; }
+}
+@media (max-width: 640px) {
+  .shell { width: calc(100% - 32px); }
+  .topbar { height: auto; flex-wrap: wrap; gap: 10px; padding: 12px 0; }
+  .chain, .experiment, .control-grid, .runs { padding-left: 14px; padding-right: 14px; }
+  .section-head { padding-left: 14px; padding-right: 14px; }
+}
+.plot .axis-max { position: absolute; top: -2px; right: 4px; padding: 0 4px; border-radius: 4px; background: var(--paper); color: var(--quiet); font-size: 10px; font-variant-numeric: tabular-nums; pointer-events: none; }

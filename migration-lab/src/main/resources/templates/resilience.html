@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ZeroShift — Resilience lab</title>
+  <link rel="icon" th:href="@{/favicon.svg}">
+  <link rel="stylesheet" th:href="@{/style.css}">
+  <link rel="stylesheet" th:href="@{/resilience.css}">
+  <script defer th:src="@{/resilience.js}"></script>
+</head>
+<body th:attr="data-grafana=${grafanaUrl}">
+<!--
+  THESIS: One signal chain, read top to bottom: traffic → throughput → latency → Kafka lag → retries →
+  errors → pressure, on a shared clock, with every injected failure and mitigation drawn as a line
+  through all of them. Cause and effect are read vertically; recovery is read left to right.
+  OWN-WORLD: the ZeroShift control plane (DESIGN.md): cool grey canvas, white panels, ink #172033,
+  blue for load and selection, amber retries, red failures, green recovery, violet mitigation.
+-->
+<main class="shell resilience-shell">
+  <header class="topbar">
+    <a class="brand" href="/" aria-label="ZeroShift home"><span class="brand-mark"><span></span><span></span><span></span></span><span><strong>ZeroShift</strong><small>Distributed systems control plane</small></span></a>
+    <nav class="lab-nav" aria-label="Labs"><a href="/">Migration</a><a href="/events">Event-driven</a><a href="/resilience" aria-current="page">Resilience</a></nav>
+    <div class="topbar-status"><span id="connection" class="connection" role="status"><i></i> Connecting</span><a id="grafana-link" class="environment" target="_blank" rel="noopener" hidden>Grafana</a><span class="environment">Local lab</span></div>
+  </header>
+
+  <section class="chain" aria-labelledby="chain-title">
+    <div class="chain-head">
+      <div>
+        <h1 id="chain-title">Failure, load and recovery</h1>
+        <p class="chain-note">One sample a second from the running system: the load generator's clients, both order-service replicas, every consumer group's Kafka lag, the payment gateway and each JVM. Lines through every row mark what was changed and when.</p>
+      </div>
+      <div class="chain-window" role="group" aria-label="Time window">
+        <button type="button" data-window="60">1 min</button><button type="button" data-window="180" aria-pressed="true">3 min</button><button type="button" data-window="600">10 min</button>
+      </div>
+    </div>
+    <div id="rows" class="rows"></div>
+    <p id="chain-empty" class="chain-empty" hidden>No samples yet. Start the load generator or an experiment; samples are taken while this page is open.</p>
+  </section>
+
+  <section class="experiments" aria-labelledby="experiments-title">
+    <div class="section-head">
+      <div>
+        <h2 id="experiments-title">Experiments</h2>
+        <p>Each one states what should happen, breaks something real, checks the claim against the samples above, applies a mitigation, heals the fault and verifies recovery. A failed check is reported, never hidden.</p>
+      </div>
+    </div>
+    <div class="experiment-layout">
+      <ol id="experiment-list" class="experiment-list" aria-label="Experiments"></ol>
+      <div id="experiment" class="experiment" aria-live="polite"></div>
+    </div>
+  </section>
+
+  <section class="controls" aria-labelledby="controls-title">
+    <div class="section-head">
+      <div>
+        <h2 id="controls-title">Levers</h2>
+        <p>The same levers the experiments use, by hand. Every setting shown is read back from the service that enforces it.</p>
+      </div>
+      <button id="reset-lab" type="button" class="danger">Reset lab</button>
+    </div>
+    <div class="control-grid">
+      <article class="control-card" aria-labelledby="load-title">
+        <header><h3 id="load-title">Load generator</h3><span id="load-status" class="chip">stopped</span></header>
+        <form id="load-form" class="control-form">
+          <label class="field"><span>Clients / s</span><input name="ratePerSecond" type="number" min="1" max="500" value="8"></label>
+          <label class="field"><span>Max waiting clients</span><input name="concurrency" type="number" min="1" max="2000" value="64"></label>
+          <label class="field"><span>Reads %</span><input name="readPercent" type="number" min="0" max="100" value="0"></label>
+          <label class="field"><span>Client retry</span><select name="retry"><option value="none">none</option><option value="immediate">immediate</option><option value="exponential">exponential</option><option value="jitter" selected>exponential + jitter</option><option value="budget">jitter + retry budget</option></select></label>
+          <label class="field"><span>Attempts</span><input name="maxAttempts" type="number" min="1" max="10" value="3"></label>
+          <label class="field"><span>Timeout ms</span><input name="timeoutMs" type="number" min="100" max="30000" value="2000"></label>
+          <div class="buttons span-all"><button type="submit" class="primary-action" id="load-start">Start</button><button type="button" id="load-apply">Apply</button><button type="button" id="load-stop">Stop</button><button type="button" id="load-reset" class="quiet">Reset counters</button></div>
+        </form>
+        <dl id="load-totals" class="totals"></dl>
+      </article>
+
+      <article class="control-card" aria-labelledby="chaos-title">
+        <header><h3 id="chaos-title">Network chaos</h3><span id="chaos-status" class="chip">…</span></header>
+        <div id="chaos" class="chaos"></div>
+      </article>
+
+      <article class="control-card" aria-labelledby="edge-title">
+        <header><h3 id="edge-title">Edge guards · POST /orders</h3><span class="chip">per replica</span></header>
+        <form id="edge-form" class="control-form guards">
+          <label class="toggle"><input type="checkbox" name="rateLimit"><span>Rate limit</span></label><label class="field"><span>orders / s</span><input name="ratePerSecond" type="number" min="1" max="10000" value="20"></label>
+          <label class="toggle"><input type="checkbox" name="shedding"><span>Shed load</span></label><label class="field"><span>above unfinished</span><input name="maxActiveSagas" type="number" min="1" max="100000" value="200"></label>
+          <label class="toggle"><input type="checkbox" name="bulkhead"><span>Bulkhead</span></label><label class="field"><span>concurrent</span><input name="maxConcurrent" type="number" min="1" max="1000" value="6"></label>
+          <div class="buttons span-all"><button type="submit">Apply to both replicas</button></div>
+        </form>
+        <p id="edge-state" class="control-note"></p>
+      </article>
+
+      <article class="control-card" aria-labelledby="gateway-title">
+        <header><h3 id="gateway-title">Payment → gateway</h3><span id="breaker" class="chip">breaker …</span></header>
+        <div class="buttons" role="group" aria-label="Gateway mode"><button type="button" data-gateway="healthy">Healthy</button><button type="button" data-gateway="slow">Slow 3 s</button><button type="button" data-gateway="down">Down</button><button type="button" id="breaker-reset" class="quiet">Reset breaker</button></div>
+        <form id="policy-form" class="control-form">
+          <label class="field"><span>Timeout ms</span><input name="timeoutMs" type="number" min="50" max="60000" value="1500"></label>
+          <label class="field"><span>Retry</span><select name="retry"><option value="none">none</option><option value="immediate">immediate</option><option value="exponential" selected>exponential</option><option value="jitter">exponential + jitter</option></select></label>
+          <label class="field"><span>Attempts</span><input name="maxAttempts" type="number" min="1" max="10" value="3"></label>
+          <label class="toggle"><input type="checkbox" name="breaker" checked><span>Circuit breaker</span></label>
+          <label class="toggle"><input type="checkbox" name="pauseOnOpen"><span>Pause consumer while open</span></label>
+          <div class="buttons span-all"><button type="submit">Apply policy</button></div>
+        </form>
+        <p id="gateway-state" class="control-note"></p>
+      </article>
+
+      <article class="control-card" aria-labelledby="consumer-title">
+        <header><h3 id="consumer-title">Payment consumer</h3><span id="consumer-status" class="chip">…</span></header>
+        <form id="slow-form" class="control-form">
+          <label class="field"><span>Processing delay ms</span><input name="ms" type="number" min="0" max="30000" value="400"></label>
+          <div class="buttons"><button type="submit">Make slow</button><button type="button" id="slow-clear">Normal speed</button></div>
+        </form>
+        <form id="poll-form" class="control-form">
+          <label class="field"><span>max.poll.records</span><input name="maxPollRecords" type="number" min="1" max="10000" placeholder="500"></label>
+          <label class="field"><span>max.poll.interval.ms</span><input name="maxPollIntervalMs" type="number" min="1000" max="600000" placeholder="300000"></label>
+          <div class="buttons span-all"><button type="submit">Apply (restarts consumer)</button><button type="button" id="poll-default">Defaults</button></div>
+        </form>
+        <div class="buttons"><button type="button" data-consumer="pause">Pause</button><button type="button" data-consumer="resume">Resume</button></div>
+        <p id="consumer-state" class="control-note"></p>
+      </article>
+    </div>
+  </section>
+
+  <section class="history" aria-labelledby="history-title">
+    <div class="section-head"><div><h2 id="history-title">Recorded runs</h2><p>Every finished experiment, stored in the control plane's lab_run table with its checks and observations.</p></div></div>
+    <div id="runs" class="runs"></div>
+  </section>
+
+  <footer class="page-footer"><span>ZeroShift resilience lab</span><span>Real load · Toxiproxy · Kafka lag from the broker · no simulated metrics</span></footer>
+  <p id="toast" class="toast" role="status" aria-live="polite" hidden></p>
+</main>
+</body>
+</html>
