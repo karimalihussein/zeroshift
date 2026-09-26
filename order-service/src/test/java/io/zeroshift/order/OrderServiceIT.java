@@ -401,6 +401,68 @@ class OrderServiceIT {
     publish(Envelope.of(payload, saga.correlationId(), null));
   }
 
+  @Test
+  @org.junit.jupiter.api.Order(20)
+  void edgeGuardsRefuseOverHttpWithRetryAfterAndTheirOwnCodes(
+      @org.springframework.boot.test.web.server.LocalServerPort int port) throws Exception {
+    var base = "http://localhost:" + port;
+    var http = java.net.http.HttpClient.newHttpClient();
+    var body = "{\"customerId\":\"edge\",\"items\":[{\"sku\":\"SKU-CABLE\",\"quantity\":1}]}";
+    java.util.function.Function<String, java.net.http.HttpRequest> put =
+        settings ->
+            java.net.http.HttpRequest.newBuilder(java.net.URI.create(base + "/lab/edge"))
+                .header("Content-Type", "application/json")
+                .PUT(java.net.http.HttpRequest.BodyPublishers.ofString(settings))
+                .build();
+    var post =
+        java.net.http.HttpRequest.newBuilder(java.net.URI.create(base + "/orders"))
+            .header("Content-Type", "application/json")
+            .POST(java.net.http.HttpRequest.BodyPublishers.ofString(body))
+            .build();
+    var text = java.net.http.HttpResponse.BodyHandlers.ofString();
+    try {
+      assertThat(
+              http.send(
+                      put.apply(
+                          "{\"rateLimit\":true,\"ratePerSecond\":1,\"shedding\":false,"
+                              + "\"maxActiveSagas\":200,\"bulkhead\":false,\"maxConcurrent\":6}"),
+                      text)
+                  .statusCode())
+          .isEqualTo(200);
+      assertThat(http.send(post, text).statusCode()).isEqualTo(202);
+      var limited = http.send(post, text);
+      assertThat(limited.statusCode()).isEqualTo(429);
+      assertThat(limited.headers().firstValue("Retry-After")).hasValue("1");
+      assertThat(limited.body()).contains("\"code\":\"RATE_LIMITED\"");
+
+      // Shedding above one unfinished order: nobody answers these sagas in this test, so each
+      // order placed stays unfinished and the shedder soon refuses the next.
+      http.send(
+          put.apply(
+              "{\"rateLimit\":false,\"ratePerSecond\":1,\"shedding\":true,"
+                  + "\"maxActiveSagas\":1,\"bulkhead\":false,\"maxConcurrent\":6}"),
+          text);
+      await().atMost(Duration.ofSeconds(5)).until(() -> http.send(post, text).statusCode() == 503);
+      var shed = http.send(post, text);
+      assertThat(shed.body()).contains("\"code\":\"LOAD_SHED\"");
+      assertThat(shed.headers().firstValue("Retry-After")).hasValue("2");
+
+      var throughput =
+          http.send(
+              java.net.http.HttpRequest.newBuilder(
+                      java.net.URI.create(base + "/lab/throughput?seconds=300"))
+                  .build(),
+              text);
+      assertThat(throughput.body()).contains("\"completions\"").contains("\"active\"");
+    } finally {
+      http.send(
+          put.apply(
+              "{\"rateLimit\":false,\"ratePerSecond\":20,\"shedding\":false,"
+                  + "\"maxActiveSagas\":200,\"bulkhead\":false,\"maxConcurrent\":6}"),
+          text);
+    }
+  }
+
   private void publish(Envelope envelope) {
     kafka
         .send(envelope.topic(), envelope.orderId().toString(), MessageCodec.encode(envelope))

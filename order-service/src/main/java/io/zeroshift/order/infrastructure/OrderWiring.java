@@ -21,6 +21,11 @@ public class OrderWiring {
   }
 
   @Bean
+  SagaPressure sagaPressure(DSLContext db, MeterRegistry meters) {
+    return new SagaPressure(db, meters);
+  }
+
+  @Bean
   EventStore eventStore(DSLContext db) {
     return new PostgresEventStore(db);
   }
