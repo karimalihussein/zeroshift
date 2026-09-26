@@ -17,6 +17,7 @@ final class Surface {
     commerce(ops);
     platform(ops);
     migration(ops);
+    LabSurface.add(ops);
     return List.copyOf(ops);
   }
 
@@ -492,6 +493,16 @@ final class Surface {
                     field("bufferedCalls", "integer", true, ""),
                     field("failedCalls", "integer", true, ""),
                     field("notPermittedCalls", "long", true, ""),
+                    field(
+                        "policy",
+                        "Settings",
+                        true,
+                        "timeoutMs, retry, maxAttempts, breaker, pauseOnOpen: the live call policy."),
+                    field(
+                        "consumerPauses",
+                        "long",
+                        true,
+                        "How often an open breaker paused the payment consumer."),
                     field("recentCalls", "Call[]", true, "The latest 30 gateway calls.")))
             .idempotency("Safe read.")
             .source(pay)
@@ -674,7 +685,7 @@ final class Surface {
                         "consumers",
                         "Consumer[]",
                         true,
-                        "id, groupId, topics, running, pauseRequested, paused, assignedPartitions."),
+                        "id, groupId, topics, running, pauseRequested, paused, assignedPartitions, configOverrides."),
                     field("faults", "Fault[]", true, "name, mode, remaining, armedAt."),
                     field(
                         "outbox",

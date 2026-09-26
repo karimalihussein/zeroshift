@@ -53,6 +53,46 @@ public final class OrderRepository {
     return steps;
   }
 
+  /**
+   * The order as it was: its history folded from the start, stopping after {@code version} or at
+   * the last event recorded at or before {@code at} (either may be null). Never uses a snapshot, so
+   * the answer depends on the event store alone.
+   */
+  public record Rebuilt(
+      Order state, List<EventStore.Recorded> applied, List<EventStore.Recorded> notYetApplied) {}
+
+  public Rebuilt rebuild(UUID id, Long version, java.time.Instant at) {
+    var history = events.load(id, 0);
+    if (history.isEmpty()) throw new OrderNotFound(id);
+    var order = Order.empty(id);
+    var applied = new ArrayList<EventStore.Recorded>();
+    var later = new ArrayList<EventStore.Recorded>();
+    for (var recorded : history) {
+      boolean inRange =
+          (version == null || recorded.version() <= version)
+              && (at == null || !recorded.recordedAt().isAfter(at));
+      if (inRange && later.isEmpty()) {
+        order = order.apply((OrderEvent) recorded.envelope().payload());
+        applied.add(recorded);
+      } else later.add(recorded);
+    }
+    return new Rebuilt(order, List.copyOf(applied), List.copyOf(later));
+  }
+
+  /** Every stored event of the order, with the state right after it. */
+  public record Moment(EventStore.Recorded event, Order stateAfter) {}
+
+  public List<Moment> history(UUID id) {
+    var moments = new ArrayList<Moment>();
+    var order = Order.empty(id);
+    for (var recorded : events.load(id, 0)) {
+      order = order.apply((OrderEvent) recorded.envelope().payload());
+      moments.add(new Moment(recorded, order));
+    }
+    if (moments.isEmpty()) throw new OrderNotFound(id);
+    return moments;
+  }
+
   public Order load(UUID id) {
     return load(id, true).order();
   }

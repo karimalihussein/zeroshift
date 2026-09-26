@@ -63,3 +63,7 @@ kafka-lab:
 # above. Traces of its runs open in Grafana (Tempo).
 race-lab:
   grafana-url: ${RACE_LAB_GRAFANA:http://localhost:3000}
+# Phase 3 resilience lab (/resilience). The chaos proxy only runs with docker-compose.chaos.yml;
+# blank, the network experiments explain how to start it and the rest of the lab still works.
+resilience-lab:
+  toxiproxy-url: ${TOXIPROXY_URL:}

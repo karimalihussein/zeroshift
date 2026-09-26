@@ -38,6 +38,72 @@ final class Codes {
             500,
             "shared",
             "An unexpected failure. The body does not include the cause."),
+        code(
+            "RATE_LIMITED",
+            429,
+            "order-service",
+            "POST /orders over the edge rate limit of this replica. Retry-After says when to retry."),
+        code(
+            "LOAD_SHED",
+            503,
+            "order-service",
+            "POST /orders refused because too many orders are unfinished. Retry-After says when to retry."),
+        code(
+            "BULKHEAD_FULL",
+            503,
+            "order-service",
+            "POST /orders refused because the replica is already running its maximum concurrent placements."),
+        code("INVALID_GUARD_SETTINGS", 400, "order-service", "An edge guard limit is below 1."),
+        code(
+            "UNKNOWN_RETRY_MODE",
+            400,
+            "payment-service, migration-lab",
+            "A retry mode that is not one of the listed ones."),
+        code(
+            "INVALID_GATEWAY_POLICY",
+            400,
+            "payment-service",
+            "Gateway timeout or attempts outside the allowed range."),
+        code("UNKNOWN_SKU", 404, "inventory-service", "Restock of a SKU that does not exist."),
+        code(
+            "INVALID_LOAD_PROFILE",
+            400,
+            "migration-lab",
+            "A load generator setting outside the lab limits."),
+        code(
+            "UNKNOWN_FAULT",
+            400,
+            "migration-lab",
+            "A chaos fault that is not latency, bandwidth, reset, partition or down."),
+        code(
+            "UNKNOWN_LINK",
+            404,
+            "migration-lab",
+            "A chaos link that is not one of the five proxied connections."),
+        code(
+            "CHAOS_NOT_RUNNING",
+            409,
+            "migration-lab",
+            "Network chaos needs the Toxiproxy overlay, docker-compose.chaos.yml."),
+        code("UNKNOWN_EXPERIMENT", 404, "migration-lab", "No resilience experiment with this id."),
+        code(
+            "EXPERIMENT_RUNNING",
+            409,
+            "migration-lab",
+            "Another resilience experiment is running."),
+        code(
+            "NOT_WAITING",
+            409,
+            "migration-lab",
+            "No resilience experiment is waiting for its next step."),
+        code("NO_EXPERIMENT", 409, "migration-lab", "No resilience experiment has run yet."),
+        code("UNKNOWN_LAB", 404, "migration-lab", "No events-over-time lab with this id."),
+        code("OUT_OF_ORDER", 409, "migration-lab", "A lab step run before the steps before it."),
+        code(
+            "STEP_FAILED",
+            502,
+            "migration-lab",
+            "A lab step failed against the running system; it can be run again."),
         code("ORDER_NOT_FOUND", 404, "order-service", "The order's event stream is empty."),
         code(
             "ORDER_RULE_VIOLATION",

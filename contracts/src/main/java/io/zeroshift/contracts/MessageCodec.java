@@ -24,8 +24,33 @@ public final class MessageCodec {
     return JSON;
   }
 
+  /**
+   * While set, {@link #encode} writes messages at this older schema version where the contract can
+   * be downcast to it, the way the previous deployment's writer did. Unset: current versions.
+   */
+  private static final ScopedValue<Integer> WRITER_VERSION = ScopedValue.newInstance();
+
   public static String encode(Envelope envelope) {
-    return JSON.writeValueAsString(envelope);
+    if (!WRITER_VERSION.isBound() || WRITER_VERSION.get() >= envelope.schemaVersion())
+      return JSON.writeValueAsString(envelope);
+    var contract = Contracts.of(envelope.type());
+    ObjectNode root = JSON.valueToTree(envelope);
+    var payload = (ObjectNode) root.get("payload");
+    int version = envelope.schemaVersion();
+    for (; version > WRITER_VERSION.get() && contract.downcasters().containsKey(version); version--)
+      payload = contract.downcasters().get(version).apply(payload);
+    root.set("payload", payload);
+    root.put("schemaVersion", version);
+    return JSON.writeValueAsString(root);
+  }
+
+  /**
+   * Runs {@code work} as a writer of schema {@code version}: every message it encodes (event store
+   * rows and outbox rows alike) is written at that version when its contract can express it.
+   */
+  public static <T> T writingAs(int version, java.util.concurrent.Callable<T> work)
+      throws Exception {
+    return ScopedValue.where(WRITER_VERSION, version).call(work::call);
   }
 
   public static String encodePayload(Message payload) {

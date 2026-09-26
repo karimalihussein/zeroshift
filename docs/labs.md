@@ -151,3 +151,165 @@ The restarted exactly-once worker uses the same `transactional.id`: `initTransac
 dead one and aborts its open transaction. Static group membership lets it take over the crashed
 worker's partitions at once. Tests: drill `kafka_delivery`;
 `KafkaLabIT.atMostOnceLeavesGapsAtLeastOnceDuplicatesAndTransactionsDoNeither`.
+
+# Phase 3: Failure, load, backpressure and resilience
+
+**http://localhost:8080/resilience.** One page, read top to bottom as a signal chain on a shared
+clock: **traffic → throughput → latency → Kafka lag → retries → errors → pressure → resources**,
+then the breaker and consumer state. Every change (a fault, a mitigation, a heal, a load change) is
+drawn as a line through every row, so cause and effect line up vertically. Hover a second to read
+every row's values at that moment. Design: [ADR 019](decisions/019-resilience-lab.md).
+
+Network experiments need Toxiproxy, which the chaos overlay adds (about 15 MB):
+
+```sh
+docker compose -f docker-compose.yml -f docker-compose.override.yml -f docker-compose.chaos.yml up -d
+```
+
+Without it, the load generator, the backpressure experiments and every lever except network
+chaos still work, and the network experiments say how to start it.
+
+## What is measured, and where from
+
+| Row | Series | Source |
+|---|---|---|
+| Traffic | clients arriving, requests sent, turned away at the cap | the load generator's clients |
+| Throughput | requests OK, orders completed/cancelled, gateway calls | clients; saga table; payment-service meters |
+| Latency | write p50/p95/p99, read p99 (5 s window); order end-to-end p99; outbox → Kafka p95 | clients; `percentile_cont` over the saga table; a group-less consumer comparing each record's Kafka timestamp with its `occurredAt` |
+| Kafka lag | payment, inventory, shipping, order-saga, order-projection | broker end offsets − committed offsets (AdminClient) |
+| Retries | client retries, consumer redeliveries, duplicates skipped, retries withheld by the budget | clients; `zeroshift.consumer.decisions` in each service |
+| Errors | timeouts, refused/reset, 5xx, 429, 503 (shed, bulkhead), dead letters | clients; decisions |
+| Pressure | requests inside order-service, Hikari threads waiting, unfinished orders, rebalances | `/lab/edge`, `/lab/pressure` (Micrometer), saga table |
+| Resources | process CPU per service | `/lab/pressure` |
+| Breaker & consumer | breaker open / half-open, payment consumer paused, a service not answering | `/lab/gateway`, `/lab/state` |
+
+The same meters reach Prometheus: `zeroshift_load_latency_seconds` (histogram), `zeroshift_load_attempts_total`,
+`zeroshift_edge_requests_total`, `zeroshift_saga_active`, `zeroshift_gateway_attempts_total`,
+`zeroshift_gateway_charges_total`, `zeroshift_gateway_consumer_pauses_total`; Grafana's
+*ZeroShift resilience lab* dashboard shows them.
+
+## Levers
+
+- **Load generator:** clients/s (open loop), max waiting clients, reads %, client retry (none,
+  immediate, exponential, exponential + full jitter, jitter + retry budget), attempts, timeout.
+  Start restocks the SKUs it orders (a real inventory delivery).
+- **Network chaos** (Toxiproxy): latency, bandwidth, reset, partition, down, heal, on `order-db`,
+  `payment-db`, `payment-kafka`, `cdc-db`, `payment-gateway`.
+- **Edge guards** on `POST /orders`, per replica: rate limit (429), load shedding above N unfinished
+  orders (503 `LOAD_SHED`), bulkhead of N concurrent placements (503 `BULKHEAD_FULL`), all with
+  `Retry-After`.
+- **Payment → gateway:** gateway healthy / slow (3 s) / down; timeout, retry schedule, attempts,
+  circuit breaker on/off, pause the payment consumer while the breaker is open.
+- **Payment consumer:** processing delay per record, `max.poll.records`, `max.poll.interval.ms`
+  (restarts the listener), pause/resume.
+- **Reset lab:** every link healed, guards off, default gateway policy with a healthy gateway and a
+  closed breaker, no slow consumers, default poll settings, consumer running, load stopped.
+
+## The experiments
+
+Each runs step by step (you press *Next*) or all at once. The Hypothesis step resets the lab,
+waits until the previous run's work has drained, starts the experiment's load and measures a 15 s
+baseline. After Verify the lab is reset and the run stored. Numbers below are from the verification
+runs on the development machine ([verification](verification.md#phase-3-resilience-lab)).
+
+**Slow consumer** (backpressure, Little's law, rate limiting). Payment commands take 700 ms each:
+three consumer threads manage ≈4.3/s against 6/s arriving. The API keeps answering 202 while
+`payment-service` lag climbs ≈1.7 records a second. Rate-limiting intake to 1/s per replica (2/s)
+makes the lag shrink. The waits are kept under the saga's 30 s step timeout on purpose: past it,
+timed-out sagas send refunds to the same slow consumer and the backlog feeds itself.
+
+**max.poll.interval.ms** (rebalance storm, redelivery). With 600 ms per command, `max.poll.records=100`
+and a 6 s `max.poll.interval.ms`, a 20 s pause builds a backlog; the first poll after it hands the
+consumer more work than fits the interval. The consumer is evicted while still working, the group
+rebalances again and again, commits are refused and handled records return (the inbox skips them
+as duplicates). `max.poll.records=5` makes one poll's work fit and the storm stops.
+
+**Slow dependency: timeout, circuit breaker, pause** (timeout, breaker, backpressure into Kafka).
+The gateway answers in 3 s. With a 5 s timeout and no breaker nothing fails, yet gateway calls
+fall to ≈1/s and lag grows. An 800 ms timeout lets the breaker count failures and open; pausing the
+consumer while it is open parks commands in Kafka instead of retrying them into the dead-letter
+topic. Healed, the half-open probes succeed, the breaker closes, the consumer resumes and drains.
+
+**Slow database: bulkhead** (network latency, connection pool, bulkhead). +100 ms on every answer
+from PostgreSQL to order-service while 20 clients/s place and read orders. Placements hold pool
+connections for most of a second; reads queue behind them (read p99 ≈40 ms → 1.2 s). A bulkhead of 4
+concurrent placements per replica refuses the excess fast and read p99 halves (608 ms).
+
+**Database outage: retry storm** (connection loss, retry storm, backoff, jitter, retry budget). The
+order database link goes down while clients retry immediately up to 8 times with a 1 s timeout:
+≈5 requests per client, dozens piled up inside order-service (each holding a thread for Hikari's
+30 s connection timeout). Exponential backoff, full jitter and a retry budget bring it to ≈1.1
+requests per client; after the heal, full success.
+
+**Kafka partition: load shedding** (network partition, Kafka connectivity, async decoupling). The
+payment-service ↔ Kafka link drops every byte both ways. The API stays green (100 % accepted) while
+payment lag passes 100 and unfinished orders pass 120. Shedding above 80 unfinished orders stops
+the growth and answers 503 at once. Healed, the consumer rejoins, drains, and shedding lifts by
+itself.
+
+**Degraded Debezium** (degraded CDC, replication slot, relay delay, load shedding). The WAL stream
+to all four connectors is throttled to 4 KB/s. Outbox → Kafka delay grows by ≈0.85 s every second
+with no error anywhere. Shedding above 40 unfinished orders holds the backlog; shedding stays on
+through recovery (see ADR 019 for the metastable failure that lifting it at once caused). Healed,
+the slots deliver everything they kept: relay delay back under 2 s, no dead letters.
+
+Automated coverage: `python3 scripts/verify_resilience_lab.py` (load and chaos drills plus all
+seven experiments; each must hold every claim and leave the lab reset); unit tests
+`LoadGeneratorTest`, `ExperimentTest`, `EdgeGuardsTest`, `GatewayPolicyTest`, `LabPressureTest`;
+integration tests `ToxiproxyIT` and `OrderServiceIT.edgeGuardsRefuseOverHttpWithRetryAfterAndTheirOwnCodes`.
+
+# Phase 4: Events over time
+
+**http://localhost:8080/history.** Pick an order; its events sit on a time axis, each labelled with
+the schema version it was stored at. Drag the version slider or type an instant: order-service
+folds its event store again up to that point (no snapshot) and the page highlights what changed.
+Click an event to see it as stored next to how today's code reads it (fields added by an upcaster
+are marked). **Replay Kafka from here** asks the broker's time index for the offset of that instant
+on every partition and reads the order's own partition from there, showing each record's offset,
+timestamp and whether it is the same event as in the event store. Design: [ADR 020](decisions/020-events-over-time.md).
+
+Each experiment below runs on the live system in six steps, **History → Inspect → Change /
+rebuild → Replay → Compare → Understand**, and is stored in `lab_run` when complete.
+
+**Replay and time travel.** A finished order's stored events; each as stored and as read; the
+order rebuilt at every version and at an instant between its first two events; the same events
+found on Kafka from the placement time's offset; both histories compared event by event with the
+relay delay of each (150–530 ms here).
+
+**Projection evolution.** Sales per SKU over every order ever placed, built by the control plane
+from order.events with its offsets stored beside its rows. v1 counts at placement: against the
+event store it overcounted every SKU (cancelled orders). v2 counts at shipment: rebuilt from
+offset 0 (30,893 records, 2.9 s) it matched shipped orders' lines read from the event store
+exactly. Three new orders, one over the payment limit, then a catch-up from the stored offsets
+reads only the new records: v1 counts the declined order, v2 does not.
+
+**Schema evolution.** Stored events by type and schema version, and the contract registry
+(versions, upcasters, downcasters). An order placed as the previous release wrote it: OrderPlaced
+stored and published as v1 (payload and `schemaVersion` header), completed by the saga and
+projected with currency USD by another service, all through the v1 → v2 upcaster. Then a release
+not yet rolled out writes OrderPlaced v3 (money as integer cents) to order.events: order-projection
+refuses it on the first delivery and it lands in `order.events.dlt` with
+`OrderPlaced v3 is newer than this consumer understands (v2)` in its headers. Finally four readers
+(v1, deployed v2, v2 without its version check, proposed v3) read a real v1, v2 and v3 record:
+
+| Written by | v1 reader | v2 reader (deployed) | v2 without version check | v3 reader |
+|---|---|---|---|---|
+| v1 (previous release) | ✓ | ✓ upcast | ✓ upcast | ✓ upcast twice |
+| v2 (current) | ✗ newer than it understands | ✓ | ✓ | ✓ upcast |
+| v3 (not rolled out) | ✗ | ✗ newer than it understands | ✗ "unitPrice must not be negative" (misleading) | ✓ |
+
+So a breaking change rolls out readers first, then writers. Contract tests:
+`ContractCompatibilityTest` (frozen v1 and v2 payloads, contiguous upcasters, a previous-release
+writer reproduces the frozen v1 byte for byte, newer versions are refused as malformed so they are
+dead-lettered rather than retried, added fields need no bump) and `SchemaReadersTest`.
+
+**Log compaction.** `lab.order-status` recreated and filled with five real orders' status
+changelogs (one record per status change, keyed by order id) and a tombstone for one of them. Read
+from offset 0: every status is there. After the segment rolls, the log cleaner compacted 19
+records to 6 in 18 s. Read again: one value per key, matching order-service's current status; the
+tombstoned key is gone from the rebuilt table; offsets keep their gaps. `lab.retention-demo`, a
+normal topic with 60 s retention, instead deletes whole segments by age, latest values included.
+
+Automated coverage: `python3 scripts/verify_history_lab.py` (direct time-travel and legacy-v1
+drills against the services, then all four labs with assertions on what each step read back); unit
+tests `ContractCompatibilityTest`, `RebuildTest`, `SchemaReadersTest`.

@@ -29,6 +29,7 @@ public class OrderController {
   private final OperatorRefund refunds;
   private final OrderViews views;
   private final SlowAnswers slowAnswers;
+  private final EdgeGuards guards;
 
   public OrderController(
       PlaceOrder placeOrder,
@@ -39,7 +40,8 @@ public class OrderController {
       PostgresLease lease,
       OperatorRefund refunds,
       OrderViews views,
-      SlowAnswers slowAnswers) {
+      SlowAnswers slowAnswers,
+      EdgeGuards guards) {
     this.placeOrder = placeOrder;
     this.orders = orders;
     this.events = events;
@@ -49,19 +51,23 @@ public class OrderController {
     this.refunds = refunds;
     this.views = views;
     this.slowAnswers = slowAnswers;
+    this.guards = guards;
   }
 
   /**
    * Places an order. With an Idempotency-Key, a retried request gets the first request's answer
-   * (Idempotent-Replayed: true) instead of creating a second order.
+   * (Idempotent-Replayed: true) instead of creating a second order. The edge guards may refuse it
+   * first (429 or 503 with Retry-After) when switched on.
    */
   @PostMapping("/orders")
   public ResponseEntity<OrderViews.OrderAccepted> place(
       @Valid @RequestBody PlaceOrderRequest request,
       @RequestHeader(name = ApiHeaders.IDEMPOTENCY_KEY, required = false) @Size(min = 1, max = 200)
           String idempotencyKey)
-      throws InterruptedException {
-    var placed = placeOrder.place(request.customerId(), request.toItems(), idempotencyKey);
+      throws Exception {
+    var placed =
+        guards.admit(
+            () -> placeOrder.place(request.customerId(), request.toItems(), idempotencyKey));
     slowAnswers.holdIfArmed();
     return ResponseEntity.status(HttpStatus.ACCEPTED)
         .header(ApiHeaders.IDEMPOTENT_REPLAYED, String.valueOf(placed.replayed()))

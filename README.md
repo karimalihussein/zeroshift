@@ -21,6 +21,10 @@ A second lab, on **http://localhost:8080/events**, runs an event-driven order sy
 
 A third lab, on **http://localhost:8080/race**, runs concurrency bugs (overselling, lost updates, double payments, deadlocks, isolation anomalies) as real PostgreSQL transactions and draws each run as a timeline of lanes: which transaction read what, who waited for whose lock, which version was stale, which abort came from PostgreSQL. See [Race condition lab](docs/race-lab.md).
 
+A fourth page, **http://localhost:8080/resilience**, loads the event-driven system with real clients, breaks its network links, slows its consumers and dependencies, and shows traffic → throughput → latency → Kafka lag → retries → errors → recovery on one clock. Seven experiments each state a hypothesis, inject the failure, check the claim against measured samples, apply a mitigation, heal and verify recovery. See [Resilience lab](#resilience-lab-phase-3).
+
+A fifth, **http://localhost:8080/history**, travels through an order's events: rebuild it at any version or instant from the event store, replay order.events from a timestamp by real offsets, rebuild a projection from history, watch old and new event schemas meet old and new readers, and compact a topic. See [Events over time](#events-over-time-phase-4).
+
 ## Quick start
 
 Requires Docker with about 8–10 GB of memory for everything (SQL Server alone needs 2 GB; the event lab and its observability stack about 5 GB).
@@ -73,6 +77,8 @@ OpenTelemetry agent in every JVM ─► collector ─► Tempo · Loki;  Prometh
 | Observability | One trace per order across services and Kafka hops; logs linked by trace id | [014](docs/decisions/014-observability.md) |
 | Typed persistence | Flyway → PostgreSQL → generated jOOQ classes; no hand-built SQL strings | [015](docs/decisions/015-jooq-persistence.md) |
 | Kafka internals (Phase 2) | A separate 3-node KRaft cluster (profile `kafka-lab`): controller quorum, leader failure under load, acks=1 vs acks=all, min.insync.replicas, idempotent retries, unclean election, at-most/at-least/exactly-once with real worker crashes | [017](docs/decisions/017-kafka-lab-cluster.md), [labs](docs/labs.md#phase-2-kafka-internals) |
+| Failure, load, backpressure, resilience (Phase 3) | `/resilience`: open-loop load generator; Toxiproxy latency, bandwidth, reset, partition and outage on five real links (overlay `docker-compose.chaos.yml`); slow consumers and `max.poll.interval.ms` evictions; retry storms, backoff with jitter and a retry budget, timeouts, circuit breaker with consumer pause, bulkhead, rate limiting, load shedding | [019](docs/decisions/019-resilience-lab.md), [labs](docs/labs.md#phase-3-failure-load-backpressure-and-resilience) |
+| Events over time (Phase 4) | `/history`: rebuild an order at any version or instant from the event store; replay order.events from a timestamp by real offsets; a projection rebuilt from history (wrong, fixed, compared with the event store); OrderPlaced v1 written as the previous release did and read everywhere through the upcaster; a v3 event dead-lettered by today's readers; reader × writer matrix; a compacted topic with tombstones | [020](docs/decisions/020-events-over-time.md), [labs](docs/labs.md#phase-4-events-over-time) |
 | HTTP API conventions | Typed records; lists as `{data, meta}`; errors as `application/problem+json` with a stable `code`, request id and trace id; one shared `platform-web` module | [016](docs/decisions/016-http-api-conventions.md) |
 | API-edge idempotency | *Experiments → Client retries*: a timed-out client's retry doubles the order; an `Idempotency-Key` makes it one | [labs](docs/labs.md) |
 | Ordering and partitioning | *Experiments → Ordering*: wrong keys, adding partitions in flight, hot keys; a sequence guard and replay recover | [labs](docs/labs.md) |
@@ -95,6 +101,25 @@ The Kafka internals lab needs its own 3-node cluster, a Compose profile so the e
 docker compose --profile kafka-lab up -d
 python3 scripts/verify_event_lab.py kafka     # its 7 drills
 ```
+
+## Events over time (Phase 4)
+
+**http://localhost:8080/history** needs only the default stack. Select an order, move along its versions or pick an instant, compare each event as stored with how it is read today, and replay order.events from that instant. Four experiments (time travel, projection evolution, schema evolution, log compaction) each run in six steps:
+
+```sh
+python3 scripts/verify_history_lab.py      # 2 direct drills + the 4 experiments
+```
+
+## Resilience lab (Phase 3)
+
+**http://localhost:8080/resilience** works on the default stack: the load generator, the edge guards (rate limiter, load shedder, bulkhead), the gateway policy (timeout, retries, circuit breaker, pause while open), slow consumers and poll settings. Network faults need Toxiproxy, which an overlay adds (about 15 MB) and routes five real connections through:
+
+```sh
+docker compose -f docker-compose.yml -f docker-compose.override.yml -f docker-compose.chaos.yml up -d
+python3 scripts/verify_resilience_lab.py     # load and chaos drills, then all 7 experiments
+```
+
+Each experiment runs step by step or all at once, fails loudly when a claim does not hold, and resets the lab afterwards. Grafana has a matching *ZeroShift resilience lab* dashboard. What each experiment shows and what was measured: [docs/labs.md](docs/labs.md#phase-3-failure-load-backpressure-and-resilience).
 
 OpenSearch is optional, for full-text log search (about 1.5 GB more; OpenSearch Dashboards on :5601):
 
@@ -134,10 +159,11 @@ All Java packages are under `src/main/java/io/zeroshift/`.
 
 - [How consistency is kept](docs/consistency.md): transaction boundaries, the change window, crash recovery and the fence
 - [Live Data Changes](docs/live-changes.md): the interactive CDC experiment and its API
-- [Design decisions](docs/decisions/): change capture, snapshot boundary, batching, checkpointing, cutover, rollback; outbox, idempotency, saga, event sourcing, retries, lease and fencing, observability, jOOQ, HTTP API conventions, the Kafka lab cluster, the race condition lab
+- [Design decisions](docs/decisions/): change capture, snapshot boundary, batching, checkpointing, cutover, rollback; outbox, idempotency, saga, event sourcing, retries, lease and fencing, observability, jOOQ, HTTP API conventions, the Kafka lab cluster, the race condition lab, the resilience lab, events over time
 - [Event lab failure drills](docs/event-lab-drills.md): what each drill breaks and what to watch
-- [Experiments](docs/labs.md): the learning labs (Learn → Trigger → Observe → Break → Understand → Fix → Recover)
+- [Experiments](docs/labs.md): the learning labs (Learn → Trigger → Observe → Break → Understand → Fix → Recover), the Kafka internals labs, the resilience experiments (Hypothesis → Inject → Observe → Explain → Mitigate → Recover → Verify) and the events-over-time experiments (History → Inspect → Change/Rebuild → Replay → Compare → Understand)
 - [Race condition lab](docs/race-lab.md): the ten experiments, the event model, the API and how races are reproduced on real transactions
+
 - [Explaining the migration](docs/interview-notes.md): a talk track and common follow-up questions
 - [Verification](docs/verification.md): what was tested and measured
 

@@ -1,0 +1,7 @@
+[
+  {"name": "order-db", "listen": "0.0.0.0:15432", "upstream": "commerce-postgres:5432", "enabled": true},
+  {"name": "payment-db", "listen": "0.0.0.0:15433", "upstream": "commerce-postgres:5432", "enabled": true},
+  {"name": "payment-kafka", "listen": "0.0.0.0:19095", "upstream": "kafka:9095", "enabled": true},
+  {"name": "cdc-db", "listen": "0.0.0.0:5432", "upstream": "commerce-postgres:5432", "enabled": true},
+  {"name": "payment-gateway", "listen": "0.0.0.0:18091", "upstream": "payment-gateway:8080", "enabled": true}
+]

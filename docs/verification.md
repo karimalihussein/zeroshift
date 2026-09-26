@@ -40,3 +40,74 @@ Run with `BATCH_SIZE=10000` and 2,000,000 customers plus 2,000,000 orders on a l
 | Reset | 68 s |
 
 These are observations from one machine, not performance guarantees.
+
+## Phase 3: resilience lab
+
+Run on 2026-09-26 against the full Compose stack plus the chaos overlay, on Docker Desktop with 8
+CPUs and a 9.7 GB VM shared with the rest of the lab.
+
+**`scripts/verify_resilience_lab.py`**: all 9 drills passed in one run (about 8 minutes). Each
+experiment ran automatically; every claim was decided from measured samples and then the lab's
+reset was checked directly against the services and Toxiproxy. Observed values:
+
+| Drill | Injected | Observed | Mitigation | After |
+|---|---|---|---|---|
+| load | 5 clients/s for 20 s | 101 arrivals; order-service admitted 114 for 100 successes in 114 attempts | — | stop halts arrivals, reset zeroes counters |
+| chaos | order-db +300 ms, then down | a list read 13 ms → 1526 ms; proxy disabled | — | healed, reads fast |
+| slow-consumer | 700 ms per payment command at 6/s | lag 47 and growing, API 100 % accepted | rate limit 1/s per replica: lag 49 → 36 | lag 0, 105 % of arrivals completed |
+| poll-interval | max.poll.records=100, interval 6 s, 20 s backlog | 3 rebalances, lag 62, 3 duplicates skipped | max.poll.records=5: none for 20 s | lag 0, no rebalance for 15 s |
+| gateway-breaker | gateway answers in 3 s | lag 42, 0.9 gateway calls/s, no dead letters | 800 ms timeout, breaker, pause on open: breaker OPEN, consumer paused | breaker CLOSED, lag 5 |
+| bulkhead | order-db +100 ms | read p99 1245 ms, up to 8 threads waiting for a connection | bulkhead 4: 5 refused/s, read p99 608 ms | read p99 176 ms, write p99 162 ms |
+| retry-storm | order-db down, immediate retries ×8 | 5.0 attempts per client, 64 requests in flight | backoff + jitter + budget: 1.07 per client | 117 % succeed (backlog), 1.2 per client, 0 in flight |
+| kafka-partition | payment ↔ Kafka partitioned | lag 102, 123 unfinished (baseline 24), API 100 % accepted | shed above 80: 6.3 shed/s, growth stopped | lag 0, shedding off by itself, 116 % completed |
+| cdc-degraded | Debezium link at 4 KB/s | relay p95 2.7 → 4.5 s in 5 s, API 100 % accepted | shed above 40: growth stopped at 70 | relay p95 380 ms, 0 dead letters, 26 unfinished |
+
+The event-lab drills (`scripts/verify_event_lab.py`, 18/18) also passed against the Phase 3 service
+builds, so the new endpoints and levers left Phase 1 behaviour unchanged.
+
+**Tests.** `mvn spotless:check test` passes for every module (including the new `LoadGeneratorTest`,
+`ExperimentTest`, `EdgeGuardsTest`, `GatewayPolicyTest`, `LabPressureTest`). Integration tests run
+for the changed code: `ToxiproxyIT` 5/5, `OrderServiceIT` 13/13 (with the new edge-guard test),
+`PaymentServiceIT` 5/5. `InventoryServiceIT` could not start in this session: its Kafka Connect
+test container was OOM-killed at VM level twice while the shared stack was running, before any
+test ran. The new restock endpoint it would cover was exercised live by every load drill.
+
+**Resources during the run** (docker stats every 10 s, 41 samples): containers used 7.2 GB on
+average, 7.5 GB at peak. Toxiproxy: 25 MB, 8 % CPU on average. The control plane with the load
+generator and sampler: 400–430 MB (a second instance was used for the run; in the normal stack this
+runs inside `app`), 14 % CPU on average, about 3 % when idle (the sampler stops a minute after the
+page is closed). The busiest containers under the experiments' 3–20 clients/s were Kafka (34 %
+average, 188 % peak), payment-service (140 % peak while working off a backlog) and the order-service
+replicas (up to 98 %). Earlier in the session, with the 3-node kafka-lab cluster also running
+(about 1.5 GB), the VM ran out of memory once: SQL Server was OOM-killed and Tempo later hit its
+own 900 MB limit. Running Phase 3's experiments and the kafka-lab profile at the same time needs
+more than 9.7 GB.
+
+## Phase 4: events over time
+
+Run on 2026-09-26 against the full Compose stack (with the chaos overlay still in place) on the
+same machine.
+
+**`scripts/verify_history_lab.py`**: all 6 drills passed.
+
+| Drill | Observed |
+|---|---|
+| time_travel | all 4 versions of a finished order rebuilt from the event store equal the fold; as of 2000-01-01 the order is NEW, as of its first event PLACED; Kafka's time index gave partition 0 offset 10225 and the same 4 events in order at 10225–10228 |
+| legacy_v1 | OrderPlaced stored as v1 without currency, read as v2 with USD; published as v1 at order.events offset 10097 (payload and `schemaVersion` header); saga COMPLETED; order-query-service projected currency USD |
+| lab_time_travel | six steps; event store and Kafka agree on 4 records; relay delays 136–165 ms |
+| lab_projection | v1 overcounts every SKU (6,326 keyboards, 4,136 mice, 4,063 cables, 2 monitors); v2 rebuilt from 30,927 records in 2.8 s equals shipped lines from the event store exactly; catch-up read only the 10 new records; the declined order counted by v1 only |
+| lab_schema | v1 order stored, published, completed and projected; a v3 event dead-lettered on its first delivery to order.events.dlt with "OrderPlaced v3 is newer than this consumer understands (v2)"; matrix on real records as in [labs](labs.md#phase-4-events-over-time) |
+| lab_compaction | 19 records compacted to 6 eleven seconds after the segment rolled; one value per key, matching order-service; tombstoned key gone; offsets keep their gaps |
+
+**Regression on the Phase 4 service builds** (outbox and event store now record the schema version
+actually written): `scripts/verify_event_lab.py` 18/18 (Phase 1), `scripts/verify_resilience_lab.py`
+9/9 (Phase 3), in the same run. The Phase 2 drills were not run: the kafka-lab cluster was stopped
+to leave memory for this run, and Phase 4 changes nothing it uses.
+
+**Tests.** `mvn spotless:check test` passes for every module, including `ContractCompatibilityTest`
+(6), `RebuildTest` (4) and `SchemaReadersTest` (4); `OrderServiceIT` 13/13 on the new event store
+and outbox code, including the check that the generated jOOQ classes match the migrated schema.
+
+**Resources** (docker stats every 10 s, 75 samples across the three suites): containers used
+7.6 GB on average, 8.0 GB at peak. The control plane peaked at 639 MB (of a 700 MB limit) and
+326 % CPU while rebuilding the projection from 31k records; Kafka at 184 % CPU and 1.1 GB.

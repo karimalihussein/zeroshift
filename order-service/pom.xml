@@ -3,11 +3,14 @@
   <modelVersion>4.0.0</modelVersion>
   <parent><groupId>io.zeroshift</groupId><artifactId>zeroshift-parent</artifactId><version>1.0.0</version></parent>
   <artifactId>order-service</artifactId>
-  <properties><jooq.codegen.skip>false</jooq.codegen.skip><jooq.package>io.zeroshift.order.db</jooq.package></properties>
+  <properties><jooq.codegen.skip>false</jooq.codegen.skip><jooq.package>io.zeroshift.order.db</jooq.package><resilience4j.version>2.4.0</resilience4j.version></properties>
   <name>ZeroShift order service</name><description>Event-sourced orders and the order saga orchestrator</description>
   <dependencies>
     <dependency><groupId>io.zeroshift</groupId><artifactId>platform</artifactId><version>${project.version}</version></dependency>
     <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-validation</artifactId></dependency>
+    <!-- Edge protection for POST /orders: rate limiter and bulkhead (the resilience lab). -->
+    <dependency><groupId>io.github.resilience4j</groupId><artifactId>resilience4j-ratelimiter</artifactId><version>${resilience4j.version}</version></dependency>
+    <dependency><groupId>io.github.resilience4j</groupId><artifactId>resilience4j-bulkhead</artifactId><version>${resilience4j.version}</version></dependency>
     <dependency><groupId>io.zeroshift</groupId><artifactId>platform</artifactId><version>${project.version}</version><type>test-jar</type><scope>test</scope></dependency>
     <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-test</artifactId><scope>test</scope></dependency>
     <dependency><groupId>org.junit.jupiter</groupId><artifactId>junit-jupiter</artifactId><scope>test</scope></dependency>

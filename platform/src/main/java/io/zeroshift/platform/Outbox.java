@@ -32,17 +32,21 @@ public final class Outbox {
     // dual-write problem the outbox exists to prevent.
     if (!TransactionSynchronizationManager.isActualTransactionActive())
       throw new IllegalStateException("Outbox writes must share the state change's transaction");
+    // The version actually written, which an older writer (MessageCodec.writingAs) may lower.
+    var encoded = MessageCodec.encode(envelope);
     db.insertInto(OUTBOX)
         .set(OUTBOX.ID, envelope.eventId())
         .set(OUTBOX.TOPIC, envelope.topic())
         .set(OUTBOX.AGGREGATE_TYPE, "Order") // every message in this lab is about one order
         .set(OUTBOX.AGGREGATE_ID, envelope.orderId().toString())
         .set(OUTBOX.TYPE, envelope.type())
-        .set(OUTBOX.SCHEMA_VERSION, envelope.schemaVersion())
+        .set(
+            OUTBOX.SCHEMA_VERSION,
+            MessageCodec.json().readTree(encoded).path("schemaVersion").asInt())
         .set(OUTBOX.CORRELATION_ID, envelope.correlationId())
         .set(OUTBOX.CAUSATION_ID, envelope.causationId())
         .set(OUTBOX.TRACEPARENT, Traces.traceparent())
-        .set(OUTBOX.PAYLOAD, JSONB.valueOf(MessageCodec.encode(envelope)))
+        .set(OUTBOX.PAYLOAD, JSONB.valueOf(encoded))
         .execute();
     return envelope;
   }

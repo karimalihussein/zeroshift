@@ -12,6 +12,7 @@ import java.util.Optional;
 import java.util.UUID;
 import org.jooq.DSLContext;
 import org.jooq.JSONB;
+import org.jooq.impl.DSL;
 import tools.jackson.core.type.TypeReference;
 
 public final class PostgresStock implements Stock {
@@ -73,6 +74,20 @@ public final class PostgresStock implements Stock {
         .set(r.REASON, reservation.reason())
         .set(r.UPDATED_AT, PostgresClock.NOW)
         .execute();
+  }
+
+  /**
+   * Raises {@code sku}'s on-hand count to at least {@code reserved + available}, as a delivery of
+   * new stock would, bumping the version so a reservation that read the old row retries. Never
+   * lowers stock. Returns whether the SKU exists.
+   */
+  public boolean restock(String sku, int available) {
+    return db.update(STOCK)
+            .set(STOCK.ON_HAND, DSL.greatest(STOCK.ON_HAND, STOCK.RESERVED.plus(available)))
+            .set(STOCK.VERSION, STOCK.VERSION.plus(1))
+            .where(STOCK.SKU.eq(sku))
+            .execute()
+        == 1;
   }
 
   public record Level(
