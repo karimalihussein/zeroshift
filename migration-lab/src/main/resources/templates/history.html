@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ZeroShift — Events over time</title>
+  <link rel="icon" th:href="@{/favicon.svg}">
+  <link rel="stylesheet" th:href="@{/style.css}">
+  <link rel="stylesheet" th:href="@{/history.css}">
+  <script defer th:src="@{/history.js}"></script>
+</head>
+<body th:attr="data-grafana=${grafanaUrl}">
+<!--
+  THESIS: An order is its history. Pick one, drag a cursor along its events, and watch its state
+  being folded from the event store; the same instant finds the same events on Kafka by real offsets.
+  OWN-WORLD: the ZeroShift control plane (DESIGN.md): cool grey canvas, white panels, ink #172033,
+  blue for the chosen moment, green applied, slate not yet happened, violet upcast (read differently
+  than stored).
+-->
+<main class="shell history-shell">
+  <header class="topbar">
+    <a class="brand" href="/" aria-label="ZeroShift home"><span class="brand-mark"><span></span><span></span><span></span></span><span><strong>ZeroShift</strong><small>Distributed systems control plane</small></span></a>
+    <nav class="lab-nav" aria-label="Labs"><a href="/">Migration</a><a href="/events">Event-driven</a><a href="/resilience">Resilience</a><a href="/history" aria-current="page">Events over time</a></nav>
+    <div class="topbar-status"><span id="connection" class="connection" role="status"><i></i> Connecting</span><span class="environment">Local lab</span></div>
+  </header>
+
+  <section class="travel" aria-labelledby="travel-title">
+    <div class="section-head">
+      <div>
+        <h1 id="travel-title">Event history and time travel</h1>
+        <p>Nothing about an order is stored except its events. Choose a version or an instant: the state is folded again from order-service's event store, and the same instant is looked up in Kafka's time index to replay order.events from real offsets.</p>
+      </div>
+    </div>
+    <div class="travel-layout">
+      <aside class="orders" aria-label="Orders">
+        <form id="order-search" class="order-search"><label class="sr-only" for="order-id">Order id</label><input id="order-id" placeholder="Order id or customer" autocomplete="off"><button type="submit">Open</button></form>
+        <ol id="order-list" class="order-list"></ol>
+      </aside>
+      <div class="order-pane">
+        <div id="order-head" class="order-head"></div>
+        <div id="timeline" class="timeline" aria-label="Events of the order"></div>
+        <div class="cursor-controls">
+          <label class="field grow"><span>Version <b id="version-label">—</b></span><input id="version" type="range" min="0" max="0" step="1" value="0" aria-describedby="version-label"></label>
+          <label class="field"><span>Or as of an instant (UTC, ms)</span><input id="at" type="text" placeholder="2026-09-26T10:42:07.123Z" spellcheck="false"></label>
+          <div class="buttons"><button type="button" id="rebuild-at">Rebuild at instant</button><button type="button" id="kafka-replay" class="primary-action">Replay Kafka from here</button></div>
+        </div>
+        <div class="panes">
+          <article class="pane" aria-labelledby="state-title"><header><h2 id="state-title">Rebuilt state</h2><span id="state-note" class="chip">—</span></header><dl id="state" class="state"></dl></article>
+          <article class="pane" aria-labelledby="inspect-title"><header><h2 id="inspect-title">Event as stored · as read today</h2><span id="inspect-note" class="chip">select an event</span></header><div id="inspector" class="inspector"></div></article>
+        </div>
+        <article class="pane kafka" aria-labelledby="kafka-title"><header><h2 id="kafka-title">order.events from this instant</h2><span id="kafka-note" class="chip">not read yet</span></header><div id="kafka" class="kafka-view"></div></article>
+      </div>
+    </div>
+  </section>
+
+  <section class="labs" aria-labelledby="labs-title">
+    <div class="section-head">
+      <div>
+        <h2 id="labs-title">Experiments</h2>
+        <p>Each runs on the live system in six steps: History → Inspect → Change / rebuild → Replay → Compare → Understand. Every value shown is what the step read back from the event store, Kafka or a service.</p>
+      </div>
+      <div id="lab-tabs" class="lab-tabs" role="tablist" aria-label="Experiments"></div>
+    </div>
+    <div id="lab" class="lab" role="tabpanel"></div>
+  </section>
+
+  <section class="history-runs" aria-labelledby="runs-title">
+    <div class="section-head"><div><h2 id="runs-title">Recorded runs</h2><p>Every completed experiment, stored in lab_run with every step's result.</p></div></div>
+    <div id="runs" class="runs"></div>
+  </section>
+
+  <footer class="page-footer"><span>ZeroShift events over time</span><span>Event store · Kafka offsets and time index · no simulated history</span></footer>
+  <p id="toast" class="toast" role="status" aria-live="polite" hidden></p>
+</main>
+</body>
+</html>

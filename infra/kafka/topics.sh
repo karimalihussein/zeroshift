@@ -30,4 +30,8 @@ done
 # Deliberately short retention, to watch old segments get deleted and offsets become unreachable.
 # Only closed segments are deleted, hence the small segment.ms.
 create lab.retention-demo 1 retention.ms=60000 segment.ms=10000
+# Compacted: the latest status per order id survives forever, older ones are cleaned away, and a
+# null value (tombstone) deletes a key. The events-over-time lab recreates it with these settings.
+create lab.order-status 1 cleanup.policy=compact segment.ms=5000 min.cleanable.dirty.ratio=0.01 \
+  min.compaction.lag.ms=0 max.compaction.lag.ms=10000 delete.retention.ms=20000
 $topics --bootstrap-server "$bootstrap" --list

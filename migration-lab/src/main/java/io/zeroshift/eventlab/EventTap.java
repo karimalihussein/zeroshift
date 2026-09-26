@@ -136,7 +136,7 @@ public class EventTap implements SmartLifecycle {
    * Header values are bytes. Debezium's are text; Spring's retry and dead-letter headers are
    * big-endian numbers (4-byte partitions and attempts, 8-byte offsets and timestamps).
    */
-  static String header(byte[] value) {
+  public static String header(byte[] value) {
     if (value == null) return null;
     var text = new String(value, StandardCharsets.UTF_8);
     if (text.chars().noneMatch(c -> c < 0x20 && c != '\t' && c != '\n' && c != '\r' || c == 0xFFFD))
