@@ -26,6 +26,11 @@ public class OrderWiring {
   }
 
   @Bean
+  ShippedSales shippedSales(DSLContext db) {
+    return new ShippedSales(db);
+  }
+
+  @Bean
   EventStore eventStore(DSLContext db) {
     return new PostgresEventStore(db);
   }
