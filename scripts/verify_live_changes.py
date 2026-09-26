@@ -89,7 +89,7 @@ def main():
     wait_for(lambda d: d['migration']['stage'] == 'READY', 'Ready')
     assert action('validate')['message'] == 'Validation passed'
     action('cutover')
-    wait_for(lambda d: d['migration']['stage'] == 'COMPLETE', 'cutover')
+    wait_for(lambda d: d['migration']['stage'] == 'COMPLETED', 'cutover')
     evidence = dict(verifiedAt=time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
                     midpoint=midpoint['migration'], updatePending=pending, updateApplied=updated,
                     insertPending=insert_pending, insertApplied=insert_applied,

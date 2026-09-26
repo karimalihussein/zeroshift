@@ -149,6 +149,13 @@ services:
       SHIPPING_SERVICE_URL: http://shipping-service:8080
       ORDER_QUERY_SERVICE_URL: http://order-query-service:8080
       RACE_LAB_GRAFANA: ${RACE_LAB_GRAFANA:-http://localhost:3000}
+      # Phase 5 failure lab: only reachable when the failure-lab profile runs; the lab says so otherwise.
+      FAILURE_LAB_POSTGRES: jdbc:postgresql://failure-postgres:5432/failure_lab
+      FAILURE_LAB_SECURE_KAFKA: kafka-secure:9092
+      SECURE_KAFKA_ADMIN_PASSWORD: ${SECURE_KAFKA_ADMIN_PASSWORD:-admin-local}
+      SECURE_KAFKA_PAYMENTS_PASSWORD: ${SECURE_KAFKA_PAYMENTS_PASSWORD:-payments-local}
+      SECURE_KAFKA_FULFILMENT_PASSWORD: ${SECURE_KAFKA_FULFILMENT_PASSWORD:-fulfilment-local}
+      SECURE_KAFKA_CHECKOUT_PASSWORD: ${SECURE_KAFKA_CHECKOUT_PASSWORD:-checkout-local}
       # OpenTelemetry agent for the race lab's spans only: a run, each request's transaction and
       # each statement with its lock waits, exported to the collector (Tempo). Every automatic
       # instrumentation stays off, so the migration lab's polling never floods Tempo with traces.
@@ -327,6 +334,83 @@ services:
     image: wiremock/wiremock:3.13.1
     volumes: ['./infra/payment-gateway/mappings:/home/wiremock/mappings:ro']
     ports: ['127.0.0.1:${PAYMENT_GATEWAY_PORT:-18090}:8080']
+  # ---- Phase 5 failure lab (profile failure-lab) ----------------------------------------------
+  # Dangerous experiments run on their own infrastructure, never on the services' databases or
+  # the event lab's broker settings: an in-doubt prepared transaction holds locks (and the vacuum
+  # horizon) until someone resolves it, and the disaster-recovery lab drops and restores databases.
+  # max_prepared_transactions > 0 enables PREPARE TRANSACTION (PostgreSQL's default is 0).
+  failure-postgres:
+    image: postgres:17-alpine
+    profiles: [failure-lab]
+    command: ['postgres', '-c', 'max_prepared_transactions=16']
+    environment:
+      POSTGRES_DB: failure_lab
+      POSTGRES_USER: ${POSTGRES_USER:-zeroshift}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-zeroshift_local}
+    ports: ['127.0.0.1:${FAILURE_POSTGRES_PORT:-55435}:5432']
+    volumes: [failure-postgres-data:/var/lib/postgresql/data]
+    mem_limit: 256m
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U $${POSTGRES_USER} -d failure_lab']
+      interval: 5s
+      timeout: 5s
+      retries: 20
+  # The trust-boundary lab's protected broker: every connection authenticates (SASL/PLAIN), the
+  # StandardAuthorizer denies whatever no ACL allows, and only admin is a super user. The event
+  # lab's broker above stays PLAINTEXT without an authorizer: it is the lab's "before".
+  # PLAIN over an unencrypted listener sends passwords in clear on the Docker network; production
+  # would use SASL_SSL (or mTLS). Passwords are local demo values, like every other credential here.
+  kafka-secure:
+    image: apache/kafka:4.1.0
+    profiles: [failure-lab]
+    hostname: kafka-secure
+    mem_limit: 512m
+    environment:
+      CLUSTER_ID: zs-secure-kraft-000000001
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: SECURE://:9092,CONTROLLER://:9093
+      KAFKA_ADVERTISED_LISTENERS: SECURE://kafka-secure:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: SECURE:SASL_PLAINTEXT,CONTROLLER:SASL_PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: SECURE
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka-secure:9093
+      KAFKA_SASL_ENABLED_MECHANISMS: PLAIN
+      KAFKA_SASL_MECHANISM_INTER_BROKER_PROTOCOL: PLAIN
+      KAFKA_SASL_MECHANISM_CONTROLLER_PROTOCOL: PLAIN
+      # One principal per service: admin (the operator and the broker itself), payments (writes
+      # payment events), fulfilment (reads them), checkout (writes orders only).
+      KAFKA_LISTENER_NAME_SECURE_PLAIN_SASL_JAAS_CONFIG: >-
+        org.apache.kafka.common.security.plain.PlainLoginModule required
+        username="admin" password="${SECURE_KAFKA_ADMIN_PASSWORD:-admin-local}"
+        user_admin="${SECURE_KAFKA_ADMIN_PASSWORD:-admin-local}"
+        user_payments="${SECURE_KAFKA_PAYMENTS_PASSWORD:-payments-local}"
+        user_fulfilment="${SECURE_KAFKA_FULFILMENT_PASSWORD:-fulfilment-local}"
+        user_checkout="${SECURE_KAFKA_CHECKOUT_PASSWORD:-checkout-local}";
+      KAFKA_LISTENER_NAME_CONTROLLER_PLAIN_SASL_JAAS_CONFIG: >-
+        org.apache.kafka.common.security.plain.PlainLoginModule required
+        username="admin" password="${SECURE_KAFKA_ADMIN_PASSWORD:-admin-local}"
+        user_admin="${SECURE_KAFKA_ADMIN_PASSWORD:-admin-local}";
+      KAFKA_AUTHORIZER_CLASS_NAME: org.apache.kafka.metadata.authorizer.StandardAuthorizer
+      KAFKA_SUPER_USERS: User:admin
+      KAFKA_ALLOW_EVERYONE_IF_NO_ACL_FOUND: 'false'
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_OFFSETS_TOPIC_NUM_PARTITIONS: 3
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_TRANSACTION_STATE_LOG_NUM_PARTITIONS: 3
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: 'false'
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_LOG_INDEX_SIZE_MAX_BYTES: 1048576
+      KAFKA_HEAP_OPTS: -Xms128m -Xmx256m
+    volumes: [kafka-secure-data:/var/lib/kafka/data]
+    healthcheck:
+      # The broker's own port needs credentials; an open TCP port is enough to call it up.
+      test: ['CMD-SHELL', 'bash -c "echo > /dev/tcp/localhost/9092" 2>/dev/null']
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 15s
   # ---- Observability ---------------------------------------------------------------------------
   # Agents → collector → Tempo (traces) and Loki (logs); Prometheus scrapes Micrometer and receives
   # Tempo's service-graph metrics; Grafana shows all three, linked by trace id.
@@ -396,5 +480,7 @@ volumes:
   commerce-postgres-data:
   kafka-data:
   tempo-data:
+  failure-postgres-data:
+  kafka-secure-data:
   loki-data:
   prometheus-data:

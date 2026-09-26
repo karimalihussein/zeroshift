@@ -1,5 +1,5 @@
 {
-  "verifiedAt": "2026-09-24T03:43:18Z",
+  "verifiedAt": "2026-09-26T11:17:38Z",
   "midpoint": {
     "stage": "SNAPSHOT",
     "status": "RUNNING",
@@ -8,7 +8,7 @@
     "lastId": 2500,
     "customerBound": 10000,
     "orderBound": 10000,
-    "version": 7335,
+    "version": 96,
     "copied": 12500,
     "expected": 20000,
     "batches": 25,
@@ -16,9 +16,15 @@
     "traffic": false,
     "validation": "Not checked",
     "error": "",
-    "checkpoint": "2026-09-24T03:43:07.651503Z",
-    "rowsPerSecond": 57100.98091491074,
-    "cdcPaused": false
+    "checkpoint": "2026-09-26T11:17:23.094664Z",
+    "rowsPerSecond": 42306.10582872373,
+    "cdcPaused": false,
+    "validationPassed": false,
+    "startedAt": "2026-09-26T11:17:14.350939Z",
+    "cutoverStartedAt": null,
+    "completedAt": null,
+    "completedRows": 0,
+    "completedCdcPending": null
   },
   "updatePending": {
     "orderId": 100,
@@ -37,7 +43,7 @@
       "status": "PENDING"
     },
     "experiment": {
-      "id": 10,
+      "id": 6,
       "orderId": 100,
       "operation": "UPDATE",
       "before": {
@@ -59,7 +65,7 @@
       {
         "table": "ORDERS",
         "recordId": 100,
-        "version": 7337,
+        "version": 98,
         "operation": "UPDATE",
         "pending": true
       }
@@ -86,7 +92,7 @@
       "status": "COMPLETED"
     },
     "experiment": {
-      "id": 10,
+      "id": 6,
       "orderId": 100,
       "operation": "UPDATE",
       "before": {
@@ -108,14 +114,14 @@
       {
         "table": "ORDERS",
         "recordId": 100,
-        "version": 7337,
+        "version": 98,
         "operation": "UPDATE",
         "pending": false
       }
     ],
     "inSync": true,
     "cdcPaused": false,
-    "ordersCopiedThrough": 5000,
+    "ordersCopiedThrough": 5500,
     "message": "IN SYNC"
   },
   "insertPending": {
@@ -129,7 +135,7 @@
     },
     "target": null,
     "experiment": {
-      "id": 11,
+      "id": 7,
       "orderId": 10001,
       "operation": "INSERT",
       "before": null,
@@ -145,21 +151,21 @@
       {
         "table": "ORDERS",
         "recordId": 10001,
-        "version": 7338,
+        "version": 99,
         "operation": "INSERT",
         "pending": true
       },
       {
         "table": "CUSTOMERS",
         "recordId": 10001,
-        "version": 7338,
+        "version": 99,
         "operation": "INSERT",
         "pending": true
       }
     ],
     "inSync": false,
     "cdcPaused": true,
-    "ordersCopiedThrough": 5000,
+    "ordersCopiedThrough": 5500,
     "message": "CDC pending"
   },
   "insertApplied": {
@@ -179,7 +185,7 @@
       "status": "PENDING"
     },
     "experiment": {
-      "id": 11,
+      "id": 7,
       "orderId": 10001,
       "operation": "INSERT",
       "before": null,
@@ -195,21 +201,21 @@
       {
         "table": "ORDERS",
         "recordId": 10001,
-        "version": 7338,
+        "version": 99,
         "operation": "INSERT",
         "pending": false
       },
       {
         "table": "CUSTOMERS",
         "recordId": 10001,
-        "version": 7338,
+        "version": 99,
         "operation": "INSERT",
         "pending": false
       }
     ],
     "inSync": true,
     "cdcPaused": false,
-    "ordersCopiedThrough": 5500,
+    "ordersCopiedThrough": 6500,
     "message": "IN SYNC"
   },
   "deletePending": {
@@ -223,7 +229,7 @@
       "status": "PENDING"
     },
     "experiment": {
-      "id": 12,
+      "id": 8,
       "orderId": 10001,
       "operation": "DELETE",
       "before": {
@@ -239,21 +245,21 @@
       {
         "table": "ORDERS",
         "recordId": 10001,
-        "version": 7339,
+        "version": 100,
         "operation": "DELETE",
         "pending": true
       },
       {
         "table": "CUSTOMERS",
         "recordId": 10001,
-        "version": 7338,
+        "version": 99,
         "operation": "INSERT",
         "pending": false
       }
     ],
     "inSync": false,
     "cdcPaused": true,
-    "ordersCopiedThrough": 5500,
+    "ordersCopiedThrough": 6500,
     "message": "CDC pending"
   },
   "deleteApplied": {
@@ -261,7 +267,7 @@
     "source": null,
     "target": null,
     "experiment": {
-      "id": 12,
+      "id": 8,
       "orderId": 10001,
       "operation": "DELETE",
       "before": {
@@ -277,33 +283,33 @@
       {
         "table": "ORDERS",
         "recordId": 10001,
-        "version": 7339,
+        "version": 100,
         "operation": "DELETE",
         "pending": false
       },
       {
         "table": "CUSTOMERS",
         "recordId": 10001,
-        "version": 7338,
+        "version": 99,
         "operation": "INSERT",
         "pending": false
       }
     ],
     "inSync": true,
     "cdcPaused": false,
-    "ordersCopiedThrough": 6000,
+    "ordersCopiedThrough": 7500,
     "message": "IN SYNC — absent in both databases"
   },
   "final": {
     "migration": {
-      "stage": "COMPLETE",
-      "status": "COMPLETE",
+      "stage": "COMPLETED",
+      "status": "SUCCESS",
       "primary": "POSTGRESQL",
       "table": "ORDERS",
       "lastId": 10000,
       "customerBound": 10000,
       "orderBound": 10000,
-      "version": 7339,
+      "version": 100,
       "copied": 20000,
       "expected": 20000,
       "batches": 40,
@@ -311,9 +317,15 @@
       "traffic": false,
       "validation": "Passed: counts + SHA-256 + constraints",
       "error": "",
-      "checkpoint": "2026-09-24T03:43:18.148712Z",
+      "checkpoint": "2026-09-26T11:17:37.887961Z",
       "rowsPerSecond": 0.0,
-      "cdcPaused": false
+      "cdcPaused": false,
+      "validationPassed": true,
+      "startedAt": "2026-09-26T11:17:14.350939Z",
+      "cutoverStartedAt": "2026-09-26T11:17:37.080794Z",
+      "completedAt": "2026-09-26T11:17:37.887961Z",
+      "completedRows": 20001,
+      "completedCdcPending": 0
     },
     "progress": 100.0,
     "source": {
@@ -324,70 +336,416 @@
       "customers": 10001,
       "orders": 10000
     },
-    "pending": null,
+    "pending": 0,
     "logs": [
-      "2026-09-24T03:43:18.148712Z  Final fence, catch-up, validation and sequence sync: 86 ms",
-      "2026-09-24T03:43:18.148712Z  Cutover complete. All routed writes now go to PostgreSQL; SQL Server remains fenced.",
-      "2026-09-24T03:43:18.148712Z  Validation passed: orders · source 10000 / target 10000 · SHA-256 matches",
-      "2026-09-24T03:43:18.148712Z  Validation passed: customers · source 10001 / target 10001 · SHA-256 matches",
-      "2026-09-24T03:43:18.041073Z  Cutover requested; routed traffic waits while source writes are fenced",
-      "2026-09-24T03:43:18.041073Z  Stage: FREEZE",
-      "2026-09-24T03:43:17.868733Z  Validation passed: orders · source 10000 / target 10000 · SHA-256 matches",
-      "2026-09-24T03:43:17.868733Z  Validation passed: customers · source 10001 / target 10001 · SHA-256 matches",
-      "2026-09-24T03:43:17.570448Z  Stage: READY",
-      "2026-09-24T03:43:17.570448Z  Built index and deferred constraints; synchronized sequences; ANALYZE complete",
-      "2026-09-24T03:43:17.219478Z  Stage: PREPARE",
-      "2026-09-24T03:43:16.956393Z  Stage: CATCH_UP",
-      "2026-09-24T03:43:16.566021Z  COPY 500 orders; committed key 10000",
-      "2026-09-24T03:43:16.235846Z  COPY 500 orders; committed key 9500",
-      "2026-09-24T03:43:15.918816Z  COPY 500 orders; committed key 9000",
-      "2026-09-24T03:43:15.592939Z  COPY 500 orders; committed key 8500",
-      "2026-09-24T03:43:15.271184Z  COPY 500 orders; committed key 8000",
-      "2026-09-24T03:43:14.930743Z  COPY 500 orders; committed key 7500",
-      "2026-09-24T03:43:14.600785Z  COPY 500 orders; committed key 7000",
-      "2026-09-24T03:43:14.279699Z  COPY 500 orders; committed key 6500",
-      "2026-09-24T03:43:13.928540Z  Applied 1 net changes through version 7335",
-      "2026-09-24T03:43:13.928540Z  COPY 500 orders; committed key 6000",
-      "2026-09-24T03:43:13.851130Z  CDC replay resumed",
-      "2026-09-24T03:43:13.797134Z  RUNNING",
-      "2026-09-24T03:43:13.209413Z  Backend ready; durable state loaded",
-      "2026-09-24T03:43:13.209413Z  PAUSED: Backend restarted. Resume from the durable checkpoint.",
-      "2026-09-24T03:43:09.554442Z  Manual DELETE Order #10001 in SQL Server",
-      "2026-09-24T03:43:09.547220Z  CDC replay paused; snapshot and source writes continue",
-      "2026-09-24T03:43:09.448401Z  Applied 2 net changes through version 7335",
-      "2026-09-24T03:43:09.448401Z  COPY 500 orders; committed key 5500",
-      "2026-09-24T03:43:09.432240Z  CDC replay resumed",
-      "2026-09-24T03:43:09.349864Z  Manual INSERT Order #10001 in SQL Server",
-      "2026-09-24T03:43:09.336239Z  CDC replay paused; snapshot and source writes continue",
-      "2026-09-24T03:43:09.122091Z  Applied 1 net changes through version 7335",
-      "2026-09-24T03:43:09.122091Z  COPY 500 orders; committed key 5000",
-      "2026-09-24T03:43:09.047386Z  CDC replay resumed",
-      "2026-09-24T03:43:08.858712Z  COPY 500 orders; committed key 4500",
-      "2026-09-24T03:43:08.594403Z  COPY 500 orders; committed key 4000",
-      "2026-09-24T03:43:08.549881Z  Manual UPDATE Order #100 in SQL Server",
-      "2026-09-24T03:43:08.499431Z  CDC replay paused; snapshot and source writes continue",
-      "2026-09-24T03:43:08.246902Z  Applied 1 net changes through version 7335",
-      "2026-09-24T03:43:08.246902Z  COPY 500 orders; committed key 3500",
-      "2026-09-24T03:43:07.995506Z  Manual UPDATE Order #100 in SQL Server",
-      "2026-09-24T03:43:07.946162Z  COPY 500 orders; committed key 3000",
-      "2026-09-24T03:43:07.651503Z  COPY 500 orders; committed key 2500",
-      "2026-09-24T03:43:07.353037Z  COPY 500 orders; committed key 2000",
-      "2026-09-24T03:43:07.035191Z  COPY 500 orders; committed key 1500",
-      "2026-09-24T03:43:06.727451Z  COPY 500 orders; committed key 1000",
-      "2026-09-24T03:43:06.417031Z  COPY 500 orders; committed key 500",
-      "2026-09-24T03:43:06.129690Z  Snapshot: orders",
-      "2026-09-24T03:43:05.831090Z  COPY 500 customers; committed key 10000",
-      "2026-09-24T03:43:05.510536Z  COPY 500 customers; committed key 9500",
-      "2026-09-24T03:43:05.211336Z  COPY 500 customers; committed key 9000",
-      "2026-09-24T03:43:04.902604Z  COPY 500 customers; committed key 8500",
-      "2026-09-24T03:43:04.607713Z  COPY 500 customers; committed key 8000",
-      "2026-09-24T03:43:04.308017Z  COPY 500 customers; committed key 7500",
-      "2026-09-24T03:43:04.010676Z  COPY 500 customers; committed key 7000",
-      "2026-09-24T03:43:03.714950Z  COPY 500 customers; committed key 6500",
-      "2026-09-24T03:43:03.407664Z  COPY 500 customers; committed key 6000",
-      "2026-09-24T03:43:03.108810Z  COPY 500 customers; committed key 5500"
+      "[11:17:37] Write freeze through successful cutover: 807 ms",
+      "[11:17:37] Reverse capture active: PostgreSQL writes are recorded for a lossless rollback",
+      "[11:17:37] Migration completed successfully. PostgreSQL is now Primary; SQL Server remains fenced.",
+      "[11:17:37] Stage: CUTOVER",
+      "[11:17:37] Validation passed: orders · source 10000 / target 10000 · SHA-256 matches",
+      "[11:17:37] Validation passed: customers · source 10001 / target 10001 · SHA-256 matches",
+      "[11:17:37] Stage: VALIDATION",
+      "[11:17:37] Cutover requested; routed traffic waits while source writes are fenced",
+      "[11:17:36] Validation passed: orders · source 10000 / target 10000 · SHA-256 matches",
+      "[11:17:36] Validation passed: customers · source 10001 / target 10001 · SHA-256 matches",
+      "[11:17:36] Stage: READY",
+      "[11:17:36] Built index and deferred constraints; synchronized sequences; ANALYZE complete",
+      "[11:17:36] Stage: PREPARE",
+      "[11:17:35] Stage: CATCH_UP",
+      "[11:17:35] COPY 500 orders; committed key 10000",
+      "[11:17:35] COPY 500 orders; committed key 9500",
+      "[11:17:34] COPY 500 orders; committed key 9000",
+      "[11:17:34] COPY 500 orders; committed key 8500",
+      "[11:17:33] COPY 500 orders; committed key 8000",
+      "[11:17:33] Applied 1 net changes through version 96",
+      "[11:17:33] COPY 500 orders; committed key 7500",
+      "[11:17:33] CDC replay resumed",
+      "[11:17:33] RUNNING",
+      "[11:17:32] PAUSED: Backend restarted. Resume from the durable checkpoint.",
+      "[11:17:26] COPY 500 orders; committed key 7000",
+      "[11:17:25] Manual DELETE Order #10001 in SQL Server",
+      "[11:17:25] CDC replay paused; snapshot and source writes continue",
+      "[11:17:25] Applied 2 net changes through version 96",
+      "[11:17:25] COPY 500 orders; committed key 6500",
+      "[11:17:25] CDC replay resumed",
+      "[11:17:25] COPY 500 orders; committed key 6000",
+      "[11:17:25] Manual INSERT Order #10001 in SQL Server",
+      "[11:17:25] CDC replay paused; snapshot and source writes continue",
+      "[11:17:25] Applied 1 net changes through version 96",
+      "[11:17:25] COPY 500 orders; committed key 5500",
+      "[11:17:24] CDC replay resumed",
+      "[11:17:24] COPY 500 orders; committed key 5000",
+      "[11:17:24] COPY 500 orders; committed key 4500",
+      "[11:17:24] COPY 500 orders; committed key 4000",
+      "[11:17:24] Manual UPDATE Order #100 in SQL Server",
+      "[11:17:24] CDC replay paused; snapshot and source writes continue",
+      "[11:17:23] Applied 1 net changes through version 96",
+      "[11:17:23] COPY 500 orders; committed key 3500",
+      "[11:17:23] Manual UPDATE Order #100 in SQL Server",
+      "[11:17:23] COPY 500 orders; committed key 3000",
+      "[11:17:23] COPY 500 orders; committed key 2500",
+      "[11:17:22] COPY 500 orders; committed key 2000",
+      "[11:17:22] COPY 500 orders; committed key 1500",
+      "[11:17:22] COPY 500 orders; committed key 1000",
+      "[11:17:21] COPY 500 orders; committed key 500",
+      "[11:17:21] Snapshot: orders",
+      "[11:17:21] COPY 500 customers; committed key 10000",
+      "[11:17:20] COPY 500 customers; committed key 9500",
+      "[11:17:20] COPY 500 customers; committed key 9000",
+      "[11:17:20] COPY 500 customers; committed key 8500",
+      "[11:17:19] COPY 500 customers; committed key 8000",
+      "[11:17:19] COPY 500 customers; committed key 7500",
+      "[11:17:19] COPY 500 customers; committed key 7000",
+      "[11:17:18] COPY 500 customers; committed key 6500",
+      "[11:17:18] COPY 500 customers; committed key 6000"
     ],
+    "traffic": {
+      "running": false,
+      "target": "POSTGRESQL",
+      "total": 0,
+      "inserts": 0,
+      "updates": 0,
+      "deletes": 0,
+      "reads": 0,
+      "errors": 0,
+      "sqlServerOperations": 0,
+      "postgresOperations": 0,
+      "operationsPerSecond": 0.0
+    },
     "captureError": "",
-    "seedRows": 10000
+    "seedRows": 10000,
+    "migrationStartAllowed": false,
+    "completion": {
+      "successful": true,
+      "validationPassed": true,
+      "validation": "Passed: counts + SHA-256 + constraints",
+      "primary": "POSTGRESQL",
+      "cdcPending": 0,
+      "cdcApplied": 5,
+      "totalMigratedRows": 20001,
+      "startedAt": "2026-09-26T11:17:14.350939Z",
+      "completedAt": "2026-09-26T11:17:37.887961Z",
+      "durationMillis": 23537,
+      "rowsPerSecond": 849.7684496749798,
+      "writeFreezeMillis": 807
+    },
+    "rollback": {
+      "available": true,
+      "inProgress": false,
+      "abortable": false,
+      "completed": false,
+      "progress": 0.0,
+      "pending": 0,
+      "applied": 0,
+      "conflicts": 0,
+      "validation": "Not checked",
+      "validationPassed": false,
+      "durationMillis": null,
+      "freezeMillis": null,
+      "verifiedRows": 0,
+      "dataLost": null
+    },
+    "events": [
+      {
+        "id": 401,
+        "at": "2026-09-26T11:17:37.887961Z",
+        "message": "Write freeze through successful cutover: 807 ms"
+      },
+      {
+        "id": 400,
+        "at": "2026-09-26T11:17:37.887961Z",
+        "message": "Reverse capture active: PostgreSQL writes are recorded for a lossless rollback"
+      },
+      {
+        "id": 399,
+        "at": "2026-09-26T11:17:37.887961Z",
+        "message": "Migration completed successfully. PostgreSQL is now Primary; SQL Server remains fenced."
+      },
+      {
+        "id": 398,
+        "at": "2026-09-26T11:17:37.454786Z",
+        "message": "Stage: CUTOVER"
+      },
+      {
+        "id": 397,
+        "at": "2026-09-26T11:17:37.454786Z",
+        "message": "Validation passed: orders · source 10000 / target 10000 · SHA-256 matches"
+      },
+      {
+        "id": 396,
+        "at": "2026-09-26T11:17:37.454786Z",
+        "message": "Validation passed: customers · source 10001 / target 10001 · SHA-256 matches"
+      },
+      {
+        "id": 395,
+        "at": "2026-09-26T11:17:37.138555Z",
+        "message": "Stage: VALIDATION"
+      },
+      {
+        "id": 394,
+        "at": "2026-09-26T11:17:37.080794Z",
+        "message": "Cutover requested; routed traffic waits while source writes are fenced"
+      },
+      {
+        "id": 393,
+        "at": "2026-09-26T11:17:36.837508Z",
+        "message": "Validation passed: orders · source 10000 / target 10000 · SHA-256 matches"
+      },
+      {
+        "id": 392,
+        "at": "2026-09-26T11:17:36.837508Z",
+        "message": "Validation passed: customers · source 10001 / target 10001 · SHA-256 matches"
+      },
+      {
+        "id": 391,
+        "at": "2026-09-26T11:17:36.535160Z",
+        "message": "Stage: READY"
+      },
+      {
+        "id": 390,
+        "at": "2026-09-26T11:17:36.535160Z",
+        "message": "Built index and deferred constraints; synchronized sequences; ANALYZE complete"
+      },
+      {
+        "id": 389,
+        "at": "2026-09-26T11:17:36.123444Z",
+        "message": "Stage: PREPARE"
+      },
+      {
+        "id": 388,
+        "at": "2026-09-26T11:17:35.856135Z",
+        "message": "Stage: CATCH_UP"
+      },
+      {
+        "id": 387,
+        "at": "2026-09-26T11:17:35.467101Z",
+        "message": "COPY 500 orders; committed key 10000"
+      },
+      {
+        "id": 386,
+        "at": "2026-09-26T11:17:35.033745Z",
+        "message": "COPY 500 orders; committed key 9500"
+      },
+      {
+        "id": 385,
+        "at": "2026-09-26T11:17:34.580298Z",
+        "message": "COPY 500 orders; committed key 9000"
+      },
+      {
+        "id": 384,
+        "at": "2026-09-26T11:17:34.182773Z",
+        "message": "COPY 500 orders; committed key 8500"
+      },
+      {
+        "id": 383,
+        "at": "2026-09-26T11:17:33.756215Z",
+        "message": "COPY 500 orders; committed key 8000"
+      },
+      {
+        "id": 382,
+        "at": "2026-09-26T11:17:33.201233Z",
+        "message": "Applied 1 net changes through version 96"
+      },
+      {
+        "id": 381,
+        "at": "2026-09-26T11:17:33.201233Z",
+        "message": "COPY 500 orders; committed key 7500"
+      },
+      {
+        "id": 380,
+        "at": "2026-09-26T11:17:33.125254Z",
+        "message": "CDC replay resumed"
+      },
+      {
+        "id": 379,
+        "at": "2026-09-26T11:17:33.058255Z",
+        "message": "RUNNING"
+      },
+      {
+        "id": 378,
+        "at": "2026-09-26T11:17:32.244375Z",
+        "message": "PAUSED: Backend restarted. Resume from the durable checkpoint."
+      },
+      {
+        "id": 377,
+        "at": "2026-09-26T11:17:26.071693Z",
+        "message": "COPY 500 orders; committed key 7000"
+      },
+      {
+        "id": 376,
+        "at": "2026-09-26T11:17:25.977762Z",
+        "message": "Manual DELETE Order #10001 in SQL Server"
+      },
+      {
+        "id": 375,
+        "at": "2026-09-26T11:17:25.972229Z",
+        "message": "CDC replay paused; snapshot and source writes continue"
+      },
+      {
+        "id": 374,
+        "at": "2026-09-26T11:17:25.625225Z",
+        "message": "Applied 2 net changes through version 96"
+      },
+      {
+        "id": 373,
+        "at": "2026-09-26T11:17:25.625225Z",
+        "message": "COPY 500 orders; committed key 6500"
+      },
+      {
+        "id": 372,
+        "at": "2026-09-26T11:17:25.365754Z",
+        "message": "CDC replay resumed"
+      },
+      {
+        "id": 371,
+        "at": "2026-09-26T11:17:25.353870Z",
+        "message": "COPY 500 orders; committed key 6000"
+      },
+      {
+        "id": 370,
+        "at": "2026-09-26T11:17:25.285957Z",
+        "message": "Manual INSERT Order #10001 in SQL Server"
+      },
+      {
+        "id": 369,
+        "at": "2026-09-26T11:17:25.269228Z",
+        "message": "CDC replay paused; snapshot and source writes continue"
+      },
+      {
+        "id": 368,
+        "at": "2026-09-26T11:17:25.009601Z",
+        "message": "Applied 1 net changes through version 96"
+      },
+      {
+        "id": 367,
+        "at": "2026-09-26T11:17:25.009601Z",
+        "message": "COPY 500 orders; committed key 5500"
+      },
+      {
+        "id": 366,
+        "at": "2026-09-26T11:17:24.870401Z",
+        "message": "CDC replay resumed"
+      },
+      {
+        "id": 365,
+        "at": "2026-09-26T11:17:24.741558Z",
+        "message": "COPY 500 orders; committed key 5000"
+      },
+      {
+        "id": 364,
+        "at": "2026-09-26T11:17:24.470519Z",
+        "message": "COPY 500 orders; committed key 4500"
+      },
+      {
+        "id": 363,
+        "at": "2026-09-26T11:17:24.195527Z",
+        "message": "COPY 500 orders; committed key 4000"
+      },
+      {
+        "id": 362,
+        "at": "2026-09-26T11:17:24.127452Z",
+        "message": "Manual UPDATE Order #100 in SQL Server"
+      },
+      {
+        "id": 361,
+        "at": "2026-09-26T11:17:24.061847Z",
+        "message": "CDC replay paused; snapshot and source writes continue"
+      },
+      {
+        "id": 360,
+        "at": "2026-09-26T11:17:23.787048Z",
+        "message": "Applied 1 net changes through version 96"
+      },
+      {
+        "id": 359,
+        "at": "2026-09-26T11:17:23.787048Z",
+        "message": "COPY 500 orders; committed key 3500"
+      },
+      {
+        "id": 358,
+        "at": "2026-09-26T11:17:23.639781Z",
+        "message": "Manual UPDATE Order #100 in SQL Server"
+      },
+      {
+        "id": 357,
+        "at": "2026-09-26T11:17:23.457153Z",
+        "message": "COPY 500 orders; committed key 3000"
+      },
+      {
+        "id": 356,
+        "at": "2026-09-26T11:17:23.094664Z",
+        "message": "COPY 500 orders; committed key 2500"
+      },
+      {
+        "id": 355,
+        "at": "2026-09-26T11:17:22.769344Z",
+        "message": "COPY 500 orders; committed key 2000"
+      },
+      {
+        "id": 354,
+        "at": "2026-09-26T11:17:22.447612Z",
+        "message": "COPY 500 orders; committed key 1500"
+      },
+      {
+        "id": 353,
+        "at": "2026-09-26T11:17:22.131368Z",
+        "message": "COPY 500 orders; committed key 1000"
+      },
+      {
+        "id": 352,
+        "at": "2026-09-26T11:17:21.809657Z",
+        "message": "COPY 500 orders; committed key 500"
+      },
+      {
+        "id": 351,
+        "at": "2026-09-26T11:17:21.466029Z",
+        "message": "Snapshot: orders"
+      },
+      {
+        "id": 350,
+        "at": "2026-09-26T11:17:21.140286Z",
+        "message": "COPY 500 customers; committed key 10000"
+      },
+      {
+        "id": 349,
+        "at": "2026-09-26T11:17:20.812810Z",
+        "message": "COPY 500 customers; committed key 9500"
+      },
+      {
+        "id": 348,
+        "at": "2026-09-26T11:17:20.444965Z",
+        "message": "COPY 500 customers; committed key 9000"
+      },
+      {
+        "id": 347,
+        "at": "2026-09-26T11:17:20.103181Z",
+        "message": "COPY 500 customers; committed key 8500"
+      },
+      {
+        "id": 346,
+        "at": "2026-09-26T11:17:19.739190Z",
+        "message": "COPY 500 customers; committed key 8000"
+      },
+      {
+        "id": 345,
+        "at": "2026-09-26T11:17:19.417680Z",
+        "message": "COPY 500 customers; committed key 7500"
+      },
+      {
+        "id": 344,
+        "at": "2026-09-26T11:17:19.099804Z",
+        "message": "COPY 500 customers; committed key 7000"
+      },
+      {
+        "id": 343,
+        "at": "2026-09-26T11:17:18.772766Z",
+        "message": "COPY 500 customers; committed key 6500"
+      },
+      {
+        "id": 342,
+        "at": "2026-09-26T11:17:18.427592Z",
+        "message": "COPY 500 customers; committed key 6000"
+      }
+    ]
   }
 }

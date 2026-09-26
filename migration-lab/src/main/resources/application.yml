@@ -67,3 +67,15 @@ race-lab:
 # blank, the network experiments explain how to start it and the rest of the lab still works.
 resilience-lab:
   toxiproxy-url: ${TOXIPROXY_URL:}
+# Phase 5 failure lab (/failures, Compose profile failure-lab): its own PostgreSQL (prepared
+# transactions enabled) and a SASL + ACL broker. Blank from the host: the lab reports how to start it.
+failure-lab:
+  postgres-url: ${FAILURE_LAB_POSTGRES:}
+  postgres-user: ${POSTGRES_USER:zeroshift}
+  postgres-password: ${POSTGRES_PASSWORD:zeroshift_local}
+  secure-kafka: ${FAILURE_LAB_SECURE_KAFKA:}
+  passwords:
+    admin: ${SECURE_KAFKA_ADMIN_PASSWORD:admin-local}
+    payments: ${SECURE_KAFKA_PAYMENTS_PASSWORD:payments-local}
+    fulfilment: ${SECURE_KAFKA_FULFILMENT_PASSWORD:fulfilment-local}
+    checkout: ${SECURE_KAFKA_CHECKOUT_PASSWORD:checkout-local}

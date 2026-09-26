@@ -97,7 +97,9 @@ public final class PortalCatalog {
               dlt ? List.of() : Events.consumers(declared.name()),
               declared.name().equals("shipping.carrier-scans")
                   ? "tracking number, event id, or hub-AMS"
-                  : declared.name().equals("lab.retention-demo") ? "lab key" : "orderId",
+                  : declared.name().equals("lab.retention-demo")
+                      ? "lab key"
+                      : declared.name().equals("lab.dr.payments") ? "account id" : "orderId",
               dlt ? null : declared.name() + ".dlt",
               types,
               dlt
@@ -146,6 +148,10 @@ public final class PortalCatalog {
       return "Separate from shipping commands so the ordering lab can add partitions and recreate it.";
     if (topic.equals("lab.retention-demo"))
       return "Short retention and a small segment.ms so closed segments disappear while you watch.";
+    if (topic.equals("lab.dr.payments"))
+      return "The failure lab's disaster-recovery log: kept forever, because a restored database replays from it.";
+    if (topic.equals("lab.trust.payments"))
+      return "The failure lab's unauthenticated payment events, where a forged event gets in. Its protected twin lives on kafka-secure.";
     return "Commands and participant events are kept for 7 days.";
   }
 

@@ -1,11 +1,42 @@
 # Race condition lab
 
-**http://localhost:8080/race** runs concurrency bugs as real PostgreSQL transactions and draws each
-run as a timeline: one lane per request, the database's committed state beneath, and the moments
-that matter marked on the timeline itself. Every mark is an event the backend recorded from what
-PostgreSQL returned. Nothing is animated or simulated in the browser.
+**http://localhost:8080/race** runs concurrency bugs as real PostgreSQL transactions, then replays
+each run as swimlanes: one lane per request, the database's committed state beneath, and the moments
+that matter marked on the lanes. Every mark is an event the backend recorded from what PostgreSQL
+returned; the browser never invents a step, a value, a lock or a timing.
 
-Each experiment follows **Learn → Configure → Run → Observe → Explain → Fix → Run again → Compare**.
+## The page
+
+Top to bottom:
+
+1. **Experiment header.** A dropdown switches between the ten experiments. The header also shows the
+   question and the invariant, and *About* holds the story and the strategy's SQL.
+2. **Controls.** One sticky line: strategy, isolation, the starting value, requests, delay and
+   *Run experiment*. Interleaving, retries and *Reset lab data* are under *Advanced*.
+3. **Execution (the hero).** While the run is in flight, the lanes show the latest event per request.
+   Once every transaction has finished, the recorded events replay in order, on one clock for every
+   lane.
+   - Pills mark each step, coloured by what it is: read (blue), write (ink), commit (green),
+     waiting (amber) and violation, rollback or conflict (red).
+   - A lock wait is an amber band with an arrow to the transaction holding the lock.
+   - *Both transactions read stock = 1* brackets the shared read, and a red line marks where the race
+     occurs.
+   - The database panel shows the committed values as the engine read them after each transaction
+     (`reservations 0 → 1 → 2`), plus writes not committed yet.
+   - Controls: play/pause, step (← →), replay, speed (0.5× / 1× / 2×) and a scrubber.
+   - Spacing follows event order so short steps stay readable. The ruler and the inspector show the
+     real elapsed time.
+4. **Result.** The verdict, expected vs actual, final state and each request's fate. It appears when
+   the replay reaches the end, or on *Skip to result*.
+5. **Why.** The explanation's key steps, numbered; each opens its event. *View technical execution*
+   holds the full step list and every recorded event.
+6. **Fix.** For a violated run, *Run with Atomic update* (or another fixing strategy) replays the same
+   race with the fix. Both runs then play side by side.
+7. **Compare.** Two runs on one shared time scale with synchronised playback, then correctness,
+   lock waits, conflicts and latency side by side. *Change runs* picks any two finished runs.
+8. **Inspector.** Click any pill for its transaction id, request id, thread, instance, pid,
+   isolation, timestamp, duration, SQL, values, row versions, lock requested/acquired/wait and trace
+   id.
 
 ## What a run is
 
@@ -103,7 +134,7 @@ In the UI, the run header's *Trace* button and every event's inspector open the 
   - `infrastructure/postgres`: JDBC sessions, the run repository and schema.
   - `web`: the controller, DTOs, the SSE stream and the error advice.
 - **Page and assets:** `migration-lab/src/main/resources/templates/race.html`, `static/race-lab.js`
-  and `static/race-lab.css`.
+  (model, shared time scale, swimlane renderer and replay player) and `static/race-lab.css`.
 - **Data:** schema `race_lab` in the control plane's PostgreSQL, with its own Flyway history
   (`flyway_race_lab_history`) and its own connection pool (28 connections, so 20 racing
   transactions never starve the control plane). Each run seeds its own rows, tagged with its id.

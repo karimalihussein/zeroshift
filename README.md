@@ -25,6 +25,8 @@ A fourth page, **http://localhost:8080/resilience**, loads the event-driven syst
 
 A fifth, **http://localhost:8080/history**, travels through an order's events: rebuild it at any version or instant from the event store, replay order.events from a timestamp by real offsets, rebuild a projection from history, watch old and new event schemas meet old and new readers, and compact a topic. See [Events over time](#events-over-time-phase-4).
 
+A sixth, **http://localhost:8080/failures**, runs four failures no retry fixes, each as one comparison in five stages (Naive design → Failure → Observable consequence → Correct design → Recovery): two-phase commit versus a saga when the coordinator process is SIGKILLed, isolation anomalies under every strategy, a database restored behind Kafka's offsets, and a forged event against an authenticated, ACL-protected broker. See [Failure lab](#failure-lab-phase-5).
+
 ## Quick start
 
 Requires Docker with about 8–10 GB of memory for everything (SQL Server alone needs 2 GB; the event lab and its observability stack about 5 GB).
@@ -80,6 +82,7 @@ OpenTelemetry agent in every JVM ─► collector ─► Tempo · Loki;  Prometh
 | Kafka internals (Phase 2) | A separate 3-node KRaft cluster (profile `kafka-lab`): controller quorum, leader failure under load, acks=1 vs acks=all, min.insync.replicas, idempotent retries, unclean election, at-most/at-least/exactly-once with real worker crashes | [017](docs/decisions/017-kafka-lab-cluster.md), [labs](docs/labs.md#phase-2-kafka-internals) |
 | Failure, load, backpressure, resilience (Phase 3) | `/resilience`: open-loop load generator; Toxiproxy latency, bandwidth, reset, partition and outage on five real links (overlay `docker-compose.chaos.yml`); slow consumers and `max.poll.interval.ms` evictions; retry storms, backoff with jitter and a retry budget, timeouts, circuit breaker with consumer pause, bulkhead, rate limiting, load shedding | [019](docs/decisions/019-resilience-lab.md), [labs](docs/labs.md#phase-3-failure-load-backpressure-and-resilience) |
 | Events over time (Phase 4) | `/history`: rebuild an order at any version or instant from the event store; replay order.events from a timestamp by real offsets; a projection rebuilt from history (wrong, fixed, compared with the event store); OrderPlaced v1 written as the previous release did and read everywhere through the upcaster; a v3 event dead-lettered by today's readers; reader × writer matrix; a compacted topic with tombstones | [020](docs/decisions/020-events-over-time.md), [labs](docs/labs.md#phase-4-events-over-time) |
+| Advanced failures (Phase 5) | `/failures` on isolated infrastructure (profile `failure-lab`): PostgreSQL `PREPARE TRANSACTION` across payments and inventory with the coordinator SIGKILLed after PREPARE (in-doubt transactions, session-less locks, blocked work, VACUUM held back, manual recovery from the coordinator log) versus a saga compensated by a new coordinator; lost update and write skew under READ COMMITTED, REPEATABLE READ, optimistic locking and SERIALIZABLE with and without retry; backup → more Kafka events → restore: the offset gap, RPO, RTO, replay with idempotency; a forged event on a PLAINTEXT broker versus SASL + ACLs with least-privilege principals | [022](docs/decisions/022-failure-lab.md), [labs](docs/labs.md#phase-5-advanced-distributed-systems-failures) |
 | HTTP API conventions | Typed records; lists as `{data, meta}`; errors as `application/problem+json` with a stable `code`, request id and trace id; one shared `platform-web` module | [016](docs/decisions/016-http-api-conventions.md) |
 | API-edge idempotency | *Experiments → Client retries*: a timed-out client's retry doubles the order; an `Idempotency-Key` makes it one | [labs](docs/labs.md) |
 | Ordering and partitioning | *Experiments → Ordering*: wrong keys, adding partitions in flight, hot keys; a sequence guard and replay recover | [labs](docs/labs.md) |
@@ -102,6 +105,17 @@ The Kafka internals lab needs its own 3-node cluster, a Compose profile so the e
 docker compose --profile kafka-lab up -d
 python3 scripts/verify_event_lab.py kafka     # its 7 drills
 ```
+
+## Failure lab (Phase 5)
+
+**http://localhost:8080/failures** needs its own infrastructure, a Compose profile so nothing dangerous touches the services' data (about 0.5 GB more): `failure-postgres` (PostgreSQL with `max_prepared_transactions = 16`) and `kafka-secure` (SASL/PLAIN on every listener, `StandardAuthorizer`, deny by default).
+
+```sh
+docker compose --profile failure-lab up -d
+python3 scripts/verify_failure_lab.py      # the four experiments, manual 2PC recovery, errors, traces, resets
+```
+
+Each experiment's stages run one at a time; a stage counts only when every claim it checked against what it measured holds, and the page shows the claims, the measurements and a naive-versus-correct table built from them. The inspector below shows the live state (prepared transactions with COMMIT/ROLLBACK PREPARED buttons, locks with no session, waiting sessions, coordinator and saga logs, Kafka offsets against database positions, RPO and RTO, ACLs and every broker decision). **Reset experiment** recreates only that experiment's own databases and topics.
 
 ## Events over time (Phase 4)
 
@@ -162,9 +176,9 @@ All Java packages are under `src/main/java/io/zeroshift/`.
 
 - [How consistency is kept](docs/consistency.md): transaction boundaries, the change window, crash recovery and the fence
 - [Live Data Changes](docs/live-changes.md): the interactive CDC experiment and its API
-- [Design decisions](docs/decisions/): change capture, snapshot boundary, batching, checkpointing, cutover, rollback; outbox, idempotency, saga, event sourcing, retries, lease and fencing, observability, jOOQ, HTTP API conventions, the Kafka lab cluster, the race condition lab, the resilience lab, events over time, the commerce model
+- [Design decisions](docs/decisions/): change capture, snapshot boundary, batching, checkpointing, cutover, rollback; outbox, idempotency, saga, event sourcing, retries, lease and fencing, observability, jOOQ, HTTP API conventions, the Kafka lab cluster, the race condition lab, the resilience lab, events over time, the commerce model, the failure lab
 - [Event lab failure drills](docs/event-lab-drills.md): what each drill breaks and what to watch
-- [Experiments](docs/labs.md): the learning labs (Learn → Trigger → Observe → Break → Understand → Fix → Recover), the Kafka internals labs, the resilience experiments (Hypothesis → Inject → Observe → Explain → Mitigate → Recover → Verify) and the events-over-time experiments (History → Inspect → Change/Rebuild → Replay → Compare → Understand)
+- [Experiments](docs/labs.md): the learning labs (Learn → Trigger → Observe → Break → Understand → Fix → Recover), the Kafka internals labs, the resilience experiments (Hypothesis → Inject → Observe → Explain → Mitigate → Recover → Verify) the events-over-time experiments (History → Inspect → Change/Rebuild → Replay → Compare → Understand) and the failure lab (Naive design → Failure → Observable consequence → Correct design → Recovery)
 - [Race condition lab](docs/race-lab.md): the ten experiments, the event model, the API and how races are reproduced on real transactions
 
 - [Explaining the migration](docs/interview-notes.md): a talk track and common follow-up questions
@@ -250,4 +264,5 @@ ZeroShift is an educational lab for one two-table application. It is not a gener
 - **Single instance:** the migration app runs as one instance and owns recovery; there is no leader election. (The event lab's `order-service` does run two replicas, coordinated by a lease.)
 - **Event lab on one broker:** partitions, offsets, consumer groups and rebalancing are real, but with a single Kafka broker there is no replication, so broker failover is out of scope.
 - **Rollback is one-way back:** after a rollback PostgreSQL is a fenced, validated copy as of the switch; forward replication does not resume ([ADR 007](docs/decisions/007-reverse-sync-rollback.md)). Conflicting SQL Server writes are reported, not reconciled.
+- **Failure lab security is lab-grade:** `kafka-secure` authenticates with SASL/PLAIN over an unencrypted listener (passwords cross the Docker network in clear; production would use SASL_SSL or mTLS), and records are not signed ([ADR 022](docs/decisions/022-failure-lab.md)).
 - **Local use only:** the app has no authentication, ports bind to loopback, and the credentials in `.env.example` are local demo values. SQL Server Developer edition is licensed for development and testing only.

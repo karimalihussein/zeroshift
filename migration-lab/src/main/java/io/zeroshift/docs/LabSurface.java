@@ -435,5 +435,113 @@ final class LabSurface {
             .response(200, "The resulting state.", null)
             .source("migration-lab/src/main/java/io/zeroshift/history/HistoryController.java")
             .done("lab-get-history-runs"));
+    ops.add(
+        Op.view("migration-lab", "GET", "/failures")
+            .group("Labs")
+            .title("Failure lab page")
+            .summary("The advanced distributed-systems failure lab.")
+            .source("migration-lab/src/main/java/io/zeroshift/failures/FailureController.java")
+            .done("failures-get-page"));
+    ops.add(
+        Op.api("migration-lab", "migration-lab", "GET", "/api/failures/status")
+            .group("Failure lab")
+            .title("Failure lab infrastructure")
+            .summary(
+                "Whether failure-postgres, the event lab's Kafka and kafka-secure answer, as they answered.")
+            .response(200, "The resulting state.", null)
+            .source("migration-lab/src/main/java/io/zeroshift/failures/FailureController.java")
+            .done("lab-get-failures-status"));
+    ops.add(
+        Op.api("migration-lab", "migration-lab", "GET", "/api/failures/labs")
+            .group("Failure lab")
+            .title("Failure labs")
+            .summary("The four experiments, their five stages, requirements and current run.")
+            .response(200, "The resulting state.", null)
+            .source("migration-lab/src/main/java/io/zeroshift/failures/FailureController.java")
+            .done("lab-get-failures-labs"));
+    ops.add(
+        Op.api("migration-lab", "migration-lab", "POST", "/api/failures/labs/{id}/stages/{n}")
+            .group("Failure lab")
+            .title("Run a failure-lab stage")
+            .summary(
+                "Runs stage n (0 starts over); stages run in order and count only when every claim holds.")
+            .response(200, "The resulting state.", null)
+            .error(404, "UNKNOWN_FAILURE_LAB", "No such lab.")
+            .error(409, "STAGE_OUT_OF_ORDER", "Not the next stage.")
+            .error(409, "FAILURE_LAB_BUSY", "A stage or action of this lab is running.")
+            .error(
+                502,
+                "STAGE_FAILED",
+                "The stage failed or a claim did not hold; it can be run again.")
+            .source("migration-lab/src/main/java/io/zeroshift/failures/FailureController.java")
+            .done("lab-post-failures-stage"));
+    ops.add(
+        Op.api("migration-lab", "migration-lab", "GET", "/api/failures/labs/{id}/state")
+            .group("Failure lab")
+            .title("Failure-lab inspector")
+            .summary("What the lab's databases, brokers and coordinator processes hold right now.")
+            .response(200, "The resulting state.", null)
+            .error(404, "UNKNOWN_FAILURE_LAB", "No such lab.")
+            .error(503, "FAILURE_LAB_UNAVAILABLE", "The failure-lab profile is not running.")
+            .source("migration-lab/src/main/java/io/zeroshift/failures/FailureController.java")
+            .done("lab-get-failures-state"));
+    ops.add(
+        Op.api("migration-lab", "migration-lab", "POST", "/api/failures/labs/{id}/reset")
+            .group("Failure lab")
+            .title("Reset a failure lab")
+            .summary("Recreates the lab's own databases and topics; touches nothing else.")
+            .response(200, "The resulting state.", null)
+            .error(404, "UNKNOWN_FAILURE_LAB", "No such lab.")
+            .error(409, "FAILURE_LAB_BUSY", "A stage or action of this lab is running.")
+            .error(503, "FAILURE_LAB_UNAVAILABLE", "The failure-lab profile is not running.")
+            .source("migration-lab/src/main/java/io/zeroshift/failures/FailureController.java")
+            .done("lab-post-failures-reset"));
+    ops.add(
+        Op.api("migration-lab", "migration-lab", "POST", "/api/failures/two-phase/in-doubt")
+            .group("Failure lab")
+            .title("Leave a 2PC transaction in doubt")
+            .summary(
+                "Starts a 2PC checkout and SIGKILLs its coordinator at crashAt (after-prepare or after-decision).")
+            .response(200, "The resulting state.", null)
+            .error(400, "INVALID_FAILURE_ACTION", "Not one of this lab's transactions or actions.")
+            .error(409, "FAILURE_LAB_BUSY", "A stage or action of this lab is running.")
+            .error(503, "FAILURE_LAB_UNAVAILABLE", "The failure-lab profile is not running.")
+            .source("migration-lab/src/main/java/io/zeroshift/failures/FailureController.java")
+            .done("lab-post-failures-in-doubt"));
+    ops.add(
+        Op.api(
+                "migration-lab",
+                "migration-lab",
+                "POST",
+                "/api/failures/two-phase/prepared/{gid}/{action}")
+            .group("Failure lab")
+            .title("Resolve a prepared transaction by hand")
+            .summary(
+                "COMMIT PREPARED or ROLLBACK PREPARED one in-doubt branch; action is commit or rollback.")
+            .response(200, "The resulting state.", null)
+            .error(400, "INVALID_FAILURE_ACTION", "Not one of this lab's transactions or actions.")
+            .error(409, "FAILURE_LAB_BUSY", "A stage or action of this lab is running.")
+            .error(503, "FAILURE_LAB_UNAVAILABLE", "The failure-lab profile is not running.")
+            .source("migration-lab/src/main/java/io/zeroshift/failures/FailureController.java")
+            .done("lab-post-failures-resolve"));
+    ops.add(
+        Op.api("migration-lab", "migration-lab", "POST", "/api/failures/two-phase/recover")
+            .group("Failure lab")
+            .title("Recover in-doubt transactions")
+            .summary(
+                "Resolves every in-doubt branch as the coordinator log says: finish a logged COMMIT, otherwise presume abort.")
+            .response(200, "The resulting state.", null)
+            .error(409, "FAILURE_LAB_BUSY", "A stage or action of this lab is running.")
+            .error(503, "FAILURE_LAB_UNAVAILABLE", "The failure-lab profile is not running.")
+            .source("migration-lab/src/main/java/io/zeroshift/failures/FailureController.java")
+            .done("lab-post-failures-recover"));
+    ops.add(
+        Op.api("migration-lab", "migration-lab", "GET", "/api/failures/runs")
+            .group("Failure lab")
+            .title("Recorded failure-lab runs")
+            .summary("Completed labs from lab_run.")
+            .response(200, "The resulting state.", null)
+            .source("migration-lab/src/main/java/io/zeroshift/failures/FailureController.java")
+            .done("lab-get-failures-runs"));
   }
 }

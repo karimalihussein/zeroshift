@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ZeroShift — Failure lab</title>
+  <link rel="icon" th:href="@{/favicon.svg}">
+  <link rel="stylesheet" th:href="@{/style.css}">
+  <link rel="stylesheet" th:href="@{/failures.css}">
+  <script defer th:src="@{/failures.js}"></script>
+</head>
+<body th:attr="data-grafana=${grafanaUrl}">
+<!--
+  THESIS: Every experiment is one comparison told in five stages: Naive design → Failure →
+  Observable consequence → Correct design → Recovery. Each stage acts on real infrastructure and
+  shows what it measured, with the claims it checked; the naive and correct columns fill in as
+  the stages run. The inspector beneath shows what the databases and brokers hold right now.
+  OWN-WORLD: the ZeroShift control plane (DESIGN.md): red for the naive design's damage, green for
+  the correct design, amber for in-doubt or waiting, blue for the next action.
+-->
+<main class="shell failures-shell">
+  <header class="topbar">
+    <a class="brand" href="/" aria-label="ZeroShift home"><span class="brand-mark"><span></span><span></span><span></span></span><span><strong>ZeroShift</strong><small>Distributed systems control plane</small></span></a>
+    <nav class="lab-nav" aria-label="Labs"><a href="/">Migration</a><a href="/events">Event-driven</a><a href="/race">Race conditions</a><a href="/resilience">Resilience</a><a href="/history">Events over time</a><a href="/failures" aria-current="page">Failures</a><a href="/docs">Docs</a></nav>
+    <div class="topbar-status"><span id="connection" class="connection" role="status"><i></i> Connecting</span><span class="environment">Local lab</span></div>
+  </header>
+
+  <section class="intro" aria-labelledby="intro-title">
+    <div class="section-head">
+      <div>
+        <h1 id="intro-title">Advanced failure lab</h1>
+        <p>Four failures that no retry fixes, each run twice: once with the design that looks reasonable, once with the design that survives. The dangerous parts run on their own PostgreSQL and their own Kafka broker, never on the services' data. Nothing here is simulated in the browser: every number is what a stage read back.</p>
+      </div>
+      <div id="infra" class="infra" aria-label="Lab infrastructure"></div>
+    </div>
+    <p id="infra-hint" class="infra-hint" hidden>Start the lab's infrastructure with <code>docker compose --profile failure-lab up -d</code> (about 0.5 GB: failure-postgres and kafka-secure).</p>
+  </section>
+
+  <section class="labs" aria-labelledby="labs-title">
+    <div class="section-head">
+      <div><h2 id="labs-title">Experiments</h2></div>
+      <div id="lab-tabs" class="lab-tabs" role="tablist" aria-label="Experiments"></div>
+    </div>
+    <div id="lab" class="lab" role="tabpanel"></div>
+  </section>
+
+  <section class="inspector-section" aria-labelledby="inspector-title">
+    <div class="section-head">
+      <div>
+        <h2 id="inspector-title">Inspector</h2>
+        <p id="inspector-lead">What the experiment's databases, brokers and processes hold right now, read every few seconds.</p>
+      </div>
+      <div class="buttons"><span id="inspector-at" class="chip">—</span><button type="button" id="inspector-refresh">Refresh</button></div>
+    </div>
+    <div id="inspector" class="inspector"></div>
+  </section>
+
+  <section class="history-runs" aria-labelledby="runs-title">
+    <div class="section-head"><div><h2 id="runs-title">Recorded runs</h2><p>Every experiment whose five stages all held, stored in lab_run with every stage's result.</p></div></div>
+    <div id="runs" class="runs"></div>
+  </section>
+
+  <footer class="page-footer"><span>ZeroShift failure lab</span><span>pg_prepared_xacts · pg_locks · Kafka offsets · ACL decisions · no simulated failures</span></footer>
+  <p id="toast" class="toast" role="status" aria-live="polite" hidden></p>
+</main>
+</body>
+</html>

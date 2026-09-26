@@ -74,7 +74,7 @@ def main():
     action('traffic-stop')
     after = status()
     assert after['source'] == frozen_source, 'Source changed after cutover'
-    assert after['migration']['stage'] == 'COMPLETE'
+    assert after['migration']['stage'] == 'COMPLETED'
     assert after['migration']['validation'].startswith('Passed')
     evidence = {
         'verifiedAt': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),

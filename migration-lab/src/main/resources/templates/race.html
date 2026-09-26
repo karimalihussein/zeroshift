@@ -6,50 +6,35 @@
   <title>ZeroShift — Race condition lab</title>
   <link rel="icon" th:href="@{/favicon.svg}">
   <link rel="stylesheet" th:href="@{/style.css}">
-  <link rel="stylesheet" th:href="@{/race-lab.css(v=2)}">
-  <script defer th:src="@{/race-lab.js(v=2)}"></script>
+  <link rel="stylesheet" th:href="@{/race-lab.css(v=3)}">
+  <script defer th:src="@{/race-lab.js(v=3)}"></script>
 </head>
 <body th:attr="data-grafana=${grafanaUrl}">
 <main class="shell race-shell">
   <header class="topbar">
     <a class="brand" href="/" aria-label="ZeroShift home"><span class="brand-mark"><span></span><span></span><span></span></span><span><strong>ZeroShift</strong><small>Distributed systems control plane</small></span></a>
-    <nav class="lab-nav" aria-label="Labs"><a href="/">Migration</a><a href="/events">Event-driven</a><a href="/race" aria-current="page">Race conditions</a><a href="/resilience">Resilience</a><a href="/history">Events over time</a><a href="/docs">Docs</a></nav>
+    <nav class="lab-nav" aria-label="Labs"><a href="/">Migration</a><a href="/events">Event-driven</a><a href="/race" aria-current="page">Race conditions</a><a href="/resilience">Resilience</a><a href="/history">Events over time</a><a href="/failures">Failures</a><a href="/docs">Docs</a></nav>
     <div class="topbar-status"><span id="connection" class="connection" role="status"><i></i> Connecting</span><a id="grafana-link" class="environment" target="_blank" rel="noopener" hidden>Grafana</a><span class="environment">Local lab</span></div>
   </header>
 
-  <div class="race-workspace">
-    <aside class="rail" aria-label="Configure the race">
-      <nav id="experiments" class="exp-rail" aria-label="Experiments"></nav>
-      <article id="learn" class="learn"></article>
-      <form id="configure" class="configure" novalidate></form>
-    </aside>
+  <!-- 1. Experiment header: which race, and the rule it must keep -->
+  <header id="experiment" class="xp-head" aria-label="Experiment"></header>
 
-    <div class="stage">
-      <ol id="path" class="phases" aria-label="Lesson"></ol>
-      <header id="timeline-head" class="stage-head"></header>
-      <div id="race-callout" class="race-callout" hidden></div>
-      <div id="timeline" class="timeline" tabindex="-1" aria-label="Transaction timeline"></div>
-      <ul class="legend race-legend" aria-label="Legend">
-        <li class="k-op">Read · write</li>
-        <li class="k-good">Committed</li>
-        <li class="k-wait">Waiting for a lock</li>
-        <li class="k-retry">Conflict · retry</li>
-        <li class="k-bad">Rolled back · violated</li>
-        <li class="k-delay">Application work</li>
-        <li class="k-sync">Lab choreography</li>
-      </ul>
-      <div id="moments-strip" class="moments" aria-label="Key moments"></div>
-      <div id="metrics" class="metric-row" aria-label="Run metrics"></div>
-      <div class="reading">
-        <article id="why"></article>
-        <article id="result"></article>
-        <div id="fix"></div>
-      </div>
-      <section id="compare-section" class="compare" aria-labelledby="compare-title"></section>
-    </div>
-  </div>
+  <!-- 2. Controls: one sticky line next to Run -->
+  <form id="controls" class="race-controls" novalidate aria-label="Experiment controls"></form>
 
-  <aside id="inspector" class="drawer" hidden aria-label="Operation inspector"></aside>
+  <!-- 3. The hero: the recorded transactions, replayed -->
+  <section id="hero" class="hero" aria-label="Execution"></section>
+
+  <!-- 4–6. Verdict, why, fix -->
+  <section id="outcome" class="race-outcome" aria-label="Result and explanation"></section>
+
+  <!-- 7. Unsafe vs safe -->
+  <section id="compare" class="compare" aria-label="Compare runs"></section>
+
+  <!-- 8. Deep technical inspector, only on request -->
+  <aside id="inspector" class="race-inspector" aria-label="Event inspector" aria-hidden="true"></aside>
+
   <footer class="page-footer"><span>ZeroShift race condition lab</span><span>Real PostgreSQL transactions · locks from pg_blocking_pids · aborts from SQLSTATE</span></footer>
 </main>
 </body>

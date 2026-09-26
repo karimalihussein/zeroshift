@@ -313,3 +313,90 @@ normal topic with 60 s retention, instead deletes whole segments by age, latest 
 Automated coverage: `python3 scripts/verify_history_lab.py` (direct time-travel and legacy-v1
 drills against the services, then all four labs with assertions on what each step read back); unit
 tests `ContractCompatibilityTest`, `RebuildTest`, `SchemaReadersTest`.
+
+# Phase 5: Advanced distributed-systems failures
+
+**http://localhost:8080/failures** (Compose profile `failure-lab`). Four experiments, each one
+comparison told in five stages: **Naive design → Failure → Observable consequence → Correct design
+→ Recovery**. Every stage acts on real infrastructure and lists the claims it checked against what
+it measured; a stage whose claim does not hold stays visible with its measurements but does not
+count, and can be run again. The naive and correct columns of the comparison table fill in from
+those measurements as the stages run. Design: [ADR 022](decisions/022-failure-lab.md).
+
+The dangerous parts never touch the services' data: 2PC and disaster recovery run on
+`failure-postgres` (the services' `commerce-postgres` keeps `max_prepared_transactions = 0`), the
+secure broker is its own `kafka-secure`, and the lab topics and groups on the event lab's broker
+are prefixed `lab.dr.`/`lab.trust.`. **Reset experiment** recreates only that experiment's
+databases, topics, groups and ACLs.
+
+**2PC vs saga.** One checkout debits an account in `fl_payments` and takes stock in `fl_inventory`.
+The coordinator is a separate JVM the control plane starts and, at a pause point, kills with
+SIGKILL (exit 137).
+
+| Stage | What happens (measured on the Compose stack) |
+|---|---|
+| Naive design | A 2PC checkout runs to the end: both participants `PREPARE TRANSACTION`, the coordinator logs COMMIT, then `COMMIT PREPARED` on each |
+| Failure | A second checkout: both participants prepare, the coordinator is SIGKILLed before deciding. `pg_prepared_xacts` shows both branches; no session of the coordinator remains; its log has no decision |
+| Observable consequence | 12 locks with a null pid (table and index locks plus each branch's xid); the stock row's `xmax` is the prepared xid. A checkout of the same SKU waits until its 4 s `lock_timeout` (SQLSTATE 55P03) with `pg_blocking_pids = {0}`, as does a payment on the same account; another SKU is done in 3 ms; readers see the stock before the in-doubt checkout; VACUUM cannot remove 200 dead rows written after the prepare |
+| Correct design | The same checkout as a saga on an identical account and SKU, killed at the same point (after the payment step): nothing prepared or locked, the same probes are done in milliseconds, and the half-done order (paid, no stock) is visible to everyone |
+| Recovery | The operator's procedure: the coordinator log has no decision, so presumed abort, `ROLLBACK PREPARED` on each branch (a logged COMMIT would be finished instead); the blocked SKU is free again and VACUUM removes the dead rows. A new coordinator process compensates the saga (idempotent refund) once its step deadline passed. Every balance = opening balance − captured payments, every stock level = opening stock − reservations |
+
+The inspector lists every prepared transaction with its logged decision and **COMMIT PREPARED /
+ROLLBACK PREPARED** buttons, the locks they hold, waiting sessions and who blocks them, the
+coordinator and saga logs, and the participants' rows. **Kill coordinator after PREPARE** and
+**Kill coordinator after logging COMMIT** leave a transaction in doubt to practise on; resolving
+the two branches differently is allowed, and breaks atomicity for everyone to see.
+
+**Isolation anomalies.** The race lab's engine (one connection per request, controlled
+interleaving) runs the same scenarios under each strategy:
+
+| Scenario | Strategy | Isolation | Invariant | Committed | Aborted | Conflicts detected | Retries |
+|---|---|---|---|---|---|---|---|
+| 6 deposits (lost update) | Naive read-modify-write | READ COMMITTED | broken: 110, expected 160 | 6 | 0 | 0 (writers waited on the row lock, then overwrote) | 0 |
+| | Optimistic lock + retry | READ COMMITTED | holds | 6 | 0 | 15 stale versions | 15 |
+| | SERIALIZABLE + retry | SERIALIZABLE | holds | 6 | 0 | 15 × 40001 | 15 |
+| | Atomic update | READ COMMITTED | holds | 6 | 0 | 0 | 0 |
+| | SERIALIZABLE, no retry | SERIALIZABLE | holds | 1 | 5 | 5 × 40001 | 0 |
+| 2 doctors leave (write skew) | Naive check-then-write | READ COMMITTED | broken: nobody on call | 2 | 0 | 0 | 0 |
+| | Naive check-then-write | REPEATABLE READ | broken: nobody on call | 2 | 0 | 0 | 0 |
+| | SERIALIZABLE + retry | SERIALIZABLE | holds (the retry sees the change) | 1 | 0 | 1 × 40001 | 1 |
+| | Lock every row read | READ COMMITTED | holds | 1 | 0 | 0 | 0 |
+
+The first stage shows READ COMMITTED as designed: a report's two reads of one balance differ when a
+deposit commits between them, and agree at REPEATABLE READ. Each run's timeline stays in the race
+lab.
+
+**Disaster recovery.** Two ledgers consume the same PaymentCaptured events from `lab.dr.payments`
+(3 partitions): the naive one keeps its position as the consumer group's committed offset in
+Kafka; the safe one stores the next offset per partition in its own database, in the same
+transaction as the entries, and applies each event id once. 40 events are processed, both
+databases are snapshotted (`CREATE DATABASE … TEMPLATE`), 25 more are processed, and both databases
+are dropped. Restored, the naive ledger resumes from Kafka's committed offsets, already at the
+end: it reads nothing and misses exactly the 25 events, the gap between Kafka's offsets and what the
+restored data reaches per partition. The safe ledger resumes from the positions inside its backup
+and replays the 25; rewound to offset 0 on purpose, it reads all 65 again and applies none twice.
+The naive ledger is repaired by replaying from Kafka's time index one minute before the backup and
+skipping event ids it already holds (40 skipped). Both ledgers then equal the topic event for event
+and account for account. RPO (backup → disaster) and RTO (drop → verified) are measured and exported
+as metrics.
+
+**Trust boundaries.** Fulfilment ships an order when a PaymentCaptured event says it was paid. On the
+event lab's broker (PLAINTEXT, `describeAcls` answers `SecurityDisabledException: No Authorizer is
+configured`) an anonymous attacker publishes a forged event; the broker acknowledges it with an
+offset, fulfilment ships an unpaid order worth 1,999.00, and the forged record has the same shape,
+key and headers as a genuine one. On `kafka-secure` the admin creates least-privilege ACLs, then
+each client tries:
+
+| Client | Operation | Broker's answer |
+|---|---|---|
+| no credentials | write `lab.trust.payments` | denied: the broker serves nothing before SASL; the client times out |
+| payments, wrong password | write `lab.trust.payments` | `SaslAuthenticationException` |
+| User:checkout | write `lab.trust.payments` | `TopicAuthorizationException` |
+| User:checkout | write `lab.trust.orders` (its own topic) | allowed |
+| User:fulfilment | write `lab.trust.payments` | `ClusterAuthorizationException`: an idempotent producer must be allowed to write somewhere before it may even start |
+| User:checkout | read `lab.trust.payments` | `TopicAuthorizationException` |
+| User:payments | write `lab.trust.payments` | allowed |
+
+Recovery reconciles shipments against payments, holds the forged shipment, and replays the attack
+against the secure broker (denied, nothing shipped). Message signing is left out on purpose; see
+ADR 022.

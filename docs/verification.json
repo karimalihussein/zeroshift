@@ -1,5 +1,5 @@
 {
-  "verifiedAt": "2026-09-24T03:42:58Z",
+  "verifiedAt": "2026-09-26T11:18:07Z",
   "checks": [
     "HTTP seeding",
     "concurrent traffic",
@@ -19,187 +19,891 @@
       "lastId": 10000,
       "customerBound": 10000,
       "orderBound": 10000,
-      "version": 7330,
-      "copied": 19978,
+      "version": 185,
+      "copied": 19986,
       "expected": 20000,
       "batches": 40,
-      "applied": 224,
+      "applied": 162,
       "traffic": true,
       "validation": "Passed: counts + SHA-256 + constraints",
       "error": "",
-      "checkpoint": "2026-09-24T03:42:56.956458Z",
+      "checkpoint": "2026-09-26T11:18:04.910882Z",
       "rowsPerSecond": 0.0,
-      "cdcPaused": false
+      "cdcPaused": false,
+      "validationPassed": true,
+      "startedAt": "2026-09-26T11:17:39.204598Z",
+      "cutoverStartedAt": null,
+      "completedAt": null,
+      "completedRows": 0,
+      "completedCdcPending": null
     },
     "progress": 95.0,
     "source": {
-      "customers": 10001,
-      "orders": 10001
+      "customers": 10014,
+      "orders": 10014
     },
     "target": {
-      "customers": 10001,
-      "orders": 10001
+      "customers": 10014,
+      "orders": 10014
     },
     "pending": 0,
     "logs": [
-      "2026-09-24T03:42:56.956458Z  Validation passed: orders \u00b7 source 10001 / target 10001 \u00b7 SHA-256 matches",
-      "2026-09-24T03:42:56.956458Z  Validation passed: customers \u00b7 source 10001 / target 10001 \u00b7 SHA-256 matches",
-      "2026-09-24T03:42:56.956458Z  Applied 6 net changes through version 7330",
-      "2026-09-24T03:42:56.660384Z  Stage: READY",
-      "2026-09-24T03:42:56.660384Z  Built index and deferred constraints; synchronized sequences; ANALYZE complete",
-      "2026-09-24T03:42:56.316263Z  Stage: PREPARE",
-      "2026-09-24T03:42:56.316263Z  Applied 8 net changes through version 7325",
-      "2026-09-24T03:42:56.058824Z  Stage: CATCH_UP",
-      "2026-09-24T03:42:55.701941Z  Applied 6 net changes through version 7196",
-      "2026-09-24T03:42:55.701941Z  COPY 478 orders; committed key 10000",
-      "2026-09-24T03:42:55.364807Z  Applied 6 net changes through version 7196",
-      "2026-09-24T03:42:55.364807Z  COPY 500 orders; committed key 9522",
-      "2026-09-24T03:42:55.020559Z  Applied 6 net changes through version 7196",
-      "2026-09-24T03:42:55.020559Z  COPY 500 orders; committed key 9022",
-      "2026-09-24T03:42:54.684258Z  Applied 6 net changes through version 7196",
-      "2026-09-24T03:42:54.684258Z  COPY 500 orders; committed key 8522",
-      "2026-09-24T03:42:54.326547Z  Applied 6 net changes through version 7196",
-      "2026-09-24T03:42:54.326547Z  COPY 500 orders; committed key 8022",
-      "2026-09-24T03:42:53.958167Z  Applied 6 net changes through version 7196",
-      "2026-09-24T03:42:53.958167Z  COPY 500 orders; committed key 7522",
-      "2026-09-24T03:42:53.583956Z  Applied 6 net changes through version 7196",
-      "2026-09-24T03:42:53.583956Z  COPY 500 orders; committed key 7022",
-      "2026-09-24T03:42:53.237789Z  Applied 6 net changes through version 7196",
-      "2026-09-24T03:42:53.237789Z  COPY 500 orders; committed key 6522",
-      "2026-09-24T03:42:52.889545Z  Applied 6 net changes through version 7196",
-      "2026-09-24T03:42:52.889545Z  COPY 500 orders; committed key 6022",
-      "2026-09-24T03:42:52.489908Z  Applied 6 net changes through version 7196",
-      "2026-09-24T03:42:52.489908Z  COPY 500 orders; committed key 5522",
-      "2026-09-24T03:42:52.129045Z  Applied 6 net changes through version 7196",
-      "2026-09-24T03:42:52.129045Z  COPY 500 orders; committed key 5022",
-      "2026-09-24T03:42:51.781224Z  Applied 6 net changes through version 7196",
-      "2026-09-24T03:42:51.781224Z  COPY 500 orders; committed key 4522",
-      "2026-09-24T03:42:51.346456Z  Applied 6 net changes through version 7196",
-      "2026-09-24T03:42:51.346456Z  COPY 500 orders; committed key 4022",
-      "2026-09-24T03:42:50.999132Z  Applied 6 net changes through version 7196",
-      "2026-09-24T03:42:50.999132Z  COPY 500 orders; committed key 3522",
-      "2026-09-24T03:42:50.665791Z  Applied 6 net changes through version 7196",
-      "2026-09-24T03:42:50.665791Z  COPY 500 orders; committed key 3022",
-      "2026-09-24T03:42:50.317943Z  Applied 6 net changes through version 7196",
-      "2026-09-24T03:42:50.317943Z  COPY 500 orders; committed key 2522",
-      "2026-09-24T03:42:49.954849Z  Applied 6 net changes through version 7196",
-      "2026-09-24T03:42:49.954849Z  COPY 500 orders; committed key 2022",
-      "2026-09-24T03:42:49.616230Z  Applied 6 net changes through version 7196",
-      "2026-09-24T03:42:49.616230Z  COPY 500 orders; committed key 1522",
-      "2026-09-24T03:42:49.271437Z  Applied 4 net changes through version 7196",
-      "2026-09-24T03:42:49.271437Z  COPY 500 orders; committed key 1022",
-      "2026-09-24T03:42:48.916762Z  Applied 24 net changes through version 7196",
-      "2026-09-24T03:42:48.916762Z  COPY 500 orders; committed key 522",
-      "2026-09-24T03:42:48.575904Z  Applied 3 net changes through version 7196",
-      "2026-09-24T03:42:48.575904Z  Snapshot: orders",
-      "2026-09-24T03:42:48.238824Z  Applied 3 net changes through version 7196",
-      "2026-09-24T03:42:48.238824Z  COPY 500 customers; committed key 10000",
-      "2026-09-24T03:42:47.842351Z  Applied 3 net changes through version 7196",
-      "2026-09-24T03:42:47.842351Z  COPY 500 customers; committed key 9500",
-      "2026-09-24T03:42:47.489326Z  Applied 3 net changes through version 7196",
-      "2026-09-24T03:42:47.489326Z  COPY 500 customers; committed key 9000",
-      "2026-09-24T03:42:47.160694Z  Applied 3 net changes through version 7196",
-      "2026-09-24T03:42:47.160694Z  COPY 500 customers; committed key 8500",
-      "2026-09-24T03:42:46.813389Z  Applied 3 net changes through version 7196",
-      "2026-09-24T03:42:46.813389Z  COPY 500 customers; committed key 8000"
+      "[11:18:04] Validation passed: orders \u00b7 source 10014 / target 10014 \u00b7 SHA-256 matches",
+      "[11:18:04] Validation passed: customers \u00b7 source 10014 / target 10014 \u00b7 SHA-256 matches",
+      "[11:18:04] Applied 6 net changes through version 185",
+      "[11:18:04] UPDATE \u2192 SQL Server \u2192 orders #6184 \u2192 status=UPDATED \u00b7 customer #6184 toggled \u2713",
+      "[11:18:04] READ \u2192 SQL Server \u2192 orders #7192 \u2192 status=NEW \u00b7 amount=719.2000 \u2713",
+      "[11:18:04] Stage: READY",
+      "[11:18:04] Built index and deferred constraints; synchronized sequences; ANALYZE complete",
+      "[11:18:04] UPDATE \u2192 SQL Server \u2192 orders #9335 \u2192 status=UPDATED \u00b7 customer #9335 toggled \u2713",
+      "[11:18:04] INSERT \u2192 SQL Server \u2192 customers #10027 \u2192 order #10027 created \u2713",
+      "[11:18:04] READ \u2192 SQL Server \u2192 orders #8172 \u2192 status=NEW \u00b7 amount=817.2000 \u2713",
+      "[11:18:04] Stage: PREPARE",
+      "[11:18:04] Applied 6 net changes through version 182",
+      "[11:18:04] READ \u2192 SQL Server \u2192 orders #9819 \u2192 status=NEW \u00b7 amount=981.9000 \u2713",
+      "[11:18:04] UPDATE \u2192 SQL Server \u2192 orders #607 \u2192 status=UPDATED \u00b7 customer #607 toggled \u2713",
+      "[11:18:04] Stage: CATCH_UP",
+      "[11:18:04] DELETE \u2192 SQL Server \u2192 customers #8406 \u2192 -1 related orders deleted \u2713",
+      "[11:18:03] READ \u2192 SQL Server \u2192 orders #76 \u2192 status=NEW \u00b7 amount=7.6000 \u2713",
+      "[11:18:03] INSERT \u2192 SQL Server \u2192 customers #10026 \u2192 order #10026 created \u2713",
+      "[11:18:03] Applied 5 net changes through version 104",
+      "[11:18:03] COPY 490 orders; committed key 10000",
+      "[11:18:03] UPDATE \u2192 SQL Server \u2192 orders #2140 \u2192 status=UPDATED \u00b7 customer #2140 toggled \u2713",
+      "[11:18:03] READ \u2192 SQL Server \u2192 orders #5009 \u2192 status=NEW \u00b7 amount=500.9000 \u2713",
+      "[11:18:03] UPDATE \u2192 SQL Server \u2192 orders #1979 \u2192 status=UPDATED \u00b7 customer #1979 toggled \u2713",
+      "[11:18:03] Applied 7 net changes through version 104",
+      "[11:18:03] COPY 500 orders; committed key 9510",
+      "[11:18:03] INSERT \u2192 SQL Server \u2192 customers #10025 \u2192 order #10025 created \u2713",
+      "[11:18:03] READ \u2192 SQL Server \u2192 orders #6650 \u2192 status=NEW \u00b7 amount=665.0000 \u2713",
+      "[11:18:02] READ \u2192 SQL Server \u2192 orders #3538 \u2192 status=NEW \u00b7 amount=353.8000 \u2713",
+      "[11:18:02] Applied 8 net changes through version 104",
+      "[11:18:02] COPY 500 orders; committed key 9008",
+      "[11:18:02] UPDATE \u2192 SQL Server \u2192 orders #8724 \u2192 status=UPDATED \u00b7 customer #8724 toggled \u2713",
+      "[11:18:02] DELETE \u2192 SQL Server \u2192 customers #6950 \u2192 -1 related orders deleted \u2713",
+      "[11:18:02] READ \u2192 SQL Server \u2192 orders #1298 \u2192 status=NEW \u00b7 amount=129.8000 \u2713",
+      "[11:18:02] Applied 5 net changes through version 104",
+      "[11:18:02] COPY 500 orders; committed key 8508",
+      "[11:18:02] INSERT \u2192 SQL Server \u2192 customers #10024 \u2192 order #10024 created \u2713",
+      "[11:18:02] UPDATE \u2192 SQL Server \u2192 orders #9065 \u2192 status=UPDATED \u00b7 customer #9065 toggled \u2713",
+      "[11:18:02] READ \u2192 SQL Server \u2192 orders #399 \u2192 status=NEW \u00b7 amount=39.9000 \u2713",
+      "[11:18:02] Applied 7 net changes through version 104",
+      "[11:18:02] COPY 500 orders; committed key 8007",
+      "[11:18:02] UPDATE \u2192 SQL Server \u2192 orders #1452 \u2192 status=UPDATED \u00b7 customer #1452 toggled \u2713",
+      "[11:18:01] INSERT \u2192 SQL Server \u2192 customers #10023 \u2192 order #10023 created \u2713",
+      "[11:18:01] READ \u2192 SQL Server \u2192 orders #2837 \u2192 status=NEW \u00b7 amount=283.7000 \u2713",
+      "[11:18:01] Applied 5 net changes through version 104",
+      "[11:18:01] COPY 500 orders; committed key 7506",
+      "[11:18:01] READ \u2192 SQL Server \u2192 orders #1846 \u2192 status=NEW \u00b7 amount=184.6000 \u2713",
+      "[11:18:01] UPDATE \u2192 SQL Server \u2192 orders #1314 \u2192 status=UPDATED \u00b7 customer #1314 toggled \u2713",
+      "[11:18:01] DELETE \u2192 SQL Server \u2192 customers #4695 \u2192 -1 related orders deleted \u2713",
+      "[11:18:01] Applied 6 net changes through version 104",
+      "[11:18:01] COPY 500 orders; committed key 7005",
+      "[11:18:01] READ \u2192 SQL Server \u2192 orders #689 \u2192 status=NEW \u00b7 amount=68.9000 \u2713",
+      "[11:18:00] INSERT \u2192 SQL Server \u2192 customers #10022 \u2192 order #10022 created \u2713",
+      "[11:18:00] UPDATE \u2192 SQL Server \u2192 orders #9930 \u2192 status=UPDATED \u00b7 customer #9930 toggled \u2713",
+      "[11:18:00] Applied 5 net changes through version 104",
+      "[11:18:00] COPY 500 orders; committed key 6504",
+      "[11:18:00] READ \u2192 SQL Server \u2192 orders #7011 \u2192 status=NEW \u00b7 amount=701.1000 \u2713",
+      "[11:18:00] UPDATE \u2192 SQL Server \u2192 orders #2777 \u2192 status=UPDATED \u00b7 customer #2777 toggled \u2713",
+      "[11:18:00] INSERT \u2192 SQL Server \u2192 customers #10021 \u2192 order #10021 created \u2713",
+      "[11:18:00] Applied 3 net changes through version 104",
+      "[11:18:00] COPY 500 orders; committed key 6004"
     ],
+    "traffic": {
+      "running": true,
+      "target": "SQL_SERVER",
+      "total": 135,
+      "inserts": 27,
+      "updates": 41,
+      "deletes": 13,
+      "reads": 54,
+      "errors": 0,
+      "sqlServerOperations": 135,
+      "postgresOperations": 0,
+      "operationsPerSecond": 7.70863666015608
+    },
     "captureError": "",
-    "seedRows": 10000
+    "seedRows": 10000,
+    "migrationStartAllowed": false,
+    "completion": {
+      "successful": false,
+      "validationPassed": true,
+      "validation": "Passed: counts + SHA-256 + constraints",
+      "primary": "SQL_SERVER",
+      "cdcPending": 0,
+      "cdcApplied": 162,
+      "totalMigratedRows": 20028,
+      "startedAt": "2026-09-26T11:17:39.204598Z",
+      "completedAt": null,
+      "durationMillis": null,
+      "rowsPerSecond": null,
+      "writeFreezeMillis": null
+    },
+    "rollback": {
+      "available": false,
+      "inProgress": false,
+      "abortable": false,
+      "completed": false,
+      "progress": 0.0,
+      "pending": 0,
+      "applied": 0,
+      "conflicts": 0,
+      "validation": "Not checked",
+      "validationPassed": false,
+      "durationMillis": null,
+      "freezeMillis": null,
+      "verifiedRows": 0,
+      "dataLost": null
+    },
+    "events": [
+      {
+        "id": 633,
+        "at": "2026-09-26T11:18:04.910882Z",
+        "message": "Validation passed: orders \u00b7 source 10014 / target 10014 \u00b7 SHA-256 matches"
+      },
+      {
+        "id": 632,
+        "at": "2026-09-26T11:18:04.910882Z",
+        "message": "Validation passed: customers \u00b7 source 10014 / target 10014 \u00b7 SHA-256 matches"
+      },
+      {
+        "id": 631,
+        "at": "2026-09-26T11:18:04.910882Z",
+        "message": "Applied 6 net changes through version 185"
+      },
+      {
+        "id": 630,
+        "at": "2026-09-26T11:18:04.857339Z",
+        "message": "UPDATE \u2192 SQL Server \u2192 orders #6184 \u2192 status=UPDATED \u00b7 customer #6184 toggled \u2713"
+      },
+      {
+        "id": 629,
+        "at": "2026-09-26T11:18:04.750381Z",
+        "message": "READ \u2192 SQL Server \u2192 orders #7192 \u2192 status=NEW \u00b7 amount=719.2000 \u2713"
+      },
+      {
+        "id": 628,
+        "at": "2026-09-26T11:18:04.672884Z",
+        "message": "Stage: READY"
+      },
+      {
+        "id": 627,
+        "at": "2026-09-26T11:18:04.672884Z",
+        "message": "Built index and deferred constraints; synchronized sequences; ANALYZE complete"
+      },
+      {
+        "id": 626,
+        "at": "2026-09-26T11:18:04.640164Z",
+        "message": "UPDATE \u2192 SQL Server \u2192 orders #9335 \u2192 status=UPDATED \u00b7 customer #9335 toggled \u2713"
+      },
+      {
+        "id": 625,
+        "at": "2026-09-26T11:18:04.524828Z",
+        "message": "INSERT \u2192 SQL Server \u2192 customers #10027 \u2192 order #10027 created \u2713"
+      },
+      {
+        "id": 624,
+        "at": "2026-09-26T11:18:04.334934Z",
+        "message": "READ \u2192 SQL Server \u2192 orders #8172 \u2192 status=NEW \u00b7 amount=817.2000 \u2713"
+      },
+      {
+        "id": 623,
+        "at": "2026-09-26T11:18:04.286812Z",
+        "message": "Stage: PREPARE"
+      },
+      {
+        "id": 622,
+        "at": "2026-09-26T11:18:04.286812Z",
+        "message": "Applied 6 net changes through version 182"
+      },
+      {
+        "id": 621,
+        "at": "2026-09-26T11:18:04.228589Z",
+        "message": "READ \u2192 SQL Server \u2192 orders #9819 \u2192 status=NEW \u00b7 amount=981.9000 \u2713"
+      },
+      {
+        "id": 620,
+        "at": "2026-09-26T11:18:04.117804Z",
+        "message": "UPDATE \u2192 SQL Server \u2192 orders #607 \u2192 status=UPDATED \u00b7 customer #607 toggled \u2713"
+      },
+      {
+        "id": 619,
+        "at": "2026-09-26T11:18:04.031496Z",
+        "message": "Stage: CATCH_UP"
+      },
+      {
+        "id": 618,
+        "at": "2026-09-26T11:18:04.002042Z",
+        "message": "DELETE \u2192 SQL Server \u2192 customers #8406 \u2192 -1 related orders deleted \u2713"
+      },
+      {
+        "id": 617,
+        "at": "2026-09-26T11:18:03.893453Z",
+        "message": "READ \u2192 SQL Server \u2192 orders #76 \u2192 status=NEW \u00b7 amount=7.6000 \u2713"
+      },
+      {
+        "id": 616,
+        "at": "2026-09-26T11:18:03.712584Z",
+        "message": "INSERT \u2192 SQL Server \u2192 customers #10026 \u2192 order #10026 created \u2713"
+      },
+      {
+        "id": 615,
+        "at": "2026-09-26T11:18:03.635164Z",
+        "message": "Applied 5 net changes through version 104"
+      },
+      {
+        "id": 614,
+        "at": "2026-09-26T11:18:03.635164Z",
+        "message": "COPY 490 orders; committed key 10000"
+      },
+      {
+        "id": 613,
+        "at": "2026-09-26T11:18:03.602705Z",
+        "message": "UPDATE \u2192 SQL Server \u2192 orders #2140 \u2192 status=UPDATED \u00b7 customer #2140 toggled \u2713"
+      },
+      {
+        "id": 612,
+        "at": "2026-09-26T11:18:03.493371Z",
+        "message": "READ \u2192 SQL Server \u2192 orders #5009 \u2192 status=NEW \u00b7 amount=500.9000 \u2713"
+      },
+      {
+        "id": 611,
+        "at": "2026-09-26T11:18:03.321576Z",
+        "message": "UPDATE \u2192 SQL Server \u2192 orders #1979 \u2192 status=UPDATED \u00b7 customer #1979 toggled \u2713"
+      },
+      {
+        "id": 610,
+        "at": "2026-09-26T11:18:03.233697Z",
+        "message": "Applied 7 net changes through version 104"
+      },
+      {
+        "id": 609,
+        "at": "2026-09-26T11:18:03.233697Z",
+        "message": "COPY 500 orders; committed key 9510"
+      },
+      {
+        "id": 608,
+        "at": "2026-09-26T11:18:03.199924Z",
+        "message": "INSERT \u2192 SQL Server \u2192 customers #10025 \u2192 order #10025 created \u2713"
+      },
+      {
+        "id": 607,
+        "at": "2026-09-26T11:18:03.092824Z",
+        "message": "READ \u2192 SQL Server \u2192 orders #6650 \u2192 status=NEW \u00b7 amount=665.0000 \u2713"
+      },
+      {
+        "id": 606,
+        "at": "2026-09-26T11:18:02.922643Z",
+        "message": "READ \u2192 SQL Server \u2192 orders #3538 \u2192 status=NEW \u00b7 amount=353.8000 \u2713"
+      },
+      {
+        "id": 605,
+        "at": "2026-09-26T11:18:02.823830Z",
+        "message": "Applied 8 net changes through version 104"
+      },
+      {
+        "id": 604,
+        "at": "2026-09-26T11:18:02.823830Z",
+        "message": "COPY 500 orders; committed key 9008"
+      },
+      {
+        "id": 603,
+        "at": "2026-09-26T11:18:02.810816Z",
+        "message": "UPDATE \u2192 SQL Server \u2192 orders #8724 \u2192 status=UPDATED \u00b7 customer #8724 toggled \u2713"
+      },
+      {
+        "id": 602,
+        "at": "2026-09-26T11:18:02.679621Z",
+        "message": "DELETE \u2192 SQL Server \u2192 customers #6950 \u2192 -1 related orders deleted \u2713"
+      },
+      {
+        "id": 601,
+        "at": "2026-09-26T11:18:02.516402Z",
+        "message": "READ \u2192 SQL Server \u2192 orders #1298 \u2192 status=NEW \u00b7 amount=129.8000 \u2713"
+      },
+      {
+        "id": 600,
+        "at": "2026-09-26T11:18:02.432016Z",
+        "message": "Applied 5 net changes through version 104"
+      },
+      {
+        "id": 599,
+        "at": "2026-09-26T11:18:02.432016Z",
+        "message": "COPY 500 orders; committed key 8508"
+      },
+      {
+        "id": 598,
+        "at": "2026-09-26T11:18:02.398998Z",
+        "message": "INSERT \u2192 SQL Server \u2192 customers #10024 \u2192 order #10024 created \u2713"
+      },
+      {
+        "id": 597,
+        "at": "2026-09-26T11:18:02.287817Z",
+        "message": "UPDATE \u2192 SQL Server \u2192 orders #9065 \u2192 status=UPDATED \u00b7 customer #9065 toggled \u2713"
+      },
+      {
+        "id": 596,
+        "at": "2026-09-26T11:18:02.122477Z",
+        "message": "READ \u2192 SQL Server \u2192 orders #399 \u2192 status=NEW \u00b7 amount=39.9000 \u2713"
+      },
+      {
+        "id": 595,
+        "at": "2026-09-26T11:18:02.031846Z",
+        "message": "Applied 7 net changes through version 104"
+      },
+      {
+        "id": 594,
+        "at": "2026-09-26T11:18:02.031846Z",
+        "message": "COPY 500 orders; committed key 8007"
+      },
+      {
+        "id": 593,
+        "at": "2026-09-26T11:18:02.007911Z",
+        "message": "UPDATE \u2192 SQL Server \u2192 orders #1452 \u2192 status=UPDATED \u00b7 customer #1452 toggled \u2713"
+      },
+      {
+        "id": 592,
+        "at": "2026-09-26T11:18:01.888483Z",
+        "message": "INSERT \u2192 SQL Server \u2192 customers #10023 \u2192 order #10023 created \u2713"
+      },
+      {
+        "id": 591,
+        "at": "2026-09-26T11:18:01.661180Z",
+        "message": "READ \u2192 SQL Server \u2192 orders #2837 \u2192 status=NEW \u00b7 amount=283.7000 \u2713"
+      },
+      {
+        "id": 590,
+        "at": "2026-09-26T11:18:01.579934Z",
+        "message": "Applied 5 net changes through version 104"
+      },
+      {
+        "id": 589,
+        "at": "2026-09-26T11:18:01.579934Z",
+        "message": "COPY 500 orders; committed key 7506"
+      },
+      {
+        "id": 588,
+        "at": "2026-09-26T11:18:01.554547Z",
+        "message": "READ \u2192 SQL Server \u2192 orders #1846 \u2192 status=NEW \u00b7 amount=184.6000 \u2713"
+      },
+      {
+        "id": 587,
+        "at": "2026-09-26T11:18:01.443642Z",
+        "message": "UPDATE \u2192 SQL Server \u2192 orders #1314 \u2192 status=UPDATED \u00b7 customer #1314 toggled \u2713"
+      },
+      {
+        "id": 586,
+        "at": "2026-09-26T11:18:01.219494Z",
+        "message": "DELETE \u2192 SQL Server \u2192 customers #4695 \u2192 -1 related orders deleted \u2713"
+      },
+      {
+        "id": 585,
+        "at": "2026-09-26T11:18:01.136620Z",
+        "message": "Applied 6 net changes through version 104"
+      },
+      {
+        "id": 584,
+        "at": "2026-09-26T11:18:01.136620Z",
+        "message": "COPY 500 orders; committed key 7005"
+      },
+      {
+        "id": 583,
+        "at": "2026-09-26T11:18:01.111377Z",
+        "message": "READ \u2192 SQL Server \u2192 orders #689 \u2192 status=NEW \u00b7 amount=68.9000 \u2713"
+      },
+      {
+        "id": 582,
+        "at": "2026-09-26T11:18:00.996757Z",
+        "message": "INSERT \u2192 SQL Server \u2192 customers #10022 \u2192 order #10022 created \u2713"
+      },
+      {
+        "id": 581,
+        "at": "2026-09-26T11:18:00.764984Z",
+        "message": "UPDATE \u2192 SQL Server \u2192 orders #9930 \u2192 status=UPDATED \u00b7 customer #9930 toggled \u2713"
+      },
+      {
+        "id": 580,
+        "at": "2026-09-26T11:18:00.682330Z",
+        "message": "Applied 5 net changes through version 104"
+      },
+      {
+        "id": 579,
+        "at": "2026-09-26T11:18:00.682330Z",
+        "message": "COPY 500 orders; committed key 6504"
+      },
+      {
+        "id": 578,
+        "at": "2026-09-26T11:18:00.658744Z",
+        "message": "READ \u2192 SQL Server \u2192 orders #7011 \u2192 status=NEW \u00b7 amount=701.1000 \u2713"
+      },
+      {
+        "id": 577,
+        "at": "2026-09-26T11:18:00.545901Z",
+        "message": "UPDATE \u2192 SQL Server \u2192 orders #2777 \u2192 status=UPDATED \u00b7 customer #2777 toggled \u2713"
+      },
+      {
+        "id": 576,
+        "at": "2026-09-26T11:18:00.327049Z",
+        "message": "INSERT \u2192 SQL Server \u2192 customers #10021 \u2192 order #10021 created \u2713"
+      },
+      {
+        "id": 575,
+        "at": "2026-09-26T11:18:00.251197Z",
+        "message": "Applied 3 net changes through version 104"
+      },
+      {
+        "id": 574,
+        "at": "2026-09-26T11:18:00.251197Z",
+        "message": "COPY 500 orders; committed key 6004"
+      }
+    ]
   },
   "afterCutover": {
     "migration": {
-      "stage": "COMPLETE",
-      "status": "COMPLETE",
+      "stage": "COMPLETED",
+      "status": "SUCCESS",
       "primary": "POSTGRESQL",
       "table": "ORDERS",
       "lastId": 10000,
       "customerBound": 10000,
       "orderBound": 10000,
-      "version": 7331,
-      "copied": 19978,
+      "version": 186,
+      "copied": 19986,
       "expected": 20000,
       "batches": 40,
-      "applied": 226,
+      "applied": 164,
       "traffic": false,
       "validation": "Passed: counts + SHA-256 + constraints",
       "error": "",
-      "checkpoint": "2026-09-24T03:42:57.447690Z",
+      "checkpoint": "2026-09-26T11:18:06.289298Z",
       "rowsPerSecond": 0.0,
-      "cdcPaused": false
+      "cdcPaused": false,
+      "validationPassed": true,
+      "startedAt": "2026-09-26T11:17:39.204598Z",
+      "cutoverStartedAt": "2026-09-26T11:18:05.240542Z",
+      "completedAt": "2026-09-26T11:18:06.289298Z",
+      "completedRows": 20030,
+      "completedCdcPending": 0
     },
     "progress": 100.0,
     "source": {
-      "customers": 10000,
-      "orders": 10000
+      "customers": 10015,
+      "orders": 10015
     },
     "target": {
-      "customers": 10000,
-      "orders": 10000
+      "customers": 10015,
+      "orders": 10015
     },
-    "pending": null,
+    "pending": 0,
     "logs": [
-      "2026-09-24T03:42:58.529994Z  Traffic stopped",
-      "2026-09-24T03:42:57.447690Z  Final fence, catch-up, validation and sequence sync: 137 ms",
-      "2026-09-24T03:42:57.447690Z  Cutover complete. All routed writes now go to PostgreSQL; SQL Server remains fenced.",
-      "2026-09-24T03:42:57.447690Z  Validation passed: orders \u00b7 source 10000 / target 10000 \u00b7 SHA-256 matches",
-      "2026-09-24T03:42:57.447690Z  Validation passed: customers \u00b7 source 10000 / target 10000 \u00b7 SHA-256 matches",
-      "2026-09-24T03:42:57.447690Z  Applied 2 net changes through version 7331",
-      "2026-09-24T03:42:57.204134Z  Cutover requested; routed traffic waits while source writes are fenced",
-      "2026-09-24T03:42:57.204134Z  Stage: FREEZE",
-      "2026-09-24T03:42:56.956458Z  Validation passed: orders \u00b7 source 10001 / target 10001 \u00b7 SHA-256 matches",
-      "2026-09-24T03:42:56.956458Z  Validation passed: customers \u00b7 source 10001 / target 10001 \u00b7 SHA-256 matches",
-      "2026-09-24T03:42:56.956458Z  Applied 6 net changes through version 7330",
-      "2026-09-24T03:42:56.660384Z  Stage: READY",
-      "2026-09-24T03:42:56.660384Z  Built index and deferred constraints; synchronized sequences; ANALYZE complete",
-      "2026-09-24T03:42:56.316263Z  Stage: PREPARE",
-      "2026-09-24T03:42:56.316263Z  Applied 8 net changes through version 7325",
-      "2026-09-24T03:42:56.058824Z  Stage: CATCH_UP",
-      "2026-09-24T03:42:55.701941Z  Applied 6 net changes through version 7196",
-      "2026-09-24T03:42:55.701941Z  COPY 478 orders; committed key 10000",
-      "2026-09-24T03:42:55.364807Z  Applied 6 net changes through version 7196",
-      "2026-09-24T03:42:55.364807Z  COPY 500 orders; committed key 9522",
-      "2026-09-24T03:42:55.020559Z  Applied 6 net changes through version 7196",
-      "2026-09-24T03:42:55.020559Z  COPY 500 orders; committed key 9022",
-      "2026-09-24T03:42:54.684258Z  Applied 6 net changes through version 7196",
-      "2026-09-24T03:42:54.684258Z  COPY 500 orders; committed key 8522",
-      "2026-09-24T03:42:54.326547Z  Applied 6 net changes through version 7196",
-      "2026-09-24T03:42:54.326547Z  COPY 500 orders; committed key 8022",
-      "2026-09-24T03:42:53.958167Z  Applied 6 net changes through version 7196",
-      "2026-09-24T03:42:53.958167Z  COPY 500 orders; committed key 7522",
-      "2026-09-24T03:42:53.583956Z  Applied 6 net changes through version 7196",
-      "2026-09-24T03:42:53.583956Z  COPY 500 orders; committed key 7022",
-      "2026-09-24T03:42:53.237789Z  Applied 6 net changes through version 7196",
-      "2026-09-24T03:42:53.237789Z  COPY 500 orders; committed key 6522",
-      "2026-09-24T03:42:52.889545Z  Applied 6 net changes through version 7196",
-      "2026-09-24T03:42:52.889545Z  COPY 500 orders; committed key 6022",
-      "2026-09-24T03:42:52.489908Z  Applied 6 net changes through version 7196",
-      "2026-09-24T03:42:52.489908Z  COPY 500 orders; committed key 5522",
-      "2026-09-24T03:42:52.129045Z  Applied 6 net changes through version 7196",
-      "2026-09-24T03:42:52.129045Z  COPY 500 orders; committed key 5022",
-      "2026-09-24T03:42:51.781224Z  Applied 6 net changes through version 7196",
-      "2026-09-24T03:42:51.781224Z  COPY 500 orders; committed key 4522",
-      "2026-09-24T03:42:51.346456Z  Applied 6 net changes through version 7196",
-      "2026-09-24T03:42:51.346456Z  COPY 500 orders; committed key 4022",
-      "2026-09-24T03:42:50.999132Z  Applied 6 net changes through version 7196",
-      "2026-09-24T03:42:50.999132Z  COPY 500 orders; committed key 3522",
-      "2026-09-24T03:42:50.665791Z  Applied 6 net changes through version 7196",
-      "2026-09-24T03:42:50.665791Z  COPY 500 orders; committed key 3022",
-      "2026-09-24T03:42:50.317943Z  Applied 6 net changes through version 7196",
-      "2026-09-24T03:42:50.317943Z  COPY 500 orders; committed key 2522",
-      "2026-09-24T03:42:49.954849Z  Applied 6 net changes through version 7196",
-      "2026-09-24T03:42:49.954849Z  COPY 500 orders; committed key 2022",
-      "2026-09-24T03:42:49.616230Z  Applied 6 net changes through version 7196",
-      "2026-09-24T03:42:49.616230Z  COPY 500 orders; committed key 1522",
-      "2026-09-24T03:42:49.271437Z  Applied 4 net changes through version 7196",
-      "2026-09-24T03:42:49.271437Z  COPY 500 orders; committed key 1022",
-      "2026-09-24T03:42:48.916762Z  Applied 24 net changes through version 7196",
-      "2026-09-24T03:42:48.916762Z  COPY 500 orders; committed key 522",
-      "2026-09-24T03:42:48.575904Z  Applied 3 net changes through version 7196",
-      "2026-09-24T03:42:48.575904Z  Snapshot: orders",
-      "2026-09-24T03:42:48.238824Z  Applied 3 net changes through version 7196",
-      "2026-09-24T03:42:48.238824Z  COPY 500 customers; committed key 10000"
+      "[11:18:07] Traffic stopped",
+      "[11:18:07] UPDATE \u2192 PostgreSQL \u2192 orders #4738 \u2192 status=UPDATED \u00b7 customer #4738 toggled \u2713",
+      "[11:18:07] READ \u2192 PostgreSQL \u2192 orders #5880 \u2192 status=NEW \u00b7 amount=588.0000 \u2713",
+      "[11:18:07] UPDATE \u2192 PostgreSQL \u2192 orders #1078 \u2192 status=UPDATED \u00b7 customer #1078 toggled \u2713",
+      "[11:18:06] INSERT \u2192 PostgreSQL \u2192 customers #10029 \u2192 order #10029 created \u2713",
+      "[11:18:06] READ \u2192 PostgreSQL \u2192 orders #1110 \u2192 status=NEW \u00b7 amount=111.0000 \u2713",
+      "[11:18:06] READ \u2192 PostgreSQL \u2192 orders #1831 \u2192 status=NEW \u00b7 amount=183.1000 \u2713",
+      "[11:18:06] UPDATE \u2192 PostgreSQL \u2192 orders #4530 \u2192 status=UPDATED \u00b7 customer #4530 toggled \u2713",
+      "[11:18:06] DELETE \u2192 PostgreSQL \u2192 customers #6147 \u2192 1 related orders deleted \u2713",
+      "[11:18:06] READ \u2192 PostgreSQL \u2192 orders #8839 \u2192 status=NEW \u00b7 amount=883.9000 \u2713",
+      "[11:18:06] Write freeze through successful cutover: 1048 ms",
+      "[11:18:06] Reverse capture active: PostgreSQL writes are recorded for a lossless rollback",
+      "[11:18:06] Migration completed successfully. PostgreSQL is now Primary; SQL Server remains fenced.",
+      "[11:18:05] Stage: CUTOVER",
+      "[11:18:05] Validation passed: orders \u00b7 source 10015 / target 10015 \u00b7 SHA-256 matches",
+      "[11:18:05] Validation passed: customers \u00b7 source 10015 / target 10015 \u00b7 SHA-256 matches",
+      "[11:18:05] Stage: VALIDATION",
+      "[11:18:05] Applied 2 net changes through version 186",
+      "[11:18:05] Cutover requested; routed traffic waits while source writes are fenced",
+      "[11:18:04] INSERT \u2192 SQL Server \u2192 customers #10028 \u2192 order #10028 created \u2713",
+      "[11:18:04] Validation passed: orders \u00b7 source 10014 / target 10014 \u00b7 SHA-256 matches",
+      "[11:18:04] Validation passed: customers \u00b7 source 10014 / target 10014 \u00b7 SHA-256 matches",
+      "[11:18:04] Applied 6 net changes through version 185",
+      "[11:18:04] UPDATE \u2192 SQL Server \u2192 orders #6184 \u2192 status=UPDATED \u00b7 customer #6184 toggled \u2713",
+      "[11:18:04] READ \u2192 SQL Server \u2192 orders #7192 \u2192 status=NEW \u00b7 amount=719.2000 \u2713",
+      "[11:18:04] Stage: READY",
+      "[11:18:04] Built index and deferred constraints; synchronized sequences; ANALYZE complete",
+      "[11:18:04] UPDATE \u2192 SQL Server \u2192 orders #9335 \u2192 status=UPDATED \u00b7 customer #9335 toggled \u2713",
+      "[11:18:04] INSERT \u2192 SQL Server \u2192 customers #10027 \u2192 order #10027 created \u2713",
+      "[11:18:04] READ \u2192 SQL Server \u2192 orders #8172 \u2192 status=NEW \u00b7 amount=817.2000 \u2713",
+      "[11:18:04] Stage: PREPARE",
+      "[11:18:04] Applied 6 net changes through version 182",
+      "[11:18:04] READ \u2192 SQL Server \u2192 orders #9819 \u2192 status=NEW \u00b7 amount=981.9000 \u2713",
+      "[11:18:04] UPDATE \u2192 SQL Server \u2192 orders #607 \u2192 status=UPDATED \u00b7 customer #607 toggled \u2713",
+      "[11:18:04] Stage: CATCH_UP",
+      "[11:18:04] DELETE \u2192 SQL Server \u2192 customers #8406 \u2192 -1 related orders deleted \u2713",
+      "[11:18:03] READ \u2192 SQL Server \u2192 orders #76 \u2192 status=NEW \u00b7 amount=7.6000 \u2713",
+      "[11:18:03] INSERT \u2192 SQL Server \u2192 customers #10026 \u2192 order #10026 created \u2713",
+      "[11:18:03] Applied 5 net changes through version 104",
+      "[11:18:03] COPY 490 orders; committed key 10000",
+      "[11:18:03] UPDATE \u2192 SQL Server \u2192 orders #2140 \u2192 status=UPDATED \u00b7 customer #2140 toggled \u2713",
+      "[11:18:03] READ \u2192 SQL Server \u2192 orders #5009 \u2192 status=NEW \u00b7 amount=500.9000 \u2713",
+      "[11:18:03] UPDATE \u2192 SQL Server \u2192 orders #1979 \u2192 status=UPDATED \u00b7 customer #1979 toggled \u2713",
+      "[11:18:03] Applied 7 net changes through version 104",
+      "[11:18:03] COPY 500 orders; committed key 9510",
+      "[11:18:03] INSERT \u2192 SQL Server \u2192 customers #10025 \u2192 order #10025 created \u2713",
+      "[11:18:03] READ \u2192 SQL Server \u2192 orders #6650 \u2192 status=NEW \u00b7 amount=665.0000 \u2713",
+      "[11:18:02] READ \u2192 SQL Server \u2192 orders #3538 \u2192 status=NEW \u00b7 amount=353.8000 \u2713",
+      "[11:18:02] Applied 8 net changes through version 104",
+      "[11:18:02] COPY 500 orders; committed key 9008",
+      "[11:18:02] UPDATE \u2192 SQL Server \u2192 orders #8724 \u2192 status=UPDATED \u00b7 customer #8724 toggled \u2713",
+      "[11:18:02] DELETE \u2192 SQL Server \u2192 customers #6950 \u2192 -1 related orders deleted \u2713",
+      "[11:18:02] READ \u2192 SQL Server \u2192 orders #1298 \u2192 status=NEW \u00b7 amount=129.8000 \u2713",
+      "[11:18:02] Applied 5 net changes through version 104",
+      "[11:18:02] COPY 500 orders; committed key 8508",
+      "[11:18:02] INSERT \u2192 SQL Server \u2192 customers #10024 \u2192 order #10024 created \u2713",
+      "[11:18:02] UPDATE \u2192 SQL Server \u2192 orders #9065 \u2192 status=UPDATED \u00b7 customer #9065 toggled \u2713",
+      "[11:18:02] READ \u2192 SQL Server \u2192 orders #399 \u2192 status=NEW \u00b7 amount=39.9000 \u2713",
+      "[11:18:02] Applied 7 net changes through version 104",
+      "[11:18:02] COPY 500 orders; committed key 8007"
     ],
+    "traffic": {
+      "running": false,
+      "target": "POSTGRESQL",
+      "total": 145,
+      "inserts": 29,
+      "updates": 44,
+      "deletes": 14,
+      "reads": 58,
+      "errors": 0,
+      "sqlServerOperations": 136,
+      "postgresOperations": 9,
+      "operationsPerSecond": 0.0
+    },
     "captureError": "",
-    "seedRows": 10000
+    "seedRows": 10000,
+    "migrationStartAllowed": false,
+    "completion": {
+      "successful": true,
+      "validationPassed": true,
+      "validation": "Passed: counts + SHA-256 + constraints",
+      "primary": "POSTGRESQL",
+      "cdcPending": 0,
+      "cdcApplied": 164,
+      "totalMigratedRows": 20030,
+      "startedAt": "2026-09-26T11:17:39.204598Z",
+      "completedAt": "2026-09-26T11:18:06.289298Z",
+      "durationMillis": 27084,
+      "rowsPerSecond": 739.5510264362723,
+      "writeFreezeMillis": 1048
+    },
+    "rollback": {
+      "available": true,
+      "inProgress": false,
+      "abortable": false,
+      "completed": false,
+      "progress": 0.0,
+      "pending": 10,
+      "applied": 0,
+      "conflicts": 0,
+      "validation": "Not checked",
+      "validationPassed": false,
+      "durationMillis": null,
+      "freezeMillis": null,
+      "verifiedRows": 0,
+      "dataLost": null
+    },
+    "events": [
+      {
+        "id": 653,
+        "at": "2026-09-26T11:18:07.263401Z",
+        "message": "Traffic stopped"
+      },
+      {
+        "id": 652,
+        "at": "2026-09-26T11:18:07.237567Z",
+        "message": "UPDATE \u2192 PostgreSQL \u2192 orders #4738 \u2192 status=UPDATED \u00b7 customer #4738 toggled \u2713"
+      },
+      {
+        "id": 651,
+        "at": "2026-09-26T11:18:07.130980Z",
+        "message": "READ \u2192 PostgreSQL \u2192 orders #5880 \u2192 status=NEW \u00b7 amount=588.0000 \u2713"
+      },
+      {
+        "id": 650,
+        "at": "2026-09-26T11:18:07.025663Z",
+        "message": "UPDATE \u2192 PostgreSQL \u2192 orders #1078 \u2192 status=UPDATED \u00b7 customer #1078 toggled \u2713"
+      },
+      {
+        "id": 649,
+        "at": "2026-09-26T11:18:06.920676Z",
+        "message": "INSERT \u2192 PostgreSQL \u2192 customers #10029 \u2192 order #10029 created \u2713"
+      },
+      {
+        "id": 648,
+        "at": "2026-09-26T11:18:06.816410Z",
+        "message": "READ \u2192 PostgreSQL \u2192 orders #1110 \u2192 status=NEW \u00b7 amount=111.0000 \u2713"
+      },
+      {
+        "id": 647,
+        "at": "2026-09-26T11:18:06.710875Z",
+        "message": "READ \u2192 PostgreSQL \u2192 orders #1831 \u2192 status=NEW \u00b7 amount=183.1000 \u2713"
+      },
+      {
+        "id": 646,
+        "at": "2026-09-26T11:18:06.604161Z",
+        "message": "UPDATE \u2192 PostgreSQL \u2192 orders #4530 \u2192 status=UPDATED \u00b7 customer #4530 toggled \u2713"
+      },
+      {
+        "id": 645,
+        "at": "2026-09-26T11:18:06.496691Z",
+        "message": "DELETE \u2192 PostgreSQL \u2192 customers #6147 \u2192 1 related orders deleted \u2713"
+      },
+      {
+        "id": 644,
+        "at": "2026-09-26T11:18:06.347248Z",
+        "message": "READ \u2192 PostgreSQL \u2192 orders #8839 \u2192 status=NEW \u00b7 amount=883.9000 \u2713"
+      },
+      {
+        "id": 643,
+        "at": "2026-09-26T11:18:06.289298Z",
+        "message": "Write freeze through successful cutover: 1048 ms"
+      },
+      {
+        "id": 642,
+        "at": "2026-09-26T11:18:06.289298Z",
+        "message": "Reverse capture active: PostgreSQL writes are recorded for a lossless rollback"
+      },
+      {
+        "id": 641,
+        "at": "2026-09-26T11:18:06.289298Z",
+        "message": "Migration completed successfully. PostgreSQL is now Primary; SQL Server remains fenced."
+      },
+      {
+        "id": 640,
+        "at": "2026-09-26T11:18:05.887462Z",
+        "message": "Stage: CUTOVER"
+      },
+      {
+        "id": 639,
+        "at": "2026-09-26T11:18:05.887462Z",
+        "message": "Validation passed: orders \u00b7 source 10015 / target 10015 \u00b7 SHA-256 matches"
+      },
+      {
+        "id": 638,
+        "at": "2026-09-26T11:18:05.887462Z",
+        "message": "Validation passed: customers \u00b7 source 10015 / target 10015 \u00b7 SHA-256 matches"
+      },
+      {
+        "id": 637,
+        "at": "2026-09-26T11:18:05.483482Z",
+        "message": "Stage: VALIDATION"
+      },
+      {
+        "id": 636,
+        "at": "2026-09-26T11:18:05.483482Z",
+        "message": "Applied 2 net changes through version 186"
+      },
+      {
+        "id": 635,
+        "at": "2026-09-26T11:18:05.240542Z",
+        "message": "Cutover requested; routed traffic waits while source writes are fenced"
+      },
+      {
+        "id": 634,
+        "at": "2026-09-26T11:18:04.968447Z",
+        "message": "INSERT \u2192 SQL Server \u2192 customers #10028 \u2192 order #10028 created \u2713"
+      },
+      {
+        "id": 633,
+        "at": "2026-09-26T11:18:04.910882Z",
+        "message": "Validation passed: orders \u00b7 source 10014 / target 10014 \u00b7 SHA-256 matches"
+      },
+      {
+        "id": 632,
+        "at": "2026-09-26T11:18:04.910882Z",
+        "message": "Validation passed: customers \u00b7 source 10014 / target 10014 \u00b7 SHA-256 matches"
+      },
+      {
+        "id": 631,
+        "at": "2026-09-26T11:18:04.910882Z",
+        "message": "Applied 6 net changes through version 185"
+      },
+      {
+        "id": 630,
+        "at": "2026-09-26T11:18:04.857339Z",
+        "message": "UPDATE \u2192 SQL Server \u2192 orders #6184 \u2192 status=UPDATED \u00b7 customer #6184 toggled \u2713"
+      },
+      {
+        "id": 629,
+        "at": "2026-09-26T11:18:04.750381Z",
+        "message": "READ \u2192 SQL Server \u2192 orders #7192 \u2192 status=NEW \u00b7 amount=719.2000 \u2713"
+      },
+      {
+        "id": 628,
+        "at": "2026-09-26T11:18:04.672884Z",
+        "message": "Stage: READY"
+      },
+      {
+        "id": 627,
+        "at": "2026-09-26T11:18:04.672884Z",
+        "message": "Built index and deferred constraints; synchronized sequences; ANALYZE complete"
+      },
+      {
+        "id": 626,
+        "at": "2026-09-26T11:18:04.640164Z",
+        "message": "UPDATE \u2192 SQL Server \u2192 orders #9335 \u2192 status=UPDATED \u00b7 customer #9335 toggled \u2713"
+      },
+      {
+        "id": 625,
+        "at": "2026-09-26T11:18:04.524828Z",
+        "message": "INSERT \u2192 SQL Server \u2192 customers #10027 \u2192 order #10027 created \u2713"
+      },
+      {
+        "id": 624,
+        "at": "2026-09-26T11:18:04.334934Z",
+        "message": "READ \u2192 SQL Server \u2192 orders #8172 \u2192 status=NEW \u00b7 amount=817.2000 \u2713"
+      },
+      {
+        "id": 623,
+        "at": "2026-09-26T11:18:04.286812Z",
+        "message": "Stage: PREPARE"
+      },
+      {
+        "id": 622,
+        "at": "2026-09-26T11:18:04.286812Z",
+        "message": "Applied 6 net changes through version 182"
+      },
+      {
+        "id": 621,
+        "at": "2026-09-26T11:18:04.228589Z",
+        "message": "READ \u2192 SQL Server \u2192 orders #9819 \u2192 status=NEW \u00b7 amount=981.9000 \u2713"
+      },
+      {
+        "id": 620,
+        "at": "2026-09-26T11:18:04.117804Z",
+        "message": "UPDATE \u2192 SQL Server \u2192 orders #607 \u2192 status=UPDATED \u00b7 customer #607 toggled \u2713"
+      },
+      {
+        "id": 619,
+        "at": "2026-09-26T11:18:04.031496Z",
+        "message": "Stage: CATCH_UP"
+      },
+      {
+        "id": 618,
+        "at": "2026-09-26T11:18:04.002042Z",
+        "message": "DELETE \u2192 SQL Server \u2192 customers #8406 \u2192 -1 related orders deleted \u2713"
+      },
+      {
+        "id": 617,
+        "at": "2026-09-26T11:18:03.893453Z",
+        "message": "READ \u2192 SQL Server \u2192 orders #76 \u2192 status=NEW \u00b7 amount=7.6000 \u2713"
+      },
+      {
+        "id": 616,
+        "at": "2026-09-26T11:18:03.712584Z",
+        "message": "INSERT \u2192 SQL Server \u2192 customers #10026 \u2192 order #10026 created \u2713"
+      },
+      {
+        "id": 615,
+        "at": "2026-09-26T11:18:03.635164Z",
+        "message": "Applied 5 net changes through version 104"
+      },
+      {
+        "id": 614,
+        "at": "2026-09-26T11:18:03.635164Z",
+        "message": "COPY 490 orders; committed key 10000"
+      },
+      {
+        "id": 613,
+        "at": "2026-09-26T11:18:03.602705Z",
+        "message": "UPDATE \u2192 SQL Server \u2192 orders #2140 \u2192 status=UPDATED \u00b7 customer #2140 toggled \u2713"
+      },
+      {
+        "id": 612,
+        "at": "2026-09-26T11:18:03.493371Z",
+        "message": "READ \u2192 SQL Server \u2192 orders #5009 \u2192 status=NEW \u00b7 amount=500.9000 \u2713"
+      },
+      {
+        "id": 611,
+        "at": "2026-09-26T11:18:03.321576Z",
+        "message": "UPDATE \u2192 SQL Server \u2192 orders #1979 \u2192 status=UPDATED \u00b7 customer #1979 toggled \u2713"
+      },
+      {
+        "id": 610,
+        "at": "2026-09-26T11:18:03.233697Z",
+        "message": "Applied 7 net changes through version 104"
+      },
+      {
+        "id": 609,
+        "at": "2026-09-26T11:18:03.233697Z",
+        "message": "COPY 500 orders; committed key 9510"
+      },
+      {
+        "id": 608,
+        "at": "2026-09-26T11:18:03.199924Z",
+        "message": "INSERT \u2192 SQL Server \u2192 customers #10025 \u2192 order #10025 created \u2713"
+      },
+      {
+        "id": 607,
+        "at": "2026-09-26T11:18:03.092824Z",
+        "message": "READ \u2192 SQL Server \u2192 orders #6650 \u2192 status=NEW \u00b7 amount=665.0000 \u2713"
+      },
+      {
+        "id": 606,
+        "at": "2026-09-26T11:18:02.922643Z",
+        "message": "READ \u2192 SQL Server \u2192 orders #3538 \u2192 status=NEW \u00b7 amount=353.8000 \u2713"
+      },
+      {
+        "id": 605,
+        "at": "2026-09-26T11:18:02.823830Z",
+        "message": "Applied 8 net changes through version 104"
+      },
+      {
+        "id": 604,
+        "at": "2026-09-26T11:18:02.823830Z",
+        "message": "COPY 500 orders; committed key 9008"
+      },
+      {
+        "id": 603,
+        "at": "2026-09-26T11:18:02.810816Z",
+        "message": "UPDATE \u2192 SQL Server \u2192 orders #8724 \u2192 status=UPDATED \u00b7 customer #8724 toggled \u2713"
+      },
+      {
+        "id": 602,
+        "at": "2026-09-26T11:18:02.679621Z",
+        "message": "DELETE \u2192 SQL Server \u2192 customers #6950 \u2192 -1 related orders deleted \u2713"
+      },
+      {
+        "id": 601,
+        "at": "2026-09-26T11:18:02.516402Z",
+        "message": "READ \u2192 SQL Server \u2192 orders #1298 \u2192 status=NEW \u00b7 amount=129.8000 \u2713"
+      },
+      {
+        "id": 600,
+        "at": "2026-09-26T11:18:02.432016Z",
+        "message": "Applied 5 net changes through version 104"
+      },
+      {
+        "id": 599,
+        "at": "2026-09-26T11:18:02.432016Z",
+        "message": "COPY 500 orders; committed key 8508"
+      },
+      {
+        "id": 598,
+        "at": "2026-09-26T11:18:02.398998Z",
+        "message": "INSERT \u2192 SQL Server \u2192 customers #10024 \u2192 order #10024 created \u2713"
+      },
+      {
+        "id": 597,
+        "at": "2026-09-26T11:18:02.287817Z",
+        "message": "UPDATE \u2192 SQL Server \u2192 orders #9065 \u2192 status=UPDATED \u00b7 customer #9065 toggled \u2713"
+      },
+      {
+        "id": 596,
+        "at": "2026-09-26T11:18:02.122477Z",
+        "message": "READ \u2192 SQL Server \u2192 orders #399 \u2192 status=NEW \u00b7 amount=39.9000 \u2713"
+      },
+      {
+        "id": 595,
+        "at": "2026-09-26T11:18:02.031846Z",
+        "message": "Applied 7 net changes through version 104"
+      },
+      {
+        "id": 594,
+        "at": "2026-09-26T11:18:02.031846Z",
+        "message": "COPY 500 orders; committed key 8007"
+      }
+    ]
   }
 }

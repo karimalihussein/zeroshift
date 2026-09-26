@@ -34,4 +34,10 @@ create lab.retention-demo 1 retention.ms=60000 segment.ms=10000
 # null value (tombstone) deletes a key. The events-over-time lab recreates it with these settings.
 create lab.order-status 1 cleanup.policy=compact segment.ms=5000 min.cleanable.dirty.ratio=0.01 \
   min.compaction.lag.ms=0 max.compaction.lag.ms=10000 delete.retention.ms=20000
+# Phase 5 failure lab. The disaster-recovery lab's payment events: kept forever, because Kafka is
+# the log a restored database replays from. The lab deletes and recreates it on reset.
+create lab.dr.payments 3 retention.ms=-1
+# The trust-boundary lab's payment events on this unauthenticated broker (where a forged event
+# gets in). Its protected twin lives on kafka-secure, created by the lab with ACLs.
+create lab.trust.payments 1 retention.ms=86400000
 $topics --bootstrap-server "$bootstrap" --list

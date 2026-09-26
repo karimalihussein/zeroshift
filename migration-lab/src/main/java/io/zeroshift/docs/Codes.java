@@ -104,6 +104,32 @@ final class Codes {
             502,
             "migration-lab",
             "A lab step failed against the running system; it can be run again."),
+        code("UNKNOWN_FAILURE_LAB", 404, "migration-lab", "No failure lab with this id."),
+        code(
+            "STAGE_OUT_OF_ORDER",
+            409,
+            "migration-lab",
+            "A failure-lab stage run before the stages before it."),
+        code(
+            "STAGE_FAILED",
+            502,
+            "migration-lab",
+            "A failure-lab stage failed, or one of its claims did not hold; it can be run again."),
+        code(
+            "FAILURE_LAB_BUSY",
+            409,
+            "migration-lab",
+            "A stage, reset or recovery action of this failure lab is still running."),
+        code(
+            "INVALID_FAILURE_ACTION",
+            400,
+            "migration-lab",
+            "A manual failure-lab action named something the lab does not own or support."),
+        code(
+            "FAILURE_LAB_UNAVAILABLE",
+            503,
+            "migration-lab",
+            "The failure lab's own infrastructure (profile failure-lab) is not reachable."),
         code("ORDER_NOT_FOUND", 404, "order-service", "The order's event stream is empty."),
         code(
             "ORDER_RULE_VIOLATION",
