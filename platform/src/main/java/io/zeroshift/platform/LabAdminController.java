@@ -1,5 +1,6 @@
 package io.zeroshift.platform;
 
+import io.micrometer.core.instrument.MeterRegistry;
 import io.zeroshift.platform.web.ApiException;
 import io.zeroshift.platform.web.ApiResponse;
 import jakarta.validation.constraints.Max;
@@ -9,7 +10,10 @@ import jakarta.validation.constraints.Size;
 import java.util.Arrays;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
+import java.util.TreeMap;
+import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.common.TopicPartition;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
@@ -34,7 +38,8 @@ public class LabAdminController {
       boolean running,
       boolean pauseRequested,
       boolean paused,
-      List<String> assignedPartitions) {}
+      List<String> assignedPartitions,
+      Map<String, String> configOverrides) {}
 
   public record State(
       String service, List<Consumer> consumers, List<Faults.Fault> faults, Outbox.Status outbox) {}
@@ -52,18 +57,28 @@ public class LabAdminController {
   private final Faults faults;
   private final DecisionLog decisions;
   private final Outbox outbox;
+  private final LabPressure pressure;
 
   public LabAdminController(
       @Value("${spring.application.name}") String service,
+      @Value("${zeroshift.instance:${HOSTNAME:local}}") String instance,
       KafkaListenerEndpointRegistry registry,
       Faults faults,
       DecisionLog decisions,
-      Outbox outbox) {
+      Outbox outbox,
+      MeterRegistry meters) {
     this.service = service;
     this.registry = registry;
     this.faults = faults;
     this.decisions = decisions;
     this.outbox = outbox;
+    pressure = new LabPressure(meters, service, instance);
+  }
+
+  /** CPU, heap, threads, connection pool, rebalances and counters, read from this JVM now. */
+  @GetMapping("/pressure")
+  public LabPressure.Pressure pressure() {
+    return pressure.read();
   }
 
   @GetMapping("/state")
@@ -92,9 +107,7 @@ public class LabAdminController {
 
   @PostMapping("/consumers/{id}/{action}")
   public State consumer(@PathVariable String id, @PathVariable String action) {
-    var container = registry.getListenerContainer(id);
-    if (container == null)
-      throw new ApiException(HttpStatus.NOT_FOUND, UNKNOWN_CONSUMER, "No consumer " + id);
+    var container = container(id);
     var parsed =
         Arrays.stream(ConsumerAction.values())
             .filter(a -> a.name().equalsIgnoreCase(action))
@@ -112,6 +125,43 @@ public class LabAdminController {
       case START -> container.start();
     }
     return state();
+  }
+
+  /**
+   * Overrides {@code max.poll.records} and {@code max.poll.interval.ms} for one consumer and
+   * restarts it, so its consumers rejoin the group with the new settings. Without either parameter
+   * the consumer factory's defaults apply again. Answers at once; the restart completes shortly
+   * after (the returned state may still show the consumer stopping).
+   */
+  @PutMapping("/consumers/{id}/config")
+  public State configure(
+      @PathVariable String id,
+      @RequestParam(required = false) @Min(1) @Max(10_000) Integer maxPollRecords,
+      @RequestParam(required = false) @Min(1_000) @Max(600_000) Integer maxPollIntervalMs) {
+    var container = container(id);
+    var properties = container.getContainerProperties().getKafkaConsumerProperties();
+    var before = new java.util.Properties();
+    before.putAll(properties);
+    set(properties, ConsumerConfig.MAX_POLL_RECORDS_CONFIG, maxPollRecords);
+    set(properties, ConsumerConfig.MAX_POLL_INTERVAL_MS_CONFIG, maxPollIntervalMs);
+    if (properties.equals(before)) return state(); // nothing changed: no needless rebalance
+    // Stopping waits for the record being handled and for the consumers to leave the group, which
+    // can take seconds with a slow consumer: restart in the background and answer now.
+    if (container.isRunning()) container.stop(container::start);
+    else container.start();
+    return state();
+  }
+
+  private static void set(java.util.Properties properties, String name, Integer value) {
+    if (value == null) properties.remove(name);
+    else properties.setProperty(name, value.toString());
+  }
+
+  private MessageListenerContainer container(String id) {
+    var container = registry.getListenerContainer(id);
+    if (container == null)
+      throw new ApiException(HttpStatus.NOT_FOUND, UNKNOWN_CONSUMER, "No consumer " + id);
+    return container;
   }
 
   /** Arms a fault; without {@code times} it stays armed until cleared. */
@@ -158,6 +208,13 @@ public class LabAdminController {
         Objects.requireNonNullElse(c.getAssignedPartitions(), List.<TopicPartition>of()).stream()
             .map(TopicPartition::toString)
             .sorted()
-            .toList());
+            .toList(),
+        c.getContainerProperties().getKafkaConsumerProperties().entrySet().stream()
+            .collect(
+                java.util.stream.Collectors.toMap(
+                    e -> e.getKey().toString(),
+                    e -> e.getValue().toString(),
+                    (a, b) -> b,
+                    TreeMap::new)));
   }
 }

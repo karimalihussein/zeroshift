@@ -42,6 +42,8 @@ public final class Inbox {
     int attempt = attempt(record);
     if (faults.trigger(Faults.TRANSIENT_ERROR).isPresent())
       throw new TransientFailure("Injected transient failure (" + envelope.type() + ")");
+    var slow = faults.trigger(Faults.SLOW_PROCESSING);
+    if (slow.isPresent()) pause(slow.get());
     var handled =
         transactions.execute(
             s -> {
@@ -95,6 +97,16 @@ public final class Inbox {
    */
   public void forget(String consumer) {
     db.deleteFrom(PROCESSED_MESSAGE).where(PROCESSED_MESSAGE.CONSUMER.eq(consumer)).execute();
+  }
+
+  private static void pause(String millis) {
+    try {
+      Thread.sleep(Long.parseLong(millis));
+    } catch (NumberFormatException e) {
+      throw new IllegalStateException("slow-processing needs a delay in ms, not " + millis, e);
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+    }
   }
 
   /** Spring Kafka's delivery counter for this record (1 on first delivery). */

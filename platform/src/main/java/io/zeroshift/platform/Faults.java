@@ -21,6 +21,12 @@ public final class Faults {
   /** Every consumer: throw before processing, exercising retry with backoff and then the DLT. */
   public static final String TRANSIENT_ERROR = "transient-error";
 
+  /**
+   * Every consumer: sleep this many milliseconds (the mode) before handling each delivery, on the
+   * consumer's own thread and outside any transaction. A slow consumer, for the backpressure labs.
+   */
+  public static final String SLOW_PROCESSING = "slow-processing";
+
   private final DSLContext db;
   private final TransactionTemplate separate;
 
