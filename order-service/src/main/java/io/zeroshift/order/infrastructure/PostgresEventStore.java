@@ -32,7 +32,8 @@ public final class PostgresEventStore implements EventStore {
             EVENT_STORE.GLOBAL_POSITION,
             EVENT_STORE.VERSION,
             EVENT_STORE.ENVELOPE,
-            EVENT_STORE.RECORDED_AT)
+            EVENT_STORE.RECORDED_AT,
+            EVENT_STORE.SCHEMA_VERSION)
         .from(EVENT_STORE)
         .where(EVENT_STORE.STREAM_ID.eq(stream).and(EVENT_STORE.VERSION.gt(afterVersion)))
         .orderBy(EVENT_STORE.VERSION)
@@ -43,7 +44,9 @@ public final class PostgresEventStore implements EventStore {
                     r.value2(),
                     // Decoding upcasts events stored under an older schema version.
                     MessageCodec.decode(r.value3().data()),
-                    r.value4().toInstant()));
+                    r.value4().toInstant(),
+                    r.value5(),
+                    r.value3().data()));
   }
 
   /**
@@ -54,15 +57,21 @@ public final class PostgresEventStore implements EventStore {
   public void append(UUID stream, long expectedVersion, List<Envelope> events) {
     long version = expectedVersion;
     try {
-      for (var event : events)
+      for (var event : events) {
+        // The version actually written: an older writer (see MessageCodec.writingAs) may have
+        // encoded it below the current one.
+        var encoded = MessageCodec.encode(event);
         db.insertInto(EVENT_STORE)
             .set(EVENT_STORE.STREAM_ID, stream)
             .set(EVENT_STORE.VERSION, ++version)
             .set(EVENT_STORE.EVENT_ID, event.eventId())
             .set(EVENT_STORE.TYPE, event.type())
-            .set(EVENT_STORE.SCHEMA_VERSION, event.schemaVersion())
-            .set(EVENT_STORE.ENVELOPE, JSONB.valueOf(MessageCodec.encode(event)))
+            .set(
+                EVENT_STORE.SCHEMA_VERSION,
+                MessageCodec.json().readTree(encoded).path("schemaVersion").asInt())
+            .set(EVENT_STORE.ENVELOPE, JSONB.valueOf(encoded))
             .execute();
+      }
     } catch (DuplicateKeyException e) {
       throw new ConcurrencyConflict(
           "Order " + stream + " changed after version " + expectedVersion + " was read");

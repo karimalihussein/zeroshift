@@ -9,7 +9,17 @@ import java.util.UUID;
 
 /** Append-only history per order stream, plus optional snapshots that shortcut replay. */
 public interface EventStore {
-  record Recorded(long position, long version, Envelope envelope, Instant recordedAt) {}
+  /**
+   * One stored event. {@code envelope} is decoded at the current schema version (older ones are
+   * upcast on the way out); {@code stored} is the row exactly as written, at {@code storedVersion}.
+   */
+  record Recorded(
+      long position,
+      long version,
+      Envelope envelope,
+      Instant recordedAt,
+      int storedVersion,
+      String stored) {}
 
   record Snapshot(long version, Order state, Instant takenAt) {}
 

@@ -18,7 +18,8 @@ public final class Contracts {
       Class<? extends Message> javaType,
       String topic,
       int version,
-      Map<Integer, UnaryOperator<ObjectNode>> upcasters) {}
+      Map<Integer, UnaryOperator<ObjectNode>> upcasters,
+      Map<Integer, UnaryOperator<ObjectNode>> downcasters) {}
 
   private static final Map<Class<? extends Message>, String> FAMILIES =
       Map.of(
@@ -35,6 +36,26 @@ public final class Contracts {
   private static final Map<Class<? extends Message>, Map<Integer, UnaryOperator<ObjectNode>>>
       UPCASTERS = Map.of(OrderEvent.OrderPlaced.class, Map.of(1, v1 -> v1.put("currency", "USD")));
 
+  /**
+   * Downcasters keyed by the version they read: entry n turns a vn payload into v(n-1). Only for
+   * reproducing what an older writer produced (the event history lab's "previous deployment"): a v1
+   * OrderPlaced could only say USD, so a payload in any other currency cannot be written as v1.
+   */
+  private static final Map<Class<? extends Message>, Map<Integer, UnaryOperator<ObjectNode>>>
+      DOWNCASTERS =
+          Map.of(
+              OrderEvent.OrderPlaced.class,
+              Map.of(
+                  2,
+                  v2 -> {
+                    var currency = v2.path("currency").asString("USD");
+                    if (!currency.equals("USD"))
+                      throw new IllegalArgumentException(
+                          "OrderPlaced v1 has no currency field and means USD, not " + currency);
+                    v2.remove("currency");
+                    return v2;
+                  }));
+
   private static final Map<String, Contract> BY_TYPE = new LinkedHashMap<>();
   private static final Map<Class<?>, Contract> BY_CLASS = new LinkedHashMap<>();
 
@@ -48,7 +69,12 @@ public final class Contracts {
                       var upcasters = UPCASTERS.getOrDefault(type, Map.of());
                       var contract =
                           new Contract(
-                              type.getSimpleName(), type, topic, upcasters.size() + 1, upcasters);
+                              type.getSimpleName(),
+                              type,
+                              topic,
+                              upcasters.size() + 1,
+                              upcasters,
+                              DOWNCASTERS.getOrDefault(type, Map.of()));
                       BY_TYPE.put(contract.type(), contract);
                       BY_CLASS.put(type, contract);
                     }));
